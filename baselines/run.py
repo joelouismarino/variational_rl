@@ -6,6 +6,8 @@ from collections import defaultdict
 import tensorflow as tf
 import numpy as np
 
+from envs import registration
+
 from baselines.common.vec_env.vec_video_recorder import VecVideoRecorder
 from baselines.common.vec_env.vec_frame_stack import VecFrameStack
 from baselines.common.cmd_util import common_arg_parser, parse_unknown_args, make_vec_env, make_env
@@ -50,8 +52,8 @@ _game_envs['retro'] = {
     'SpaceInvaders-Snes',
 }
 
-
 def train(args, extra_args):
+    register_env(args)
     env_type, env_id = get_env_type(args.env)
     print('env_type: {}'.format(env_type))
 
@@ -93,7 +95,7 @@ def build_env(args):
 
     env_type, env_id = get_env_type(args.env)
 
-    if env_type in {'atari', 'retro'}:
+    if env_type in {'atari', 'retro', 'vizdoom'}:
         if alg == 'deepq':
             env = make_env(env_id, env_type, seed=seed, wrapper_kwargs={'frame_stack': True})
         elif alg == 'trpo_mpi':
@@ -131,6 +133,15 @@ def get_env_type(env_id):
         assert env_type is not None, 'env_id {} is not recognized in env types'.format(env_id, _game_envs.keys())
 
     return env_type, env_id
+
+
+def register_env(args):
+    if args.env not in gym.envs.registry.all() and args.env not in _game_envs['retro']:
+        cfg = None
+        if 'cfg' in dir(args):
+            cfg = args.cfg
+        env_type = registration.register_env(args.env, cfg)
+        _game_envs[env_type] = {args.env}
 
 
 def get_default_network(env_type):
@@ -176,7 +187,6 @@ def parse_cmdline_kwargs(args):
             return eval(v)
         except (NameError, SyntaxError):
             return v
-
     return {k: parse(v) for k,v in parse_unknown_args(args).items()}
 
 
