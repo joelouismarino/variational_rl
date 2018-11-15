@@ -37,6 +37,7 @@ class VizDoomEnv(Env):
             self.game.set_seed(seed)
 
     def step(self, action):
+        # import ipdb; ipdb.set_trace()
         if type(action) == np.int64:
             action_array = np.zeros(self.action_space.n).astype('uint8')
             action_array[action] = 1
