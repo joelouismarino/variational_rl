@@ -17,6 +17,7 @@ from baselines.common.atari_wrappers import make_atari, wrap_deepmind
 from baselines.common.vec_env.subproc_vec_env import SubprocVecEnv
 from baselines.common.vec_env.dummy_vec_env import DummyVecEnv
 from baselines.common import retro_wrappers
+from baselines.common.vizdoom_wrappers import make_vizdoom, wrap_deepmind_vizdoom
 
 def make_vec_env(env_id, env_type, num_env, seed, wrapper_kwargs=None, start_index=0, reward_scale=1.0, gamestate=None):
     """
@@ -51,6 +52,8 @@ def make_env(env_id, env_type, subrank=0, seed=None, reward_scale=1.0, gamestate
         import retro
         gamestate = gamestate or retro.State.DEFAULT
         env = retro_wrappers.make_retro(game=env_id, max_episode_steps=10000, use_restricted_actions=retro.Actions.DISCRETE, state=gamestate)
+    elif env_type == 'vizdoom':
+        env = make_vizdoom(env_id)
     else:
         env = gym.make(env_id)
 
@@ -63,6 +66,8 @@ def make_env(env_id, env_type, subrank=0, seed=None, reward_scale=1.0, gamestate
         env = wrap_deepmind(env, **wrapper_kwargs)
     elif env_type == 'retro':
         env = retro_wrappers.wrap_deepmind_retro(env, **wrapper_kwargs)
+    elif env_type == 'vizdoom':
+        env = wrap_deepmind_vizdoom(env, **wrapper_kwargs)
 
     if reward_scale != 1:
         env = retro_wrappers.RewardScaler(env, reward_scale)
