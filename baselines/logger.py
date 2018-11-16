@@ -7,6 +7,8 @@ import time
 import datetime
 import tempfile
 from collections import defaultdict
+from baselines.visuals import *
+from visdom import Visdom
 
 DEBUG = 10
 INFO = 20
@@ -300,6 +302,8 @@ class Logger(object):
         self.level = INFO
         self.dir = dir
         self.output_formats = output_formats
+        vis = Visdom()
+        self.visdom = Plot_visdom(vis, dir)
 
     # Logging API, forwarded
     # ----------------------------------------
@@ -321,6 +325,8 @@ class Logger(object):
                 fmt.writekvs(self.name2val)
         self.name2val.clear()
         self.name2cnt.clear()
+        ## log visdom here
+        self.visdom.plot()
 
     def log(self, *args, level=INFO):
         if self.level <= level:
