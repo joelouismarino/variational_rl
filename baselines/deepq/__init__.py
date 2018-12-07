@@ -6,3 +6,8 @@ from baselines.deepq.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer 
 def wrap_atari_dqn(env):
     from baselines.common.atari_wrappers import wrap_deepmind
     return wrap_deepmind(env, frame_stack=True, scale=True)
+
+
+def wrap_vizdoom_dqn(env):
+    from baselines.common.vizdoom_wrappers import wrap_deepmind_vizdoom
+    return wrap_deepmind_vizdoom(env, frame_stack=True, scale=True)
