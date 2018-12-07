@@ -40,7 +40,7 @@ class Plot_visdom:
         r = results[0]
         x = np.cumsum(r.monitor.l)
         y_raw = r.monitor.r
-        y_smoothed = pu.smooth(r.monitor.r, radius=15)
+        y_smoothed = pu.smooth(r.monitor.r, radius=20)
         plt.plot(x, y_raw) # raw data
         plt.plot(x, y_smoothed) # smoothed
         if self.avgrewardplot is not None:

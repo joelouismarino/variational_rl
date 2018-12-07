@@ -4,6 +4,7 @@ import gym.spaces as spaces
 from gym import Env
 from gym.envs.classic_control import rendering
 from vizdoom import DoomGame
+import itertools as it
 
 
 class VizDoomEnv(Env):
@@ -12,15 +13,20 @@ class VizDoomEnv(Env):
     '''
     metadata = {'render.modes': ['human', 'rgb_array']}
 
-    def __init__(self, cfg_name, repeat=1):
+    def __init__(self, cfg_name, repeat=10):
         super(VizDoomEnv, self).__init__()
         self.game = DoomGame()
         self.game.load_config('./envs/vizdoom/cfgs/' + cfg_name + '.cfg')
         self._viewer = None
-        self.repeat = 1
+        self.repeat = repeat # originally is set to 1. Under pytorch implementation that came with vizdoom it's 12.
         # TODO In future, need to update action to handle (continuous) DELTA buttons using gym's Box space
-        self.action_space = spaces.MultiDiscrete([2] * self.game.get_available_buttons_size())
-        self.action_space.n = self.game.get_available_buttons_size()
+        n_actions = self.game.get_available_buttons_size()
+        self.action_combinations = [list(a) for a in it.product([0, 1], repeat=n_actions)]
+        n_combinations = len(self.action_combinations)
+        # self.action_space = spaces.MultiDiscrete([2] * n_combinations) # Joe's implementation
+        self.action_space = spaces.Discrete(n_combinations)
+        # import pdb; pdb.set_trace()
+        self.action_space.n = n_combinations
         self.action_space.dtype = 'uint8'
         output_shape = (self.game.get_screen_height(), self.game.get_screen_width(), self.game.get_screen_channels())
         self.observation_space = spaces.Box(low=0, high=255, shape=output_shape, dtype='uint8')
@@ -37,12 +43,12 @@ class VizDoomEnv(Env):
             self.game.set_seed(seed)
 
     def step(self, action):
-        # import ipdb; ipdb.set_trace()
         if type(action) == np.int64:
-            action_array = np.zeros(self.action_space.n).astype('uint8')
-            action_array[action] = 1
-            action = action_array
-        reward = self.game.make_action(list(action), self.repeat)
+            action_combo = self.action_combinations[action]
+            # print(action_combo)
+        else:
+            action_combo = self.action_combinations[int(action)]
+        reward = self.game.make_action(action_combo, self.repeat)
         state = self.game.get_state()
         done = self.game.is_episode_finished()
         # info = self._get_game_variables(state.game_variables)

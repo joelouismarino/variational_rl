@@ -16,6 +16,25 @@ def atari():
         dueling=True
     )
 
+def vizdoom():
+    return dict(
+        network='conv_only',
+        lr=0.00025,
+        buffer_size=50000,
+        exploration_fraction=0.6,
+        exploration_final_eps=0.01,
+        train_freq=1,
+        batch_size=64,
+        learning_starts=10000,
+        target_network_update_freq=500,
+        gamma=0.99,
+        prioritized_replay=True,
+        prioritized_replay_alpha=0.6,
+        checkpoint_freq=10000,
+        checkpoint_path=None,
+        dueling=True
+    )
+
 def retro():
     return atari()
 

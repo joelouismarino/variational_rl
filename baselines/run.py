@@ -213,6 +213,7 @@ def main():
         model.save(save_path)
 
     if args.play:
+        import time
         logger.log("Running trained model")
         env = build_env(args)
         obs = env.reset()
@@ -220,14 +221,15 @@ def main():
             return np.zeros((args.num_env or 1, 2*nlstm)), np.zeros((1))
         state, dones = initialize_placeholders(**extra_args)
         while True:
+            # training loop here
             actions, _, state, _ = model.step(obs,S=state, M=dones)
             obs, _, done, _ = env.step(actions)
             env.render()
+            time.sleep(0.1)
             done = done.any() if isinstance(done, np.ndarray) else done
-
             if done:
                 obs = env.reset()
-
+                time.sleep(0.5)
         env.close()
 
 if __name__ == '__main__':
