@@ -12,7 +12,7 @@ def make_vizdoom(env_id):
 
 class WarpFrame(gym.ObservationWrapper):
     def __init__(self, env, width=84, height=84, grayscale=True):
-        """Follows atari convention for now."""
+        """Warp frames to 84x84 as done in the Nature paper and later work."""
         gym.ObservationWrapper.__init__(self, env)
         self.width = width
         self.height = height
