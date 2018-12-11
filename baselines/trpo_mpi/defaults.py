@@ -1,9 +1,26 @@
-from baselines.common.models import mlp, cnn_small
+from baselines.common.models import mlp, cnn, cnn_small
 
 
 def atari():
     return dict(
         network = cnn_small(),
+        timesteps_per_batch=512,
+        max_kl=0.001,
+        cg_iters=10,
+        cg_damping=1e-3,
+        gamma=0.98,
+        lam=1.0,
+        vf_iters=3,
+        vf_stepsize=1e-4,
+        entcoeff=0.00,
+    )
+
+def vizdoom():
+    '''
+    Parameters currently copied from atari
+    '''
+    return dict(
+        network = cnn(),
         timesteps_per_batch=512,
         max_kl=0.001,
         cg_iters=10,
