@@ -1,0 +1,2 @@
+from .fully_connected import FullyConnectedNetwork
+from .convolutional import ConvolutionalNetwork

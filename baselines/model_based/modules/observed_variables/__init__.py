@@ -1,0 +1,2 @@
+from .fully_connected import FullyConnectedObservedVariable
+from .convolutional import ConvolutionalObservedVariable
