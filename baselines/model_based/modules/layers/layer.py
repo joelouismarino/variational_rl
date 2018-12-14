@@ -1,5 +1,4 @@
 import torch.nn as nn
-from torch.nn import init
 
 
 class Layer(nn.Module):
@@ -14,11 +13,11 @@ class Layer(nn.Module):
 
     def initialize(self):
         if type(self.linear) == nn.Module:
-            init.xavier_normal_(self.linear.weight, gain=self.init_gain)
-            init.constant_(self.linear.bias, 0.)
+            nn.init.xavier_normal_(self.linear.weight, gain=self.init_gain)
+            nn.init.constant_(self.linear.bias, 0.)
         if type(self.batch_norm) == nn.Module:
-            init.normal_(self.batch_norm.weight, 1, 0.02)
-            init.constant_(self.batch_norm.bias, 0.)
+            nn.init.normal_(self.batch_norm.weight, 1, 0.02)
+            nn.init.constant_(self.batch_norm.bias, 0.)
 
     def forward(self, input):
         x = self.linear(input)

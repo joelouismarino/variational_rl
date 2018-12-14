@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.distributions.constraints as constraints
 
 
 class LatentVariable(nn.Module):
@@ -16,7 +17,7 @@ class LatentVariable(nn.Module):
         self.approx_post_models = nn.ModuleDict({name: None for name in approx_post_param_names})
 
         self.initial_prior_params = nn.ParameterDict({name: None for name in prior_param_names})
-        # TODO: fill in initial prior params
+        # TODO: fill in initial prior params using constraints
         for param in self.initial_prior_params:
             self.initial_prior_params[param] = nn.Parameter(torch.zeros(n_variables))
 
@@ -81,8 +82,12 @@ class LatentVariable(nn.Module):
 
     def init_approx_post(self):
         # initialize the approximate posterior from the prior
-        # TODO: copy?
-        self.approx_post_dist = self.prior_dist
+        # copies over a detached version of each parameter
+        assert type(self.approx_post_dist) == type(self.prior_dist), 'Only currently support same type.'
+        parameters = {}
+        for parameter_name in self.approx_post_dist_type.arg_constraints.keys():
+            parameters[parameter_name] = getattr(self.prior_dist, parameter_name).detach()
+        self.approx_post_dist = self.approx_post_dist_type(**parameters)
         self._sample = None
 
     def reset(self):
@@ -93,7 +98,7 @@ class LatentVariable(nn.Module):
 
     def kl_divergence(self, analytical=True):
         if analytical:
-            return dist.kl_divergence(self.approx_post_dist, self.prior_dist)
+            return torch.distributions.kl_divergence(self.approx_post_dist, self.prior_dist)
         else:
             # numerical approximation
             if self.approx_post_dist.has_rsample:

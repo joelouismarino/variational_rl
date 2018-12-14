@@ -1,3 +1,4 @@
+import torch.nn as nn
 from .layer import Layer
 
 
@@ -15,14 +16,14 @@ class FullyConnectedLayer(Layer):
             pass
         elif non_linearity == 'relu':
             self.non_linearity = nn.ReLU()
-            init_gain = init.calculate_gain('relu')
+            init_gain = nn.init.calculate_gain('relu')
         elif non_linearity == 'elu':
             self.non_linearity = nn.ELU()
         elif non_linearity == 'selu':
             self.non_linearity = nn.SELU()
         elif non_linearity == 'tanh':
             self.non_linearity = nn.Tanh()
-            init_gain = init.calculate_gain('tanh')
+            init_gain = nn.init.calculate_gain('tanh')
         elif non_linearity == 'sigmoid':
             self.non_linearity = nn.Sigmoid()
         else:

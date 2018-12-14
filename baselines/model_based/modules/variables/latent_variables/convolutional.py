@@ -1,5 +1,6 @@
+import torch.nn as nn
 from .latent_variable import LatentVariable
-from ..layers import ConvolutionalLayer
+from ...layers import ConvolutionalLayer
 
 
 class ConvolutionalLatentVariable(LatentVariable):
@@ -24,7 +25,8 @@ class ConvolutionalLatentVariable(LatentVariable):
                                                                      strides[1])
 
         # reshape the initial prior params
-        # TODO
+        for param_name, param in self.initial_prior_params.items():
+            self.initial_prior_params[param_name] = nn.Parameter(param.view(1, -1, 1, 1))
 
         # reset the variable to re-initialize the prior
         super(ConvolutionalLatentVariable, self).reset()

@@ -2,60 +2,42 @@ import torch
 import torch.nn as nn
 import torch.distributions as dist
 from .modules.networks import FullyConnectedNetwork, ConvolutionalNetwork
-from .modules.latent_variables import FullyConnectedLatentVariable
-from .modules.observed_variables import ConvolutionalObservedVariable, FullyConnectedObservedVariable
+from .modules.variables.latent_variables import FullyConnectedLatentVariable
+from .modules.variables.observed_variables import ConvolutionalObservedVariable, FullyConnectedObservedVariable
 
 
 class Model(nn.Module):
     """
     Generative Model-Based Agent
     """
-    def __init__(self, observation_shape):
+    def __init__(self, n_state_variables, n_action_variables, state_prior_params,
+                 action_prior_params, obs_likelihood_params, reward_likelihood_params,
+                 state_inference_params, action_inference_params):
         super(Model, self).__init__()
 
         # networks
-        self.state_prior_model = FullyConnectedNetwork(n_layers= ,
-                                                       n_input= ,
-                                                       n_units= ,
-                                                       connectivity= ,
-                                                       non_linearity= )
-        self.action_prior_model = FullyConnectedNetwork(n_layers= ,
-                                                        n_input= ,
-                                                        n_units= ,
-                                                        connectivity= ,
-                                                        non_linearity= )
-        self.obs_likelihood_model = ConvolutionalNetwork()
-        self.reward_likelihood_model = FullyConnectedNetwork(n_layers= ,
-                                                             n_input= ,
-                                                             n_units= ,
-                                                             connectivity= ,
-                                                             non_linearity= )
-        self.state_inference_model = FullyConnectedNetwork(n_layers= ,
-                                                           n_input= ,
-                                                           n_units= ,
-                                                           connectivity= ,
-                                                           non_linearity= )
-        self.action_inference_model = FullyConnectedNetwork(n_layers= ,
-                                                            n_input= ,
-                                                            n_units= ,
-                                                            connectivity= ,
-                                                            non_linearity= )
+        self.state_prior_model = FullyConnectedNetwork(**state_prior_params)
+        self.action_prior_model = FullyConnectedNetwork(**action_prior_params)
+        self.obs_likelihood_model = ConvolutionalNetwork(**obs_likelihood_params)
+        self.reward_likelihood_model = FullyConnectedNetwork(**reward_likelihood_params)
+        self.state_inference_model = FullyConnectedNetwork(**state_inference_params)
+        self.action_inference_model = FullyConnectedNetwork(**action_inference_params)
 
         # variables
         self.state_variable = FullyConnectedLatentVariable(prior_dist='Normal',
                                                            approx_post_dist='Normal',
-                                                           n_variables= ,
-                                                           n_input= )
+                                                           n_variables=n_state_variables,
+                                                           n_input=(self.state_inference_model.n_out, self.state_prior_model.n_out))
         self.action_variable = FullyConnectedLatentVariable(prior_dist= '',
                                                             approx_post_dist= '',
-                                                            n_variables= ,
-                                                            n_input= )
+                                                            n_variables=n_action_variables,
+                                                            n_input=(self.action_inference_model.n_out, self.action_prior_model.n_out))
         self.observation_variable = ConvolutionalObservedVariable(dist='Normal',
                                                                   n_variables= ,
-                                                                  n_input= )
+                                                                  n_input=self.obs_likelihood_model.n_out)
         self.reward_variable = FullyConnectedObservedVariable(dist='Normal',
                                                               n_variables=1,
-                                                              n_input= )
+                                                              n_input=self.reward_likelihood_model.n_out)
 
     def act(self, observation, reward):
         # main function for interaction
@@ -94,7 +76,7 @@ class Model(nn.Module):
     def action_inference(self):
         # infer the approx. posterior on the action
         self.action_variable.init_approx_post()
-        # TODO: implement model-based planning inference
+        # TODO: implement planning inference
 
     def step_state(self):
         # calculate the prior on the state variable
