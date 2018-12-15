@@ -23,9 +23,13 @@ class LatentVariable(nn.Module):
         self.approx_post_models = nn.ModuleDict({name: None for name in approx_post_param_names})
 
         self.initial_prior_params = nn.ParameterDict({name: None for name in prior_param_names})
-        # TODO: fill in initial prior params using constraints
+
         for param in self.initial_prior_params:
-            self.initial_prior_params[param] = nn.Parameter(torch.zeros(n_variables))
+            constraint = self.prior_dist_type.arg_constraints[param]
+            if type(constraint) == constraints.greater_than and constraint.lower_bound == 0:
+                self.initial_prior_params[param] = nn.Parameter(torch.ones(n_variables))
+            else:
+                self.initial_prior_params[param] = nn.Parameter(torch.zeros(n_variables))
 
         # TODO: we will need to reshape the initial parameters
         self.prior_dist = None
@@ -89,10 +93,10 @@ class LatentVariable(nn.Module):
     def init_approx_post(self):
         # initialize the approximate posterior from the prior
         # copies over a detached version of each parameter
-        assert type(self.approx_post_dist) == type(self.prior_dist), 'Only currently support same type.'
+        assert self.prior_dist_type == self.approx_post_dist_type, 'Only currently support same type.'
         parameters = {}
         for parameter_name in self.approx_post_dist_type.arg_constraints.keys():
-            parameters[parameter_name] = getattr(self.prior_dist, parameter_name).detach()
+            parameters[parameter_name] = getattr(self.prior_dist, parameter_name).detach().requires_grad_()
         self.approx_post_dist = self.approx_post_dist_type(**parameters)
         self._sample = None
 
@@ -113,9 +117,18 @@ class LatentVariable(nn.Module):
                 sample = self.approx_post_dist.sample()
             return self.approx_post_dist.log_prob(sample) - self.prior_dist.log_prob(sample)
 
-    def grads_and_params(self):
+    def params_and_grads(self, concat=True, normalize=True, norm_type='layer'):
         # get current gradients and parameters
-        pass
+        params = [getattr(self.approx_post_dist, param).detach() for param in self.approx_post_models]
+        grads = [getattr(self.approx_post_dist, param).grad.detach() for param in self.approx_post_models]
+        if normalize:
+            # TODO
+            pass
+        if concat:
+            return torch.cat(params + grads, dim=1)
+        else:
+            return params, grads
+
 
     def inference_parameters(self):
         params = nn.ParameterList()

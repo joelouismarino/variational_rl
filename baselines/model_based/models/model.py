@@ -64,11 +64,11 @@ class Model(nn.Module):
         for _ in range(self.n_inf_iter):
             # evaluate conditional likelihood of observation and state KL
             self.generate_observation()
-            obs_log_likelihood = self.observation_variable.cond_log_likelihood(observation)
-            state_kl = self.state_variable.kl_divergence()
-            (obs_log_likelihood + state_kl).backward(retain_graph=True)
+            obs_log_likelihood = self.observation_variable.cond_log_likelihood(observation).sum()
+            state_kl = self.state_variable.kl_divergence().sum()
+            (state_kl - obs_log_likelihood).backward(retain_graph=True)
             # update approx. posterior
-            inf_input = self.state_variable.grads_and_params()
+            inf_input = self.state_variable.params_and_grads()
             inf_input = self.state_inference_model(inf_input)
             self.state_variable.infer(inf_input)
 

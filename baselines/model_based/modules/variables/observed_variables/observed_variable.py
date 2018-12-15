@@ -18,7 +18,7 @@ class ObservedVariable(nn.Module):
             # calculate the value
             parameter_value = self.likelihood_models[parameter_name](input)
             # satisfy any constraints on the parameter value
-            constraint = self.likelihood_dist.arg_constraints[parameter_name]
+            constraint = self.distribution_type.arg_constraints[parameter_name]
             if type(constraint) == constraints.greater_than:
                 # positive value
                 if constraint.lower_bound == 0:
