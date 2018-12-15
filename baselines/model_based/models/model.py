@@ -38,6 +38,9 @@ class Model(nn.Module):
         reward_variable_args['n_input'] = self.reward_likelihood_model.n_out
         self.reward_variable = get_variable(latent=False, args=reward_variable_args)
 
+        # miscellaneous
+        self.n_inf_iter = 1
+
     def act(self, observation, reward):
         # main function for interaction
         # evaluate previous reward likelihood?
@@ -62,7 +65,7 @@ class Model(nn.Module):
         # infer the approx. posterior on the state
         self.state_variable.init_approx_post()
         for _ in range(self.n_inf_iter):
-            # evaluate conditional likelihood of observation and state KL
+            # evaluate conditional log likelihood of observation and state KL divergence
             self.generate_observation()
             obs_log_likelihood = self.observation_variable.cond_log_likelihood(observation).sum()
             state_kl = self.state_variable.kl_divergence().sum()
@@ -71,6 +74,7 @@ class Model(nn.Module):
             inf_input = self.state_variable.params_and_grads()
             inf_input = self.state_inference_model(inf_input)
             self.state_variable.infer(inf_input)
+        self.generate_observation()
 
     def action_inference(self):
         # infer the approx. posterior on the action

@@ -7,6 +7,7 @@ class LatentVariable(nn.Module):
 
     def __init__(self, prior_dist, approx_post_dist, n_variables, n_input):
         super(LatentVariable, self).__init__()
+        self.n_variables = n_variables
         self.prior_dist_type = getattr(torch.distributions, prior_dist)
         self.approx_post_dist_type = getattr(torch.distributions, approx_post_dist)
 
@@ -67,6 +68,11 @@ class LatentVariable(nn.Module):
                 sample = self.approx_post_dist.rsample()
             else:
                 sample = self.approx_post_dist.sample()
+            if self.approx_post_dist_type == getattr(torch.distributions, 'Categorical'):
+                # convert to one-hot encoding
+                one_hot_sample = torch.zeros(sample.shape[0], self.n_variables)
+                one_hot_sample[:, sample] = 1.
+                sample = one_hot_sample
             self._sample = sample
         return self._sample
 
@@ -95,7 +101,7 @@ class LatentVariable(nn.Module):
         # copies over a detached version of each parameter
         assert self.prior_dist_type == self.approx_post_dist_type, 'Only currently support same type.'
         parameters = {}
-        for parameter_name in self.approx_post_dist_type.arg_constraints.keys():
+        for parameter_name in self.initial_prior_params:
             parameters[parameter_name] = getattr(self.prior_dist, parameter_name).detach().requires_grad_()
         self.approx_post_dist = self.approx_post_dist_type(**parameters)
         self._sample = None
@@ -103,7 +109,8 @@ class LatentVariable(nn.Module):
     def reset(self):
         # reset the prior and approximate posterior
         self.prior_dist = self.prior_dist_type(**self.initial_prior_params)
-        self.approx_post_dist = None
+        self.init_approx_post()
+        # self.approx_post_dist = None
         self._sample = None
 
     def kl_divergence(self, analytical=True):
@@ -122,13 +129,25 @@ class LatentVariable(nn.Module):
         params = [getattr(self.approx_post_dist, param).detach() for param in self.approx_post_models]
         grads = [getattr(self.approx_post_dist, param).grad.detach() for param in self.approx_post_models]
         if normalize:
-            # TODO
-            pass
+            norm_dim = -1
+            if norm_type == 'batch':
+                norm_dim = 0
+            elif norm_type == 'layer':
+                norm_dim = 1
+            else:
+                raise NotImplementedError
+            for ind, grad in enumerate(grads):
+                mean = grad.mean(dim=norm_dim, keepdim=True)
+                std = grad.std(dim=norm_dim, keepdim=True)
+                grads[ind] = (grad - mean) / (std + 1e-7)
+            for ind, param in enumerate(params):
+                mean = param.mean(dim=norm_dim, keepdim=True)
+                std = param.std(dim=norm_dim, keepdim=True)
+                params[ind] = (param - mean) / (std + 1e-7)
         if concat:
             return torch.cat(params + grads, dim=1)
         else:
             return params, grads
-
 
     def inference_parameters(self):
         params = nn.ParameterList()
