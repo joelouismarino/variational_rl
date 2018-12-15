@@ -1,43 +1,42 @@
 import torch
 import torch.nn as nn
 import torch.distributions as dist
-from .modules.networks import FullyConnectedNetwork, ConvolutionalNetwork
-from .modules.variables.latent_variables import FullyConnectedLatentVariable
-from .modules.variables.observed_variables import ConvolutionalObservedVariable, FullyConnectedObservedVariable
+from ..modules.networks import get_network
+from ..modules.variables import get_variable
 
 
 class Model(nn.Module):
     """
     Generative Model-Based Agent
     """
-    def __init__(self, n_state_variables, n_action_variables, state_prior_params,
-                 action_prior_params, obs_likelihood_params, reward_likelihood_params,
-                 state_inference_params, action_inference_params):
+    def __init__(self, state_variable_args, action_variable_args,
+                 observation_variable_args, reward_variable_args,
+                 state_prior_args, action_prior_args, obs_likelihood_args,
+                 reward_likelihood_args, state_inference_args, action_inference_args):
         super(Model, self).__init__()
 
         # networks
-        self.state_prior_model = FullyConnectedNetwork(**state_prior_params)
-        self.action_prior_model = FullyConnectedNetwork(**action_prior_params)
-        self.obs_likelihood_model = ConvolutionalNetwork(**obs_likelihood_params)
-        self.reward_likelihood_model = FullyConnectedNetwork(**reward_likelihood_params)
-        self.state_inference_model = FullyConnectedNetwork(**state_inference_params)
-        self.action_inference_model = FullyConnectedNetwork(**action_inference_params)
+        self.state_prior_model = get_network(state_prior_args)
+        self.action_prior_model = get_network(action_prior_args)
+        self.obs_likelihood_model = get_network(obs_likelihood_args)
+        self.reward_likelihood_model = get_network(reward_likelihood_args)
+        self.state_inference_model = get_network(state_inference_args)
+        self.action_inference_model = get_network(action_inference_args)
 
         # variables
-        self.state_variable = FullyConnectedLatentVariable(prior_dist='Normal',
-                                                           approx_post_dist='Normal',
-                                                           n_variables=n_state_variables,
-                                                           n_input=(self.state_inference_model.n_out, self.state_prior_model.n_out))
-        self.action_variable = FullyConnectedLatentVariable(prior_dist= '',
-                                                            approx_post_dist= '',
-                                                            n_variables=n_action_variables,
-                                                            n_input=(self.action_inference_model.n_out, self.action_prior_model.n_out))
-        self.observation_variable = ConvolutionalObservedVariable(dist='Normal',
-                                                                  n_variables= ,
-                                                                  n_input=self.obs_likelihood_model.n_out)
-        self.reward_variable = FullyConnectedObservedVariable(dist='Normal',
-                                                              n_variables=1,
-                                                              n_input=self.reward_likelihood_model.n_out)
+        state_variable_args['n_input'] = (self.state_inference_model.n_out,
+                                          self.state_prior_model.n_out)
+        self.state_variable = get_variable(latent=True, args=state_variable_args)
+
+        action_variable_args['n_input'] = (self.action_inference_model.n_out,
+                                           self.action_prior_model.n_out)
+        self.action_variable = get_variable(latent=True, args=action_variable_args)
+
+        observation_variable_args['n_input'] = self.obs_likelihood_model.n_out
+        self.observation_variable = get_variable(latent=False, args=observation_variable_args)
+
+        reward_variable_args['n_input'] = self.reward_likelihood_model.n_out
+        self.reward_variable = get_variable(latent=False, args=reward_variable_args)
 
     def act(self, observation, reward):
         # main function for interaction
@@ -116,6 +115,12 @@ class Model(nn.Module):
         self.action_variable.reset()
         self.observed_variable.reset()
         self.reward_variable.reset()
+
+        # reset the networks
+        self.state_prior_model.reset()
+        self.action_prior_model.reset()
+        self.obs_likelihood_model.reset()
+        self.reward_likelihood_model.reset()
 
     def free_energy(self, observation, reward):
         # conditional log likelihoods

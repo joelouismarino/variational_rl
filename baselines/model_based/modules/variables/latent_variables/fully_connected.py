@@ -1,3 +1,4 @@
+import torch.nn as nn
 from .latent_variable import LatentVariable
 from ...layers import FullyConnectedLayer
 

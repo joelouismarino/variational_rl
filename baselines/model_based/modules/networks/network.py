@@ -6,9 +6,9 @@ class Network(nn.Module):
     """
     Base class for a neural network.
     """
-    def __init__(self, n_layers, connectivity):
+    def __init__(self, n_layers, connectivity='sequential'):
         super(Network, self).__init__()
-        self.n_output = None
+        self.n_out = None
         self.layers = nn.ModuleList([None for _ in range(n_layers)])
         self.connectivity = connectivity
         if self.connectivity == 'highway':
@@ -37,3 +37,6 @@ class Network(nn.Module):
             elif self.connectivity == 'concat_input':
                 out = torch.cat([layer(out), input], dim=1)
         return out
+
+    def reset(self):
+        pass

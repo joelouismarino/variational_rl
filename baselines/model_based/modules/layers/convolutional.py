@@ -5,7 +5,7 @@ from .layer import Layer
 class ConvolutionalLayer(Layer):
 
     def __init__(self, n_input, n_output, filter_size, padding, stride,
-                 batch_norm=None, non_linearity=None, dropout=None):
+                 batch_norm=False, non_linearity=None, dropout=None):
         super(ConvolutionalLayer, self).__init__()
         self.linear = nn.Conv2d(n_input, n_output, filter_size, padding=padding,
                                 stride=stride)

@@ -2,15 +2,16 @@ import torch.nn as nn
 from .layer import Layer
 
 
-class FullyConnectedLayer(Layer):
+class TransposedConvLayer(Layer):
 
-    def __init__(self, n_input, n_output, batch_norm=False, non_linearity=None,
-                 dropout=None):
-        super(FullyConnectedLayer, self).__init__()
-        self.linear = nn.Linear(n_input, n_output)
+    def __init__(self, n_input, n_output, filter_size, padding, stride,
+                 batch_norm=False, non_linearity=None, dropout=None):
+        super(TransposedConvLayer, self).__init__()
+        self.linear = nn.ConvTranspose2d(n_input, n_output, filter_size,
+                                         padding=padding, stride=stride)
 
         if batch_norm:
-            self.batch_norm = nn.BatchNorm1d(n_output)
+            self.batch_norm = nn.BatchNorm2d(n_output)
 
         if non_linearity is None or non_linearity == 'linear':
             pass
@@ -30,6 +31,6 @@ class FullyConnectedLayer(Layer):
             raise Exception('Non-linearity ' + str(non_linearity) + ' not found.')
 
         if dropout:
-            self.dropout = nn.Dropout1d(dropout)
+            self.dropout = nn.Dropout2d(dropout)
 
         self.initialize()

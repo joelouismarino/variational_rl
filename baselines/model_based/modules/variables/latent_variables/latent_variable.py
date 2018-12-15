@@ -10,10 +10,16 @@ class LatentVariable(nn.Module):
         self.prior_dist_type = getattr(torch.distributions, prior_dist)
         self.approx_post_dist_type = getattr(torch.distributions, approx_post_dist)
 
-        prior_param_names = self.prior_dist_type.arg_constraints.keys()
+        if prior_dist == 'Categorical':
+            prior_param_names = ['logits']
+        else:
+            prior_param_names = self.prior_dist_type.arg_constraints.keys()
         self.prior_models = nn.ModuleDict({name: None for name in prior_param_names})
 
-        approx_post_param_names = self.approx_post_dist_type.arg_constraints.keys()
+        if approx_post_dist == 'Categorical':
+            approx_post_param_names = ['logits']
+        else:
+            approx_post_param_names = self.approx_post_dist_type.arg_constraints.keys()
         self.approx_post_models = nn.ModuleDict({name: None for name in approx_post_param_names})
 
         self.initial_prior_params = nn.ParameterDict({name: None for name in prior_param_names})

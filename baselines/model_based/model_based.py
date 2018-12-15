@@ -1,13 +1,15 @@
 import torch
-from .model import Model
-from .replay_buffer import ReplayBuffer
+from config import get_model_args
+from models import Model
+from replay_buffer import ReplayBuffer
 
 torch.manual_seed(0)
 
 
 def learn(env):
 
-    model = Model()
+    model_args = get_model_args(env)
+    model = Model(**model_args)
 
     replay_buffer = ReplayBuffer()
 

@@ -5,9 +5,9 @@ import torch.distributions.constraints as constraints
 
 class ObservedVariable(nn.Module):
 
-    def __init__(self, dist):
+    def __init__(self, likelihood_dist):
         super(ObservedVariable, self).__init__()
-        self.distribution_type = getattr(torch.distributions, dist)
+        self.distribution_type = getattr(torch.distributions, likelihood_dist)
         parameter_names = self.distribution_type.arg_constraints.keys()
         self.likelihood_models = nn.ModuleDict({name: None for name in parameter_names})
         self.likelihood_dist = None
