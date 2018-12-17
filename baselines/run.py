@@ -145,7 +145,7 @@ def register_env(args):
 
 
 def get_default_network(env_type):
-    if env_type in {'atari', 'retro'}:
+    if env_type in {'atari', 'retro', 'vizdoom'}:
         return 'cnn'
     else:
         return 'mlp'

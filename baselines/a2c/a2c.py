@@ -21,10 +21,8 @@ class Model(object):
         __init__:
         - Creates the step_model
         - Creates the train_model
-
         train():
         - Make the training part (feedforward and retropropagation of gradients)
-
         save/load():
         - Save load the model
     """
@@ -130,53 +128,35 @@ def learn(
     gamma=0.99,
     log_interval=100,
     load_path=None,
+    reward_scaling = None,
     **network_kwargs):
 
     '''
     Main entrypoint for A2C algorithm. Train a policy with given network architecture on a given environment using a2c algorithm.
-
     Parameters:
     -----------
-
     network:            policy network architecture. Either string (mlp, lstm, lnlstm, cnn_lstm, cnn, cnn_small, conv_only - see baselines.common/models.py for full list)
                         specifying the standard network architecture, or a function that takes tensorflow tensor as input and returns
                         tuple (output_tensor, extra_feed) where output tensor is the last network layer output, extra_feed is None for feed-forward
                         neural nets, and extra_feed is a dictionary describing how to feed state into the network for recurrent neural nets.
                         See baselines.common/policies.py/lstm for more details on using recurrent nets in policies
-
-
     env:                RL environment. Should implement interface similar to VecEnv (baselines.common/vec_env) or be wrapped with DummyVecEnv (baselines.common/vec_env/dummy_vec_env.py)
-
-
     seed:               seed to make random number sequence in the alorightm reproducible. By default is None which means seed from system noise generator (not reproducible)
-
     nsteps:             int, number of steps of the vectorized environment per update (i.e. batch size is nsteps * nenv where
                         nenv is number of environment copies simulated in parallel)
-
     total_timesteps:    int, total number of timesteps to train on (default: 80M)
-
     vf_coef:            float, coefficient in front of value function loss in the total loss function (default: 0.5)
-
     ent_coef:           float, coeffictiant in front of the policy entropy in the total loss function (default: 0.01)
-
     max_gradient_norm:  float, gradient is clipped to have global L2 norm no more than this value (default: 0.5)
-
     lr:                 float, learning rate for RMSProp (current implementation has RMSProp hardcoded in) (default: 7e-4)
-
     lrschedule:         schedule of learning rate. Can be 'linear', 'constant', or a function [0..1] -> [0..1] that takes fraction of the training progress as input and
                         returns fraction of the learning rate (specified as lr) as output
-
     epsilon:            float, RMSProp epsilon (stabilizes square root computation in denominator of RMSProp update) (default: 1e-5)
-
     alpha:              float, RMSProp decay parameter (default: 0.99)
-
     gamma:              float, reward discounting parameter (default: 0.99)
-
     log_interval:       int, specifies how frequently the logs are printed out (default: 100)
-
     **network_kwargs:   keyword arguments to the policy / network builder. See baselines.common/policies.py/build_policy and arguments to a particular type of network
                         For instance, 'mlp' network architecture has arguments num_hidden and num_layers.
-
     '''
 
 
@@ -206,6 +186,10 @@ def learn(
         # Get mini batch of experiences
         obs, states, rewards, masks, actions, values = runner.run()
 
+        if reward_scaling is not None:
+            # Added for VizDoom: normalize (reduce) rewards such that value loss does not overpower policy loss
+            rewards = rewards * reward_scaling
+
         policy_loss, value_loss, policy_entropy = model.train(obs, states, rewards, masks, actions, values)
         nseconds = time.time()-tstart
 
@@ -223,4 +207,3 @@ def learn(
             logger.record_tabular("explained_variance", float(ev))
             logger.dump_tabular()
     return model
-
