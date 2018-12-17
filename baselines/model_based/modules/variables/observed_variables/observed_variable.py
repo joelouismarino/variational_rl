@@ -44,6 +44,8 @@ class ObservedVariable(nn.Module):
             return self.likelihood_dist.log_prob(observation)
         else:
             # probability density function
+            if type(observation) != tuple:
+                observation = (observation, observation + 1./256)
             return torch.log(self.likelihood_dist.cdf(observation[1]) - self.likelihood_dist.cdf(observation[0]) + 1e-6)
 
     def reset(self):

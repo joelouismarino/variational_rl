@@ -22,6 +22,7 @@ class LatentVariable(nn.Module):
         else:
             approx_post_param_names = self.approx_post_dist_type.arg_constraints.keys()
         self.approx_post_models = nn.ModuleDict({name: None for name in approx_post_param_names})
+        self.approx_post_gates = nn.ModuleDict({name: None for name in approx_post_param_names})
 
         self.initial_prior_params = nn.ParameterDict({name: None for name in prior_param_names})
 
@@ -38,25 +39,35 @@ class LatentVariable(nn.Module):
         self.reset()
 
         self._sample = None
+        self._detach_latent = True
 
     def infer(self, input):
         # infer the approximate posterior
-        # TODO: allow this to be updated
         parameters = {}
-        for parameter_name in self.approx_post_models:
-            # calculate the value
-            parameter_value = self.approx_post_models[parameter_name](input)
+        for param_name in self.approx_post_models:
+            # calculate the parameter update and the gate
+            param_update = self.approx_post_models[param_name](input)
+            param_gate = self.approx_post_gates[param_name](input)
+
+            # update the parameter value
+            param = getattr(self.approx_post_dist, param_name).detach()
+            constraint = self.approx_post_dist.arg_constraints[param_name]
+            if type(constraint) == constraints.greater_than and constraint.lower_bound == 0:
+                # convert to log-space (for scale parameters)
+                param = torch.log(param)
+            param = param_gate * param + (1. - param_gate) * param_update
+
             # satisfy any constraints on the parameter value
-            constraint = self.approx_post_dist.arg_constraints[parameter_name]
-            if type(constraint) == constraints.greater_than:
+            if type(constraint) == constraints.greater_than and constraint.lower_bound == 0:
                 # positive value
-                if constraint.lower_bound == 0:
-                    parameter_value = torch.exp(parameter_value)
+                param = torch.exp(param)
             elif constraint == constraints.simplex:
                 # between 0 and 1
-                parameter_value = nn.Softmax()(parameter_value)
+                param = nn.Softmax()(param)
+
             # set the parameter
-            parameters[parameter_name] = parameter_value
+            parameters[param_name] = param
+
         # create a new distribution with the parameters
         self.approx_post_dist = self.approx_post_dist_type(**parameters)
         self._sample = None
@@ -74,25 +85,28 @@ class LatentVariable(nn.Module):
                 one_hot_sample[:, sample] = 1.
                 sample = one_hot_sample
             self._sample = sample
-        return self._sample
+        sample = self._sample
+        if self._detach_latent:
+            sample = sample.detach()
+        return sample
 
     def step(self, input):
         # set the prior
         parameters = {}
-        for parameter_name in self.prior_models:
+        for param_name in self.prior_models:
             # calculate the value
-            parameter_value = self.prior_models[parameter_name](input)
+            param = self.prior_models[param_name](input)
             # satisfy any constraints on the parameter value
-            constraint = self.prior_dist.arg_constraints[parameter_name]
+            constraint = self.prior_dist.arg_constraints[param_name]
             if type(constraint) == constraints.greater_than:
                 # positive value
                 if constraint.lower_bound == 0:
-                    parameter_value = torch.exp(parameter_value)
+                    param = torch.exp(param)
             elif constraint == constraints.simplex:
                 # between 0 and 1
-                parameter_value = nn.Softmax()(parameter_value)
+                param = nn.Softmax()(param)
             # set the parameter
-            parameters[parameter_name] = parameter_value
+            parameters[param_name] = param
         # create a new distribution with the parameters
         self.prior_dist = self.prior_dist_type(**parameters)
 
@@ -162,3 +176,9 @@ class LatentVariable(nn.Module):
         for param_name in self.initial_prior_params:
             params.append(self.initial_prior_params[param_name])
         return params
+
+    def inference_mode(self):
+        self._detach_latent = False
+
+    def generative_mode(self):
+        self._detach_latent = True

@@ -23,6 +23,12 @@ class ConvolutionalLatentVariable(LatentVariable):
                                                                      filter_sizes[1],
                                                                      paddings[1],
                                                                      strides[1])
+            self.approx_post_gates[model_name] = ConvolutionalLayer(n_input[1],
+                                                                    n_variables,
+                                                                    filter_sizes[1],
+                                                                    paddings[1],
+                                                                    strides[1],
+                                                                    non_linearity='sigmoid')
 
         # reshape the initial prior params
         for param_name, param in self.initial_prior_params.items():

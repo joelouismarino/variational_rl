@@ -40,3 +40,9 @@ class Network(nn.Module):
 
     def reset(self):
         pass
+
+    def detach_hidden_state(self):
+        pass
+
+    def attach_hidden_state(self):
+        pass

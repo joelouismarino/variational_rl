@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.distributions as dist
 from ..modules.networks import get_network
 from ..modules.variables import get_variable
+from ..misc import clear_gradients, one_hot_to_index
 
 
 class Model(nn.Module):
@@ -40,28 +41,23 @@ class Model(nn.Module):
 
         # miscellaneous
         self.n_inf_iter = 1
+        self.training = False
 
-    def act(self, observation, reward):
-        # main function for interaction
-        # evaluate previous reward likelihood?
-
-        # state inference
+    def act(self, observation, reward=None):
+        self.generate_reward()
+        self.step_state()
         self.state_inference(observation)
-
-        # form action prior, action inference
+        self.generate_observation()
         self.step_action()
         self.action_inference()
-
-        # reward prediction
-        self.generate_reward()
-
-        # state prediction
-        self.step_state()
-
-        # return the sampled action
-        return self.action_variable.sample()
+        free_energy = self.free_energy(observation, reward)
+        if self.training:
+            free_energy.backward(retain_graph=True)
+        action = one_hot_to_index(self.action_variable.sample()).cpu().numpy()
+        return action, free_energy
 
     def state_inference(self, observation):
+        self.inference_mode()
         # infer the approx. posterior on the state
         self.state_variable.init_approx_post()
         for _ in range(self.n_inf_iter):
@@ -74,12 +70,22 @@ class Model(nn.Module):
             inf_input = self.state_variable.params_and_grads()
             inf_input = self.state_inference_model(inf_input)
             self.state_variable.infer(inf_input)
+        # final evaluation
         self.generate_observation()
+        obs_log_likelihood = self.observation_variable.cond_log_likelihood(observation).sum()
+        state_kl = self.state_variable.kl_divergence().sum()
+        (state_kl - obs_log_likelihood).backward(retain_graph=True)
+        clear_gradients(self.generative_parameters())
+        self.generative_mode()
 
     def action_inference(self):
+        self.inference_mode()
         # infer the approx. posterior on the action
         self.action_variable.init_approx_post()
         # TODO: implement planning inference
+
+        clear_gradients(self.generative_parameters())
+        self.generative_mode()
 
     def step_state(self):
         # calculate the prior on the state variable
@@ -108,10 +114,23 @@ class Model(nn.Module):
         likelihood_input = self.reward_likelihood_model(torch.cat((state, action), dim=1))
         self.reward_variable.generate(likelihood_input)
 
-    def generate(self):
-        # generate conditional likelihoods for the observation and reward
-        self.generate_observation()
-        self.generate_reward()
+    def free_energy(self, observation, reward):
+        # conditional log likelihoods
+        observation_log_likelihood = self.observation_variable.cond_log_likelihood(observation)
+        reward_log_likelihood = optimality_log_likelihood = 0.
+        if reward is not None:
+            reward_log_likelihood = self.reward_variable.cond_log_likelihood(reward)
+            optimality_log_likelihood = reward
+        conditional_log_likelihood = observation_log_likelihood + reward_log_likelihood + optimality_log_likelihood
+
+        # kl divergences
+        state_kl_divergence = self.state_variable.kl_divergence()
+        action_kl_divergence = self.action_variable.kl_divergence()
+        kl_divergence = state_kl_divergence + action_kl_divergence
+
+        free_energy = kl_divergence.sum() - conditional_log_likelihood.sum()
+
+        return free_energy
 
     def reset(self):
         # reset the variables
@@ -125,22 +144,6 @@ class Model(nn.Module):
         self.action_prior_model.reset()
         self.obs_likelihood_model.reset()
         self.reward_likelihood_model.reset()
-
-    def free_energy(self, observation, reward):
-        # conditional log likelihoods
-        observation_log_likelihood = self.observation_variable.cond_log_likelihood(observation)
-        reward_log_likelihood = self.reward_variable.cond_log_likelihood(reward)
-        optimality_log_likelihood = reward
-        conditional_log_likelihood = observation_log_likelihood + reward_log_likelihood + optimality_log_likelihood
-
-        # kl divergences
-        state_kl_divergence = self.state_variable.kl_divergence()
-        action_kl_divergence = self.action_variable.kl_divergence()
-        kl_divergence = state_kl_divergence + action_kl_divergence
-
-        free_energy = kl_divergence - conditional_log_likelihood
-
-        return free_energy
 
     def inference_parameters(self):
         params = nn.ParameterList()
@@ -161,3 +164,15 @@ class Model(nn.Module):
         params.extend(list(self.observation_variable.parameters()))
         params.extend(list(self.reward_variable.parameters()))
         return params
+
+    def inference_mode(self):
+        self.state_variable.inference_mode()
+        self.action_variable.inference_mode()
+        self.obs_likelihood_model.detach_hidden_state()
+        self.reward_likelihood_model.detach_hidden_state()
+
+    def generative_mode(self):
+        self.state_variable.generative_mode()
+        self.action_variable.generative_mode()
+        self.obs_likelihood_model.attach_hidden_state()
+        self.reward_likelihood_model.attach_hidden_state()

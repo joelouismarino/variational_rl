@@ -17,6 +17,9 @@ class FullyConnectedLatentVariable(LatentVariable):
         for model_name in self.approx_post_models:
             self.approx_post_models[model_name] = FullyConnectedLayer(n_input[1],
                                                                       n_variables)
+            self.approx_post_gates[model_name] = FullyConnectedLayer(n_input[1],
+                                                                     n_variables,
+                                                                     non_linearity='sigmoid')
 
         # reshape the initial prior params
         for param_name, param in self.initial_prior_params.items():
