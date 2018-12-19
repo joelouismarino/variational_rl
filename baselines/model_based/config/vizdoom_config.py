@@ -76,7 +76,7 @@ def get_vizdoom_config(env):
     # observation
     model_args['observation_variable_args'] = {'type': 'transposed_conv',
                                                'likelihood_dist': 'Normal',
-                                               'n_variables': env.observation_space.shape[2],
+                                               'n_variables': env.observation_space.shape[1],
                                                'filter_size': 6,
                                                'padding': 0,
                                                'stride': 2}

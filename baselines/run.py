@@ -100,6 +100,14 @@ def build_env(args):
             env = make_env(env_id, env_type, seed=seed, wrapper_kwargs={'frame_stack': True})
         elif alg == 'trpo_mpi':
             env = make_env(env_id, env_type, seed=seed)
+        elif alg == 'model_based':
+            env = make_env(env_id, env_type, seed=seed, wrapper_kwargs={'frame_width': 64,
+                                                                        'frame_height': 64,
+                                                                        'grayscale': False,
+                                                                        'scale': True,
+                                                                        'to_tensor': True,
+                                                                        'transpose': True,
+                                                                        'add_batch_dim': True})
         else:
             frame_stack_size = 4
             env = make_vec_env(env_id, env_type, nenv, seed, gamestate=args.gamestate, reward_scale=args.reward_scale)

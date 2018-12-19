@@ -41,7 +41,11 @@ class Model(nn.Module):
 
         # miscellaneous
         self.n_inf_iter = 1
+        self.gamma = 0.99
         self.training = False
+
+        self.rewards = []
+        self.policy_log_probs = []
 
     def act(self, observation, reward=None):
         self.generate_reward()
@@ -50,11 +54,14 @@ class Model(nn.Module):
         self.generate_observation()
         self.step_action()
         self.action_inference()
+        action = self.action_variable.sample()
         free_energy = self.free_energy(observation, reward)
         if self.training:
             free_energy.backward(retain_graph=True)
-        action = one_hot_to_index(self.action_variable.sample()).cpu().numpy()
-        return action, free_energy
+            self.rewards.append(reward)
+            log_prob = self.action_variable.approx_post_dist.log_prob(action)
+            self.policy_log_probs.append(log_prob)
+        return self.convert_action(action), free_energy
 
     def state_inference(self, observation):
         self.inference_mode()
@@ -83,6 +90,11 @@ class Model(nn.Module):
         # infer the approx. posterior on the action
         self.action_variable.init_approx_post()
         # TODO: implement planning inference
+
+        state = self.state_variable.sample()
+        action = self.action_variable.sample()
+        inf_input = self.action_prior_model(torch.cat((state, action), dim=1))
+        self.action_variable.infer(inf_input)
 
         clear_gradients(self.generative_parameters())
         self.generative_mode()
@@ -132,11 +144,33 @@ class Model(nn.Module):
 
         return free_energy
 
+    def policy_loss(self):
+        # TODO: incorporate this into the free energy calculation
+        # TODO: we should also be backproping future free energy into these gradients
+        R = 0
+        policy_loss = []
+        returns = []
+        for r in self.rewards[::-1]:
+            if r is None:
+                r = 0
+            R = r + self.gamma * R
+            returns.insert(0, R)
+        returns = torch.tensor(returns)
+        returns = (returns - returns.mean()) / (returns.std() + 1e-6)
+        for log_prob, ret in zip(self.policy_log_probs, returns):
+            policy_loss.append(-log_prob * ret)
+        return torch.cat(policy_loss).sum()
+
+    def convert_action(self, action):
+        if self.action_variable.approx_post_dist_type == getattr(torch.distributions, 'Categorical'):
+            action = one_hot_to_index(action)
+        return action.cpu().numpy()
+
     def reset(self):
         # reset the variables
         self.state_variable.reset()
         self.action_variable.reset()
-        self.observed_variable.reset()
+        self.observation_variable.reset()
         self.reward_variable.reset()
 
         # reset the networks
