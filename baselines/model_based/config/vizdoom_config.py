@@ -40,14 +40,16 @@ def get_vizdoom_config(env):
                                       'non_linearity': 'elu',
                                       'dropout': None}
 
-    model_args['state_inference_args'] = {'type': 'fully_connected',
-                                          'n_layers': 2,
-                                          'n_input': 4 * n_state_variables,
-                                          'n_units': 500,
-                                          'connectivity': 'sequential',
-                                          'batch_norm': False,
-                                          'non_linearity': 'elu',
-                                          'dropout': None}
+    # model_args['state_inference_args'] = {'type': 'fully_connected',
+    #                                       'n_layers': 2,
+    #                                       'n_input': 4 * n_state_variables,
+    #                                       'n_units': 500,
+    #                                       'connectivity': 'sequential',
+    #                                       'batch_norm': False,
+    #                                       'non_linearity': 'elu',
+    #                                       'dropout': None}
+
+    model_args['state_inference_args'] = {'type': 'vizdoom_encoder'}
 
     # action
     model_args['action_variable_args'] = {'type': 'fully_connected',

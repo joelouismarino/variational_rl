@@ -25,12 +25,12 @@ class Model(nn.Module):
         self.action_inference_model = get_network(action_inference_args)
 
         # variables
-        state_variable_args['n_input'] = (self.state_inference_model.n_out,
-                                          self.state_prior_model.n_out)
+        state_variable_args['n_input'] = (self.state_prior_model.n_out,
+                                          self.state_inference_model.n_out)
         self.state_variable = get_variable(latent=True, args=state_variable_args)
 
-        action_variable_args['n_input'] = (self.action_inference_model.n_out,
-                                           self.action_prior_model.n_out)
+        action_variable_args['n_input'] = (self.action_prior_model.n_out,
+                                           self.action_inference_model.n_out)
         self.action_variable = get_variable(latent=True, args=action_variable_args)
 
         observation_variable_args['n_input'] = self.obs_likelihood_model.n_out
@@ -61,22 +61,14 @@ class Model(nn.Module):
             self.rewards.append(reward)
             log_prob = self.action_variable.approx_post_dist.log_prob(action)
             self.policy_log_probs.append(log_prob)
-        return self.convert_action(action), free_energy
+        return self.convert_action(action)
 
     def state_inference(self, observation):
         self.inference_mode()
         # infer the approx. posterior on the state
-        self.state_variable.init_approx_post()
-        for _ in range(self.n_inf_iter):
-            # evaluate conditional log likelihood of observation and state KL divergence
-            self.generate_observation()
-            obs_log_likelihood = self.observation_variable.cond_log_likelihood(observation).sum()
-            state_kl = self.state_variable.kl_divergence().sum()
-            (state_kl - obs_log_likelihood).backward(retain_graph=True)
-            # update approx. posterior
-            inf_input = self.state_variable.params_and_grads()
-            inf_input = self.state_inference_model(inf_input)
-            self.state_variable.infer(inf_input)
+        inf_input = observation - 0.5
+        inf_input = self.state_inference_model(inf_input)
+        self.state_variable.infer(inf_input)
         # final evaluation
         self.generate_observation()
         obs_log_likelihood = self.observation_variable.cond_log_likelihood(observation).sum()
@@ -84,6 +76,28 @@ class Model(nn.Module):
         (state_kl - obs_log_likelihood).backward(retain_graph=True)
         clear_gradients(self.generative_parameters())
         self.generative_mode()
+
+    # def state_inference(self, observation):
+    #     self.inference_mode()
+    #     # infer the approx. posterior on the state
+    #     self.state_variable.init_approx_post()
+    #     for _ in range(self.n_inf_iter):
+    #         # evaluate conditional log likelihood of observation and state KL divergence
+    #         self.generate_observation()
+    #         obs_log_likelihood = self.observation_variable.cond_log_likelihood(observation).sum()
+    #         state_kl = self.state_variable.kl_divergence().sum()
+    #         (state_kl - obs_log_likelihood).backward(retain_graph=True)
+    #         # update approx. posterior
+    #         inf_input = self.state_variable.params_and_grads()
+    #         inf_input = self.state_inference_model(inf_input)
+    #         self.state_variable.infer(inf_input)
+    #     # final evaluation
+    #     self.generate_observation()
+    #     obs_log_likelihood = self.observation_variable.cond_log_likelihood(observation).sum()
+    #     state_kl = self.state_variable.kl_divergence().sum()
+    #     (state_kl - obs_log_likelihood).backward(retain_graph=True)
+    #     clear_gradients(self.generative_parameters())
+    #     self.generative_mode()
 
     def action_inference(self):
         self.inference_mode()
@@ -127,22 +141,25 @@ class Model(nn.Module):
         self.reward_variable.generate(likelihood_input)
 
     def free_energy(self, observation, reward):
-        # conditional log likelihoods
-        observation_log_likelihood = self.observation_variable.cond_log_likelihood(observation)
-        reward_log_likelihood = optimality_log_likelihood = 0.
-        if reward is not None:
-            reward_log_likelihood = self.reward_variable.cond_log_likelihood(reward)
-            optimality_log_likelihood = reward
-        conditional_log_likelihood = observation_log_likelihood + reward_log_likelihood + optimality_log_likelihood
+        cond_log_likelihood = self.cond_log_likelihood(observation, reward)
+        kl_divergence = self.kl_divergence()
+        free_energy = kl_divergence - cond_log_likelihood
+        return free_energy
 
-        # kl divergences
-        state_kl_divergence = self.state_variable.kl_divergence()
+    def cond_log_likelihood(self, observation, reward):
+        obs_log_likelihood = self.observation_variable.cond_log_likelihood(observation).sum()
+        reward_log_likelihood = opt_log_likelihood = 0.
+        if reward is not None:
+            reward_log_likelihood = self.reward_variable.cond_log_likelihood(reward).sum()
+            opt_log_likelihood = reward
+        cond_log_likelihood = obs_log_likelihood + reward_log_likelihood + opt_log_likelihood
+        return cond_log_likelihood
+
+    def kl_divergence(self):
+        state_kl_divergence = self.state_variable.kl_divergence().sum()
         action_kl_divergence = self.action_variable.kl_divergence()
         kl_divergence = state_kl_divergence + action_kl_divergence
-
-        free_energy = kl_divergence.sum() - conditional_log_likelihood.sum()
-
-        return free_energy
+        return kl_divergence
 
     def policy_loss(self):
         # TODO: incorporate this into the free energy calculation

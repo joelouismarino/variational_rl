@@ -8,6 +8,8 @@ import numpy as np
 
 from envs import registration
 
+import matplotlib.pyplot as plt
+
 from baselines.common.vec_env.vec_video_recorder import VecVideoRecorder
 from baselines.common.vec_env.vec_frame_stack import VecFrameStack
 from baselines.common.cmd_util import common_arg_parser, parse_unknown_args, make_vec_env, make_env
@@ -212,6 +214,9 @@ def main():
     else:
         logger.configure(format_strs=[])
         rank = MPI.COMM_WORLD.Get_rank()
+
+    # super hacky, but somehow, we need to do this to use matplotlib later...
+    plt.imshow(np.random.rand(64,64,3))
 
     model, env = train(args, extra_args)
     env.close()

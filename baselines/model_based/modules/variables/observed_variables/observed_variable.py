@@ -8,9 +8,13 @@ class ObservedVariable(nn.Module):
     def __init__(self, likelihood_dist):
         super(ObservedVariable, self).__init__()
         self.distribution_type = getattr(torch.distributions, likelihood_dist)
-        parameter_names = self.distribution_type.arg_constraints.keys()
-        self.likelihood_models = nn.ModuleDict({name: None for name in parameter_names})
         self.likelihood_dist = None
+        self.likelihood_log_scale = None
+        parameter_names = list(self.distribution_type.arg_constraints.keys())
+        if 'scale' in parameter_names:
+            self.likelihood_log_scale = nn.Parameter(torch.zeros(1))
+            parameter_names.remove('scale')
+        self.likelihood_models = nn.ModuleDict({name: None for name in parameter_names})
 
     def generate(self, input):
         parameters = {}
@@ -28,6 +32,10 @@ class ObservedVariable(nn.Module):
                 parameter_value = nn.Softmax()(parameter_value)
             # set the parameter
             parameters[parameter_name] = parameter_value
+        if self.likelihood_log_scale is not None:
+            output_shape = parameters['loc'].shape
+            log_scale = self.likelihood_log_scale.repeat(output_shape)
+            parameters['scale'] = torch.exp(log_scale)
         # create a new distribution with the parameters
         self.likelihood_dist = self.distribution_type(**parameters)
 
@@ -45,7 +53,16 @@ class ObservedVariable(nn.Module):
         else:
             # probability density function
             if type(observation) != tuple:
-                observation = (observation, observation + 1./256)
+                if type(observation) == float:
+                    # reward observation
+                    # TODO: change this
+                    observation = (observation, observation + 1.)
+                elif len(observation.shape) == 4:
+                    # image observation
+                    observation = (observation, observation + 1./256)
+                else:
+                    raise NotImplementedError
+
             return torch.log(self.likelihood_dist.cdf(observation[1]) - self.likelihood_dist.cdf(observation[0]) + 1e-6)
 
     def reset(self):

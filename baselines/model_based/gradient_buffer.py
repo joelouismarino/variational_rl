@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 from torch import optim
 from .misc import clear_gradients
@@ -19,11 +20,16 @@ class GradientBuffer(object):
         self.inf_grad_buffer = []
         self.capacity = capacity
         self.batch_size = batch_size
+        self.n_steps = 0
 
     def accumulate(self):
         """
         Accumulates the current gradients.
         """
+        # def _check_norm(grads):
+        #     mean_norm = np.mean([grad.norm() for grad in grads])
+        #     print('Gradient Norm: ' + str(mean_norm))
+
         # helper function for gradient accumulation
         def _accumulate(params, current_grads):
             new_grads = []
@@ -38,8 +44,10 @@ class GradientBuffer(object):
                 for ind, grad in enumerate(new_grads):
                     if grad is not None:
                         current_grads[ind] += grad
+            # _check_norm(current_grads)
             return current_grads
 
+        # print('N Steps: ' + str(self.n_steps))
         # add gradients to current gradients
         self.current_gen_grads = _accumulate(self.gen_parameters, self.current_gen_grads)
         self.current_inf_grads = _accumulate(self.inf_parameters, self.current_inf_grads)
@@ -47,6 +55,7 @@ class GradientBuffer(object):
         # clear the gradients
         clear_gradients(self.gen_parameters)
         clear_gradients(self.inf_parameters)
+        self.n_steps += 1
 
     def collect(self):
         """
@@ -58,11 +67,14 @@ class GradientBuffer(object):
         optimality_loss.backward(retain_graph=True)
         self.accumulate()
 
+        # TODO: should we normalize the gradients by the number of steps?
+
         # helper function to collect gradients
         def _collect(buffer, current_grads):
             if len(buffer) >= self.capacity:
                 buffer = buffer[-self.capacity+1:-1]
             buffer.append(current_grads)
+            self.n_steps = 0
 
         # collect current gradients into the buffer and reset
         _collect(self.gen_grad_buffer, self.current_gen_grads)
@@ -78,6 +90,10 @@ class GradientBuffer(object):
         #       also, keep gradients but randomly sample?
         #       also, is there a better way to store/average gradients?
 
+        # def _check_norm(grads):
+        #     mean_norm = np.mean([grad.norm() for grad in grads])
+        #     print('Gradient Norm: ' + str(mean_norm))
+
         def _update(parameters, buffer, optimizer):
             if len(buffer) >= self.batch_size:
                 mean_grads = [torch.zeros(param.shape) for param in parameters]
@@ -86,8 +102,12 @@ class GradientBuffer(object):
                         mean_grads[i] += buffer[j][i]
                     mean_grads[i] /= self.batch_size
                     parameters[i].grad = mean_grads[i]
+                # _check_norm([param.grad for param in parameters])
+                torch.nn.utils.clip_grad_norm_(parameters, max_norm=1.)
+                # _check_norm([param.grad for param in parameters])
                 optimizer.step()
                 buffer = []
+            return buffer
 
-        _update(self.gen_parameters, self.gen_grad_buffer, self.gen_opt)
-        _update(self.inf_parameters, self.inf_grad_buffer, self.inf_opt)
+        self.gen_grad_buffer = _update(self.gen_parameters, self.gen_grad_buffer, self.gen_opt)
+        self.inf_grad_buffer = _update(self.inf_parameters, self.inf_grad_buffer, self.inf_opt)

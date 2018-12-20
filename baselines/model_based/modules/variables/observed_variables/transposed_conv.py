@@ -7,8 +7,13 @@ class TransposedConvObservedVariable(ObservedVariable):
     def __init__(self, likelihood_dist, n_variables, n_input, filter_size, padding, stride):
         super(TransposedConvObservedVariable, self).__init__(likelihood_dist)
         for model_name in self.likelihood_models:
+            non_linearity = None
+            if model_name == 'loc':
+                # constrain mean to be between 0 and 1
+                non_linearity = 'sigmoid'
             self.likelihood_models[model_name] = TransposedConvLayer(n_input,
                                                                      n_variables,
                                                                      filter_size,
                                                                      padding,
-                                                                     stride)
+                                                                     stride,
+                                                                     non_linearity=non_linearity)
