@@ -1,14 +1,22 @@
 import numpy as np
 import torch
 from torch import optim
-from .misc import clear_gradients
+from .misc import clear_gradients, clip_gradients, norm_gradients
 
 
 class GradientBuffer(object):
     """
     Object to store and apply the model's parameter gradients.
+
+    Args:
+        model (Model): the model to optimize
+        lr (float): learning rate
+        capacity (int): the size of the gradient buffer
+        batch_size (int): the number of gradients to average per batch
+        clip_grad (float): clips gradients to the (absolute) value clip_grad
+        norm_grad (float): normalizes gradients to have a norm of norm_grad
     """
-    def __init__(self, model, lr, capacity, batch_size):
+    def __init__(self, model, lr, capacity, batch_size, clip_grad=None, norm_grad=None):
         self.model = model
         self.gen_parameters = model.generative_parameters()
         self.inf_parameters = model.inference_parameters()
@@ -20,6 +28,8 @@ class GradientBuffer(object):
         self.inf_grad_buffer = []
         self.capacity = capacity
         self.batch_size = batch_size
+        self.clip_grad = clip_grad
+        self.norm_grad = norm_grad
         self.n_steps = 0
 
     def accumulate(self):
@@ -63,24 +73,31 @@ class GradientBuffer(object):
         """
         # apply policy gradients
         # TODO: this should be in the model
-        optimality_loss = self.model.policy_loss()
-        optimality_loss.backward(retain_graph=True)
-        self.accumulate()
+        # optimality_loss = self.model.policy_loss()
+        # optimality_loss.backward(retain_graph=True)
+        # self.accumulate()
 
-        # TODO: should we normalize the gradients by the number of steps?
+        def _normalize_gradients_by_time(grads, steps):
+            for g in filter(lambda g: g is not None, grads):
+                g.data.div_(steps)
 
         # helper function to collect gradients
         def _collect(buffer, current_grads):
             if len(buffer) >= self.capacity:
                 buffer = buffer[-self.capacity+1:-1]
+            _normalize_gradients_by_time(current_grads, self.n_steps)
+            if self.clip_grad is not None:
+                clip_gradients(current_grads, self.clip_grad)
+            if self.norm_grad is not None:
+                norm_gradients(current_grads, self.norm_grad)
             buffer.append(current_grads)
-            self.n_steps = 0
 
         # collect current gradients into the buffer and reset
         _collect(self.gen_grad_buffer, self.current_gen_grads)
         _collect(self.inf_grad_buffer, self.current_inf_grads)
         self.current_gen_grads = None
         self.current_inf_grads = None
+        self.n_steps = 0
 
     def update(self):
         """
@@ -102,9 +119,6 @@ class GradientBuffer(object):
                         mean_grads[i] += buffer[j][i]
                     mean_grads[i] /= self.batch_size
                     parameters[i].grad = mean_grads[i]
-                # _check_norm([param.grad for param in parameters])
-                torch.nn.utils.clip_grad_norm_(parameters, max_norm=1.)
-                # _check_norm([param.grad for param in parameters])
                 optimizer.step()
                 buffer = []
             return buffer

@@ -16,5 +16,11 @@ def get_network(network_args):
     elif network_type == 'vizdoom_decoder':
         from .vizdoom import ConvDecoder
         return ConvDecoder(**network_args)
+    elif network_type == 'vizdoom_skip_encoder':
+        from .vizdoom import SkipConvEncoder
+        return SkipConvEncoder(**network_args)
+    elif network_type == 'vizdoom_skip_decoder':
+        from .vizdoom import SkipConvDecoder
+        return SkipConvDecoder(**network_args)
     else:
         raise NotImplementedError

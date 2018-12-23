@@ -12,7 +12,7 @@ class ObservedVariable(nn.Module):
         self.likelihood_log_scale = None
         parameter_names = list(self.distribution_type.arg_constraints.keys())
         if 'scale' in parameter_names:
-            self.likelihood_log_scale = nn.Parameter(torch.zeros(1))
+            self.likelihood_log_scale = nn.Parameter(torch.zeros(1), requires_grad=False)
             parameter_names.remove('scale')
         self.likelihood_models = nn.ModuleDict({name: None for name in parameter_names})
 
@@ -53,15 +53,13 @@ class ObservedVariable(nn.Module):
         else:
             # probability density function
             if type(observation) != tuple:
-                if type(observation) == float:
-                    # reward observation
-                    # TODO: change this
-                    observation = (observation, observation + 1.)
-                elif len(observation.shape) == 4:
+                if len(observation.shape) == 4:
                     # image observation
                     observation = (observation, observation + 1./256)
                 else:
-                    raise NotImplementedError
+                    # reward observation
+                    # TODO: change this
+                    observation = (observation, observation + 0.1)
 
             return torch.log(self.likelihood_dist.cdf(observation[1]) - self.likelihood_dist.cdf(observation[0]) + 1e-6)
 

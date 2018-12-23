@@ -102,7 +102,7 @@ class Model(nn.Module):
     def action_inference(self):
         self.inference_mode()
         # infer the approx. posterior on the action
-        self.action_variable.init_approx_post()
+        # self.action_variable.init_approx_post()
         # TODO: implement planning inference
 
         state = self.state_variable.sample()
@@ -130,7 +130,9 @@ class Model(nn.Module):
     def generate_observation(self):
         # generate the conditional likelihood for the observation
         state = self.state_variable.sample()
-        likelihood_input = self.obs_likelihood_model(state)
+        action = self.action_variable.sample()
+        # likelihood_input = self.obs_likelihood_model(state)
+        likelihood_input = self.obs_likelihood_model(torch.cat((state, action), dim=1))
         self.observation_variable.generate(likelihood_input)
 
     def generate_reward(self):
