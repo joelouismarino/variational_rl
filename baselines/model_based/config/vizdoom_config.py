@@ -31,26 +31,24 @@ def get_vizdoom_config(env):
                                          'approx_post_dist': 'Normal',
                                          'n_variables': n_state_variables}
 
-    model_args['state_prior_args'] = {'type': 'fully_connected',
+    model_args['state_prior_args'] = {'type': 'recurrent',
                                       'n_layers': 2,
                                       'n_input': n_state_variables + n_action_variables,
                                       'n_units': 200,
                                       'connectivity': 'sequential',
-                                      'batch_norm': False,
-                                      'non_linearity': 'relu',
                                       'dropout': None}
 
-    # model_args['state_inference_args'] = {'type': 'fully_connected',
-    #                                       'n_layers': 2,
-    #                                       'n_input': 4 * n_state_variables,
-    #                                       'n_units': 500,
-    #                                       'connectivity': 'sequential',
-    #                                       'batch_norm': False,
-    #                                       'non_linearity': 'elu',
-    #                                       'dropout': None}
+    model_args['state_inference_args'] = {'type': 'fully_connected',
+                                          'n_layers': 2,
+                                          'n_input': 4 * n_state_variables,
+                                          'n_units': 500,
+                                          'connectivity': 'sequential',
+                                          'batch_norm': False,
+                                          'non_linearity': 'elu',
+                                          'dropout': None}
 
-    model_args['state_inference_args'] = {'type': 'vizdoom_skip_encoder',
-                                          'non_linearity': 'elu'}
+    # model_args['state_inference_args'] = {'type': 'vizdoom_skip_encoder',
+    #                                       'non_linearity': 'elu'}
 
     # action
     model_args['action_variable_args'] = {'type': 'fully_connected',

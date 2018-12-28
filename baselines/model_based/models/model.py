@@ -63,34 +63,12 @@ class Model(nn.Module):
             self.policy_log_probs.append(log_prob)
         return self.convert_action(action)
 
-    def state_inference(self, observation):
-        self.inference_mode()
-        # infer the approx. posterior on the state
-        inf_input = observation - 0.5
-        inf_input = self.state_inference_model(inf_input)
-        self.state_variable.infer(inf_input)
-        # final evaluation
-        self.generate_observation()
-        obs_log_likelihood = self.observation_variable.cond_log_likelihood(observation).sum()
-        state_kl = self.state_variable.kl_divergence().sum()
-        (state_kl - obs_log_likelihood).backward(retain_graph=True)
-        clear_gradients(self.generative_parameters())
-        self.generative_mode()
-
     # def state_inference(self, observation):
     #     self.inference_mode()
     #     # infer the approx. posterior on the state
-    #     self.state_variable.init_approx_post()
-    #     for _ in range(self.n_inf_iter):
-    #         # evaluate conditional log likelihood of observation and state KL divergence
-    #         self.generate_observation()
-    #         obs_log_likelihood = self.observation_variable.cond_log_likelihood(observation).sum()
-    #         state_kl = self.state_variable.kl_divergence().sum()
-    #         (state_kl - obs_log_likelihood).backward(retain_graph=True)
-    #         # update approx. posterior
-    #         inf_input = self.state_variable.params_and_grads()
-    #         inf_input = self.state_inference_model(inf_input)
-    #         self.state_variable.infer(inf_input)
+    #     inf_input = observation - 0.5
+    #     inf_input = self.state_inference_model(inf_input)
+    #     self.state_variable.infer(inf_input)
     #     # final evaluation
     #     self.generate_observation()
     #     obs_log_likelihood = self.observation_variable.cond_log_likelihood(observation).sum()
@@ -98,6 +76,28 @@ class Model(nn.Module):
     #     (state_kl - obs_log_likelihood).backward(retain_graph=True)
     #     clear_gradients(self.generative_parameters())
     #     self.generative_mode()
+
+    def state_inference(self, observation):
+        self.inference_mode()
+        # infer the approx. posterior on the state
+        self.state_variable.init_approx_post()
+        for _ in range(self.n_inf_iter):
+            # evaluate conditional log likelihood of observation and state KL divergence
+            self.generate_observation()
+            obs_log_likelihood = self.observation_variable.cond_log_likelihood(observation).sum()
+            state_kl = self.state_variable.kl_divergence().sum()
+            (state_kl - obs_log_likelihood).backward(retain_graph=True)
+            # update approx. posterior
+            inf_input = self.state_variable.params_and_grads()
+            inf_input = self.state_inference_model(inf_input)
+            self.state_variable.infer(inf_input)
+        # final evaluation
+        self.generate_observation()
+        obs_log_likelihood = self.observation_variable.cond_log_likelihood(observation).sum()
+        state_kl = self.state_variable.kl_divergence().sum()
+        (state_kl - obs_log_likelihood).backward(retain_graph=True)
+        clear_gradients(self.generative_parameters())
+        self.generative_mode()
 
     def action_inference(self):
         self.inference_mode()

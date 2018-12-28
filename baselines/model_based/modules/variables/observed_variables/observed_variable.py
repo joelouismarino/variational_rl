@@ -12,7 +12,7 @@ class ObservedVariable(nn.Module):
         self.likelihood_log_scale = None
         parameter_names = list(self.distribution_type.arg_constraints.keys())
         if 'scale' in parameter_names:
-            self.likelihood_log_scale = nn.Parameter(torch.zeros(1), requires_grad=False)
+            self.likelihood_log_scale = nn.Parameter(torch.zeros(1), requires_grad=True)
             parameter_names.remove('scale')
         self.likelihood_models = nn.ModuleDict({name: None for name in parameter_names})
 

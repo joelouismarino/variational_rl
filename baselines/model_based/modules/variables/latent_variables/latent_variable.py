@@ -47,7 +47,7 @@ class LatentVariable(nn.Module):
         for param_name in self.approx_post_models:
             # calculate the parameter update and the gate
             param_update = self.approx_post_models[param_name](input)
-            # param_gate = self.approx_post_gates[param_name](input)
+            param_gate = self.approx_post_gates[param_name](input)
 
             # update the parameter value
             param = getattr(self.approx_post_dist, param_name).detach()
@@ -55,8 +55,8 @@ class LatentVariable(nn.Module):
             if type(constraint) == constraints.greater_than and constraint.lower_bound == 0:
                 # convert to log-space (for scale parameters)
                 param = torch.log(param)
-            # param = param_gate * param + (1. - param_gate) * param_update
-            param = param_update
+            param = param_gate * param + (1. - param_gate) * param_update
+            # param = param_update
 
             # satisfy any constraints on the parameter value
             if type(constraint) == constraints.greater_than and constraint.lower_bound == 0:
