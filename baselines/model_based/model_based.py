@@ -3,14 +3,14 @@ from .config import get_model_args
 from .models import Model
 from .gradient_buffer import GradientBuffer
 from .util import Viewer
-from .util.plot_util import Plot_visdom
+from .util.plot_util import PlotVisdom
 
 
 def learn(env, seed, total_timesteps, **kwargs):
 
     # torch.manual_seed(seed)
 
-    plots = Plot_visdom()
+    plots = PlotVisdom()
 
     model_args = get_model_args(env)
     model = Model(**model_args)
@@ -39,6 +39,8 @@ def learn(env, seed, total_timesteps, **kwargs):
         log = add_log(log, step_num, model, observation, reward)
         if step_num % 10 == 0:
             plots.plot_visdom(log)
+            plots.visualize_obs_visdom(observation)
+            plots.visualize_recon_visdom(model.observation_variable.likelihood_dist.loc)
 
         print('Step Num: ' + str(step_num))
         print('     Episode: ' + str(n_episodes+1))
