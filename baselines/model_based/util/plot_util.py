@@ -7,6 +7,7 @@ class PlotVisdom:
 
     def __init__(self):
         plots = ['free_energy',
+                 'reward_cll',
                    'kl',
                    'cll',
                    'recon',
@@ -22,13 +23,13 @@ class PlotVisdom:
     def plot_visdom(self, log):
         self.plot_kl(log)
         self.plot_cll(log)
+        self.plot_reward_cll(log)
         self.plot_free_energy(log)
 
 
     def plot_kl(self, log):
         if self.window_id['kl'] is not None:
             vis.line(X=log['Step'], Y=log['KL'], update='replace', name='KL', win=self.window_id['kl'])
-            # vis.line(X=x, Y=y_smoothed, update='replace', name='Smoothed', win=self.FreeEnergy)
             vis.line(X=log['Step'], Y=log['State KL'], update='replace', name='State KL', win=self.window_id['kl'])
             vis.line(X=log['Step'], Y=log['Action KL'], update='replace', name='Action KL', win=self.window_id['kl'])
         else:
@@ -38,6 +39,7 @@ class PlotVisdom:
                                            ylabel='KL',
                                            width=450,
                                            height=320,
+                                                title = 'KL (State and Action)'
                                             )
                                             )
             vis.line(X=log['Step'], Y=log['State KL'], update = 'append', name='State KL', win=self.window_id['kl'])
@@ -46,7 +48,6 @@ class PlotVisdom:
     def plot_free_energy(self, log):
         if self.window_id['free_energy'] is not None:
             vis.line(X=log['Step'], Y=log['Free Energy'], update='replace', name='Free Energy', win=self.window_id['free_energy'])
-            # vis.line(X=x, Y=y_smoothed, update='replace', name='Smoothed', win=self.FreeEnergy)
         else:
             self.window_id['free_energy'] = vis.line(X=log['Step'], Y=log['Free Energy'], name='Free Energy',
                                                      opts=dict(
@@ -60,23 +61,40 @@ class PlotVisdom:
     def plot_cll(self, log):
         if self.window_id['cll'] is not None:
             vis.line(X=log['Step'], Y=log['CLL'], update='replace', name='CLL', win=self.window_id['cll'])
-            # vis.line(X=x, Y=y_smoothed, update='replace', name='Smoothed', win=self.FreeEnergy)
-            vis.line(X=log['Step'], Y=log['Reward CLL'], update = 'replace', name='Reward', win=self.window_id['cll'])
-            vis.line(X=log['Step'], Y=log['Optimality CLL'], update = 'replace', name='Optimality', win=self.window_id['cll'])
+            # vis.line(X=log['Step'], Y=log['Reward CLL'], update = 'replace', name='Reward', win=self.window_id['cll'])
+            # vis.line(X=log['Step'], Y=log['Optimality CLL'], update = 'replace', name='Optimality', win=self.window_id['cll'])
             vis.line(X=log['Step'], Y=log['Obs CLL'], update = 'replace', name='Observation', win=self.window_id['cll'])
 
         else:
             self.window_id['cll'] = vis.line(X=log['Step'], Y=log['CLL'], name='CLL',
                                              opts=dict(
                                            xlabel='Timestep',
-                                           ylabel='Conditional Log Likelihood',
+                                           ylabel='CLL',
                                            width=450,
                                            height=320,
+                                            title = 'Observation'
                                              )
                                              )
-            vis.line(X=log['Step'], Y=log['Reward CLL'], update = 'append', name='Reward', win=self.window_id['cll'])
-            vis.line(X=log['Step'], Y=log['Optimality CLL'], update = 'append', name='Optimality', win=self.window_id['cll'])
+            # vis.line(X=log['Step'], Y=log['Reward CLL'], update = 'append', name='Reward', win=self.window_id['cll'])
+            # vis.line(X=log['Step'], Y=log['Optimality CLL'], update = 'append', name='Optimality', win=self.window_id['cll'])
             vis.line(X=log['Step'], Y=log['Obs CLL'], update = 'append', name='Observation', win=self.window_id['cll'])
+
+    def plot_reward_cll(self, log):
+        if self.window_id['reward_cll'] is not None:
+            vis.line(X=log['Step'], Y=log['Reward CLL'], update = 'replace', name='Reward', win=self.window_id['reward_cll'])
+            vis.line(X=log['Step'], Y=log['Optimality CLL'], update = 'replace', name='Optimality', win=self.window_id['reward_cll'])
+
+        else:
+            self.window_id['reward_cll'] = vis.line(X=log['Step'], Y=log['Reward CLL'], name='CLL',
+                                             opts=dict(
+                                           xlabel='Timestep',
+                                           ylabel='CLL',
+                                           width=450,
+                                           height=320,
+                                            title = 'Reward'
+                                             )
+                                             )
+            vis.line(X=log['Step'], Y=log['Optimality CLL'], update = 'append', name='Optimality', win=self.window_id['reward_cll'])
 
     def visualize_obs_visdom(self, raw_img):
         title = 'Observation'
