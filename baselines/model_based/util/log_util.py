@@ -1,6 +1,6 @@
 
 log_items = ['Step', 'Free Energy', 'KL', 'State KL', 'Action KL', 'CLL',
-                 'Obs CLL', 'Reward CLL', 'Optimality CLL', 'Inf Improvement']
+                 'Obs CLL', 'Reward CLL', 'Optimality CLL', 'State Inf. Improvement']
 
 
 class Logger:
@@ -27,3 +27,7 @@ class Logger:
         else:
             self.log['Reward CLL'].append(0)
             self.log['Optimality CLL'].append(0)
+        state_inf_improvement = model.state_inf_free_energies[0] - model.state_inf_free_energies[-1]
+        state_inf_improvement /= model.state_inf_free_energies[0]
+        state_inf_improvement *= 100.
+        self.log['State Inf. Improvement'].append(state_inf_improvement.item())

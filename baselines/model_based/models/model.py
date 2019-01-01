@@ -47,6 +47,8 @@ class Model(nn.Module):
         self.rewards = []
         self.policy_log_probs = []
 
+        self.state_inf_free_energies = []
+
     def act(self, observation, reward=None):
         self.generate_reward()
         self.step_state()
@@ -79,6 +81,7 @@ class Model(nn.Module):
 
     def state_inference(self, observation):
         self.inference_mode()
+        self.state_inf_free_energies = []
         # infer the approx. posterior on the state
         self.state_variable.init_approx_post()
         for _ in range(self.n_inf_iter):
@@ -86,7 +89,9 @@ class Model(nn.Module):
             self.generate_observation()
             obs_log_likelihood = self.observation_variable.cond_log_likelihood(observation).sum()
             state_kl = self.state_variable.kl_divergence().sum()
-            (state_kl - obs_log_likelihood).backward(retain_graph=True)
+            state_inf_free_energy = state_kl - obs_log_likelihood
+            self.state_inf_free_energies.append(state_inf_free_energy)
+            (state_inf_free_energy).backward(retain_graph=True)
             # update approx. posterior
             inf_input = self.state_variable.params_and_grads()
             inf_input = self.state_inference_model(inf_input)
@@ -95,7 +100,9 @@ class Model(nn.Module):
         self.generate_observation()
         obs_log_likelihood = self.observation_variable.cond_log_likelihood(observation).sum()
         state_kl = self.state_variable.kl_divergence().sum()
-        (state_kl - obs_log_likelihood).backward(retain_graph=True)
+        state_inf_free_energy = state_kl - obs_log_likelihood
+        self.state_inf_free_energies.append(state_inf_free_energy)
+        (state_inf_free_energy).backward(retain_graph=True)
         clear_gradients(self.generative_parameters())
         self.generative_mode()
 

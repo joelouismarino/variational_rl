@@ -11,7 +11,8 @@ class PlotVisdom:
                    'kl',
                    'cll',
                    'recon',
-                   'obs']
+                   'obs',
+                   'state_inf_improvement']
         self.init_windows(plots)
 
     def init_windows(self, plots):
@@ -25,7 +26,7 @@ class PlotVisdom:
         self.plot_cll(log)
         self.plot_reward_cll(log)
         self.plot_free_energy(log)
-
+        self.plot_state_inf_improvement(log)
 
     def plot_kl(self, log):
         if self.window_id['kl'] is not None:
@@ -96,6 +97,19 @@ class PlotVisdom:
                                              )
             vis.line(X=log['Step'], Y=log['Optimality CLL'], update = 'append', name='Optimality', win=self.window_id['reward_cll'])
 
+    def plot_state_inf_improvement(self, log):
+        if self.window_id['state_inf_improvement'] is not None:
+            vis.line(X=log['Step'], Y=log['State Inf. Improvement'], update='replace', name='State Inf. Improvement', win=self.window_id['state_inf_improvement'])
+        else:
+            self.window_id['state_inf_improvement'] = vis.line(X=log['Step'], Y=log['State Inf. Improvement'], name='State Inf. Improvement',
+                                                     opts=dict(
+                                                               xlabel='Timestep',
+                                                               ylabel='Percent Improvement',
+                                                               width=450,
+                                                               height=320,
+                                                     )
+                                                     )
+
     def visualize_obs_visdom(self, raw_img):
         title = 'Observation'
         size = 200
@@ -135,5 +149,3 @@ class PlotVisdom:
             # remove batch dimension
             img = img[0]
         return img
-
-
