@@ -4,7 +4,7 @@ from .models import Model
 from .gradient_buffer import GradientBuffer
 from .util import Viewer
 from .util.plot_util import PlotVisdom
-from .util.log_util import init_log, add_log
+from .util.log_util import Logger
 from .util.print_util import print_metrics
 
 
@@ -13,6 +13,7 @@ def learn(env, seed, total_timesteps, **kwargs):
     # torch.manual_seed(seed)
 
     plots = PlotVisdom()
+    logger = Logger()
 
     model_args = get_model_args(env)
     model = Model(**model_args)
@@ -27,9 +28,6 @@ def learn(env, seed, total_timesteps, **kwargs):
     reward = None
     n_episodes = 0
 
-    log = init_log(log_items = ['Step', 'Free Energy', 'KL', 'State KL', 'Action KL', 'CLL',
-                     'Obs CLL', 'Reward CLL', 'Optimality CLL'])
-
     for step_num in range(total_timesteps):
 
         # obs_viewer.view(observation)
@@ -38,9 +36,9 @@ def learn(env, seed, total_timesteps, **kwargs):
 
         # recon_viewer.view(model.observation_variable.likelihood_dist.loc)
 
-        log = add_log(log, step_num, model, observation, reward)
+        logger.add_log(step_num, model, observation, reward)
         if step_num % 10 == 0:
-            plots.plot_visdom(log)
+            plots.plot_visdom(logger.log)
             plots.visualize_obs_visdom(observation)
             plots.visualize_recon_visdom(model.observation_variable.likelihood_dist.loc)
 
