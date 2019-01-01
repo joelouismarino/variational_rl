@@ -5,6 +5,7 @@ from .gradient_buffer import GradientBuffer
 from .util import Viewer
 from .util.plot_util import PlotVisdom
 from .util.log_util import init_log, add_log
+from .util.print_util import print_metrics
 
 
 def learn(env, seed, total_timesteps, **kwargs):
@@ -43,17 +44,7 @@ def learn(env, seed, total_timesteps, **kwargs):
             plots.visualize_obs_visdom(observation)
             plots.visualize_recon_visdom(model.observation_variable.likelihood_dist.loc)
 
-        print('Step Num: ' + str(step_num))
-        print('     Episode: ' + str(n_episodes+1))
-        print('     Free Energy: ' + str(model.free_energy(observation, reward).item()))
-        print('         KL Divergence: ' + str(model.kl_divergence().sum().item()))
-        print('             State KL: ' + str(model.state_variable.kl_divergence().sum().item()))
-        print('             Action KL: ' + str(model.action_variable.kl_divergence().sum().item()))
-        print('         Cond. Log Likelihood: ' + str(model.cond_log_likelihood(observation, reward).item()))
-        print('             Observation CLL: ' + str(model.observation_variable.cond_log_likelihood(observation).sum().item()))
-        if reward is not None:
-            print('             Reward CLL: ' + str(model.reward_variable.cond_log_likelihood(reward).sum().item()))
-            print('             Optimality CLL: ' + str(reward))
+        print_metrics(step_num, n_episodes, model, observation, reward)
 
         observation, reward, done, _ = env.step(action)
 
