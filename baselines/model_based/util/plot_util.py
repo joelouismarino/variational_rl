@@ -14,6 +14,7 @@ class PlotVisdom:
                    'obs',
                    'state_inf_improvement']
         self.init_windows(plots)
+        self.smooth_reward_len = 1
 
     def init_windows(self, plots):
         self.window_id = {}
@@ -84,6 +85,13 @@ class PlotVisdom:
         if self.window_id['reward_cll'] is not None:
             vis.line(X=log['Step'], Y=log['Reward CLL'], update = 'replace', name='Reward', win=self.window_id['reward_cll'])
             vis.line(X=log['Step'], Y=log['Optimality CLL'], update = 'replace', name='Optimality', win=self.window_id['reward_cll'])
+            wind = 100
+            if len(log['Step']) // wind > self.smooth_reward_len:
+                self.smooth_reward_len = len(log['Step']) // wind
+                # compute and plot smoothed line
+                y = np.convolve(log['Reward CLL'], np.ones(wind)/wind, mode = 'valid')
+                x = np.linspace(log['Step'][0]+wind//2, log['Step'][-1]-wind//2, len(y))
+                vis.line(X = x, Y = y, update = 'replace', name = 'Smoothed Reward', win = self.window_id['reward_cll'])
 
         else:
             self.window_id['reward_cll'] = vis.line(X=log['Step'], Y=log['Reward CLL'], name='CLL',
