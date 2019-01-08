@@ -143,7 +143,7 @@ class Plotter:
         width = 450
         height = 320
         title = ''
-        xformat = 'log'
+        xtype = 'log'
         showlegend = True
         if win_name == 'free_energy':
             ylabel = 'Free Energy (nats)'
@@ -193,9 +193,6 @@ class Plotter:
             ylabel = 'Reward Conditional Likeilhood Log Std. Dev.'
             title = 'Reward Conditional Likeilhood Log Std. Dev.'
 
-        layoutopts = {}
-        if xformat == 'log':
-            layoutopts = {'plotly': {'xaxis': {'type': 'log'}}}
         opts = dict(xlabel=xlabel, ylabel=ylabel, title=title, width=width,
-                    height=height, layoutopts=layoutopts, showlegend=showlegend)
+                    height=height, xtype=xtype, showlegend=showlegend)
         return opts
