@@ -205,6 +205,35 @@ class Model(nn.Module):
         self.obs_likelihood_model.reset()
         self.reward_likelihood_model.reset()
 
+    def parameters(self):
+        param_dict = {}
+
+        param_dict['state_inference_model'] = nn.ParameterList()
+        param_dict['state_inference_model'].extend(list(self.state_inference_model.parameters()))
+        param_dict['state_inference_model'].extend(list(self.state_variable.inference_parameters()))
+
+        param_dict['action_inference_model'] = nn.ParameterList()
+        param_dict['action_inference_model'].extend(list(self.action_inference_model.parameters()))
+        param_dict['action_inference_model'].extend(list(self.action_variable.inference_parameters()))
+
+        param_dict['state_prior_model'] = nn.ParameterList()
+        param_dict['state_prior_model'].extend(list(self.state_prior_model.parameters()))
+        param_dict['state_prior_model'].extend(list(self.state_variable.generative_parameters()))
+
+        param_dict['action_prior_model'] = nn.ParameterList()
+        param_dict['action_prior_model'].extend(list(self.action_prior_model.parameters()))
+        param_dict['action_prior_model'].extend(list(self.action_variable.generative_parameters()))
+
+        param_dict['obs_likelihood_model'] = nn.ParameterList()
+        param_dict['obs_likelihood_model'].extend(list(self.obs_likelihood_model.parameters()))
+        param_dict['obs_likelihood_model'].extend(list(self.observation_variable.parameters()))
+
+        param_dict['reward_likelihood_model'] = nn.ParameterList()
+        param_dict['reward_likelihood_model'].extend(list(self.reward_likelihood_model.parameters()))
+        param_dict['reward_likelihood_model'].extend(list(self.reward_variable.parameters()))
+
+        return param_dict
+
     def inference_parameters(self):
         params = nn.ParameterList()
         params.extend(list(self.state_inference_model.parameters()))

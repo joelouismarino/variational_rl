@@ -1,19 +1,19 @@
-import torch
+# import torch
 from .config import get_model_args
 from .models import Model
 from .gradient_buffer import GradientBuffer
 from .util import Viewer
-from .util.plot_util import PlotVisdom
+from .util.plot_util import Plotter
 from .util.log_util import Logger
-from .util.print_util import print_metrics
+from .util.print_util import print_step_metrics, print_episode_metrics
 
 
-def learn(env, seed, total_timesteps, **kwargs):
+def learn(env, seed, total_timesteps, log_dir, **kwargs):
 
     # torch.manual_seed(seed)
 
-    plots = PlotVisdom()
-    logger = Logger()
+    logger = Logger(log_dir)
+    plotter = Plotter(logger.log_str)
 
     model_args = get_model_args(env)
     model = Model(**model_args)
@@ -21,39 +21,32 @@ def learn(env, seed, total_timesteps, **kwargs):
 
     grad_buffer = GradientBuffer(model, lr=0.001, capacity=100, batch_size=5)
 
-    # obs_viewer = Viewer()
-    # recon_viewer = Viewer()
-
     observation = env.reset()
     reward = None
-    n_episodes = 0
+    episode = 0
 
-    for step_num in range(total_timesteps):
-
-        # obs_viewer.view(observation)
+    for step in range(total_timesteps):
 
         action = model.act(observation, reward)
-
-        # recon_viewer.view(model.observation_variable.likelihood_dist.loc)
-
-        logger.add_log(step_num, model, observation, reward)
-        if step_num % 10 == 0:
-            plots.plot_visdom(logger.log)
-            plots.visualize_obs_visdom(observation)
-            plots.visualize_recon_visdom(model.observation_variable.likelihood_dist.loc)
-
-        print_metrics(step_num, n_episodes, model, observation, reward)
-
+        logger.log_step(model, observation, reward)
         observation, reward, done, _ = env.step(action)
-
-        # env.render()
-
         grad_buffer.accumulate()
 
+        if step % 25 == 0:
+            plotter.plot_image(observation, 'Observation')
+            plotter.plot_image(model.observation_variable.likelihood_dist.loc, 'Reconstruction')
+
         if done:
-            grad_buffer.collect()
+            # TODO: need a final collection of reward inside model
+            # TODO: this final logging will not be correct because the model never sees this observation
+            # logger.log_step(model, observation, reward)
+            grads = grad_buffer.collect()
+            episode_log = logger.log_episode(model, grads)
+            plotter.plot(episode_log)
+            print_episode_metrics(episode, episode_log)
             grad_buffer.update()
-            n_episodes += 1
+
+            episode += 1
             observation = env.reset()
             reward = None
             model.reset()

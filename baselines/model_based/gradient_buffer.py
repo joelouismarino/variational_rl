@@ -18,14 +18,10 @@ class GradientBuffer(object):
     """
     def __init__(self, model, lr, capacity, batch_size, clip_grad=None, norm_grad=None):
         self.model = model
-        self.gen_parameters = model.generative_parameters()
-        self.inf_parameters = model.inference_parameters()
-        self.gen_opt = optim.Adam(self.gen_parameters, lr=lr)
-        self.inf_opt = optim.Adam(self.inf_parameters, lr=lr)
-        self.current_gen_grads = None
-        self.current_inf_grads = None
-        self.gen_grad_buffer = []
-        self.inf_grad_buffer = []
+        self.parameters = model.parameters()
+        self.opt = {k: optim.Adam(v, lr=lr) for k, v in self.parameters.items()}
+        self.current_grads = {k: None for k in self.parameters}
+        self.grad_buffer = {k: [] for k in self.parameters}
         self.capacity = capacity
         self.batch_size = batch_size
         self.clip_grad = clip_grad
@@ -57,14 +53,12 @@ class GradientBuffer(object):
             # _check_norm(current_grads)
             return current_grads
 
-        # print('N Steps: ' + str(self.n_steps))
         # add gradients to current gradients
-        self.current_gen_grads = _accumulate(self.gen_parameters, self.current_gen_grads)
-        self.current_inf_grads = _accumulate(self.inf_parameters, self.current_inf_grads)
+        for model_name in self.parameters:
+            self.current_grads[model_name] = _accumulate(self.parameters[model_name], self.current_grads[model_name])
+            # clear the gradients
+            clear_gradients(self.parameters[model_name])
 
-        # clear the gradients
-        clear_gradients(self.gen_parameters)
-        clear_gradients(self.inf_parameters)
         self.n_steps += 1
 
     def collect(self):
@@ -91,13 +85,16 @@ class GradientBuffer(object):
             if self.norm_grad is not None:
                 norm_gradients(current_grads, self.norm_grad)
             buffer.append(current_grads)
+            return current_grads
 
         # collect current gradients into the buffer and reset
-        _collect(self.gen_grad_buffer, self.current_gen_grads)
-        _collect(self.inf_grad_buffer, self.current_inf_grads)
-        self.current_gen_grads = None
-        self.current_inf_grads = None
+        episode_grads = {}
+        for model_name in self.parameters:
+            episode_grads[model_name] = _collect(self.grad_buffer[model_name], self.current_grads[model_name])
+            self.current_grads[model_name] = None
+
         self.n_steps = 0
+        return episode_grads
 
     def update(self):
         """
@@ -123,5 +120,7 @@ class GradientBuffer(object):
                 buffer = []
             return buffer
 
-        self.gen_grad_buffer = _update(self.gen_parameters, self.gen_grad_buffer, self.gen_opt)
-        self.inf_grad_buffer = _update(self.inf_parameters, self.inf_grad_buffer, self.inf_opt)
+        for model_name in self.parameters:
+            self.grad_buffer[model_name] = _update(self.parameters[model_name],
+                                                   self.grad_buffer[model_name],
+                                                   self.opt[model_name])
