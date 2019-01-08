@@ -28,18 +28,19 @@ def learn(env, seed, total_timesteps, log_dir, **kwargs):
     for step in range(total_timesteps):
 
         action = model.act(observation, reward)
-        logger.log_step(model, observation, reward)
-        observation, reward, done, _ = env.step(action)
-        grad_buffer.accumulate()
 
-        if step % 25 == 0:
+        if step % 50 == 0:
             plotter.plot_image(observation, 'Observation')
-            plotter.plot_image(model.observation_variable.likelihood_dist.loc, 'Reconstruction')
+            plotter.plot_image(model.obs_prediction, 'Prediction')
+            plotter.plot_image(model.obs_reconstruction, 'Reconstruction')
+
+        next_observation, reward, done, _ = env.step(action)
+        logger.log_step(model, observation, reward)
+        grad_buffer.accumulate()
+        observation = next_observation
 
         if done:
-            # TODO: need a final collection of reward inside model
-            # TODO: this final logging will not be correct because the model never sees this observation
-            # logger.log_step(model, observation, reward)
+            model.rewards.append(reward)
             grads = grad_buffer.collect()
             episode_log = logger.log_episode(model, grads)
             plotter.plot(episode_log)

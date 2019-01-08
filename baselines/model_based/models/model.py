@@ -46,8 +46,9 @@ class Model(nn.Module):
 
         self.rewards = []
         self.policy_log_probs = []
-
         self.state_inf_free_energies = []
+        self.obs_reconstruction = None
+        self.obs_prediction = None
 
     def act(self, observation, reward=None):
         self.generate_reward()
@@ -84,9 +85,11 @@ class Model(nn.Module):
         self.state_inf_free_energies = []
         # infer the approx. posterior on the state
         self.state_variable.init_approx_post()
-        for _ in range(self.n_inf_iter):
+        for inf_iter in range(self.n_inf_iter):
             # evaluate conditional log likelihood of observation and state KL divergence
             self.generate_observation()
+            if inf_iter == 0:
+                self.obs_prediction = self.observation_variable.likelihood_dist.loc.detach()
             obs_log_likelihood = self.observation_variable.cond_log_likelihood(observation).sum()
             state_kl = self.state_variable.kl_divergence().sum()
             state_inf_free_energy = state_kl - obs_log_likelihood
@@ -105,6 +108,7 @@ class Model(nn.Module):
         (state_inf_free_energy).backward(retain_graph=True)
         clear_gradients(self.generative_parameters())
         self.generative_mode()
+        self.obs_reconstruction = self.observation_variable.likelihood_dist.loc.detach()
 
     def action_inference(self):
         self.inference_mode()

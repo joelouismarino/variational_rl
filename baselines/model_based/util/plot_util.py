@@ -15,13 +15,21 @@ class Plotter:
         self.metric_plot_names = ['free_energy', 'reward_cll', 'obs_cll',
                                   'optimality_cll', 'state_kl', 'action_kl',
                                   'state_inf_imp']
+        self.dist_plot_names = ['state_approx_post_mean', 'state_approx_post_log_std',
+                                'state_prior_mean', 'state_prior_log_std',
+                                'obs_cond_likelihood_mean', 'obs_cond_likelihood_log_std',
+                                'reward_cond_likelihood_mean', 'reward_cond_likelihood_log_std']
+        self.dist_window_names = ['state_mean', 'state_log_std', 'obs_mean',
+                                  'obs_log_std', 'reward_mean', 'reward_log_std']
         self.model_grad_plot_names = ['state_inference_model_grad', 'action_inference_model_grad',
                                       'state_prior_model_grad', 'action_prior_model_grad',
                                       'obs_likelihood_model_grad', 'reward_likelihood_model_grad']
         self.img_names = ['recon', 'obs', 'pred']
-        self._init_windows(self.metric_plot_names + ['grad_norms'] + self.img_names)
+        windows = self.metric_plot_names + self.dist_window_names + self.img_names + ['grad_means', 'episode_length']
+        self._init_windows(windows)
         self.smooth_reward_len = 1
         self._step = 1
+        self._episode = 1
 
     def _init_windows(self, window_names):
         self.window_id = {}
@@ -34,11 +42,19 @@ class Plotter:
             self._plot_metric(episode_log[metric_name], metric_name,
                               opts=self._get_opts(metric_name))
 
-        # plot gradient norms
-        self._plot_grad_norms(episode_log)
+        # plot the distribution statistics
+        for dist_param_name in self.dist_plot_names:
+            self._plot_dist(episode_log[dist_param_name], dist_param_name)
 
-        # increment the step counter
+        # plot the episode length
+        self._plot_episode_length(len(episode_log['free_energy']))
+
+        # plot gradient means
+        self._plot_grad_means(episode_log)
+
+        # increment the step and episode counters
         self._step += len(episode_log['free_energy'])
+        self._episode += 1
         self.vis.save([self.env_id])
 
     def _plot_metric(self, metric, win_name, opts=None):
@@ -50,18 +66,35 @@ class Plotter:
             self.window_id[win_name] = self.vis.line(X=steps, Y=metric, name='Step', opts=opts)
             self.vis.line(X=[steps[-1]], Y=[np.mean(metric)], update='replace', name='Episode', win=self.window_id[win_name])
 
-    def _plot_grad_norms(self, episode_log):
+    def _plot_dist(self, dist_param, param_name):
+        steps = list(range(self._step, self._step + len(dist_param)))
+        win_name = self._get_window_name(param_name)
+        if self.window_id[win_name] is not None:
+            update = 'append' if self._step != 1 else 'replace'
+            self.vis.line(X=steps, Y=dist_param, update=update, name=param_name + ' Step', win=self.window_id[win_name])
+            self.vis.line(X=[steps[-1]], Y=[np.mean(dist_param)], update=update, name=param_name + ' Episode', win=self.window_id[win_name])
+        else:
+            opts = self._get_opts(win_name)
+            self.window_id[win_name] = self.vis.line(X=steps, Y=dist_param, name=param_name + ' Step', opts=opts)
+            self.vis.line(X=[steps[-1]], Y=[np.mean(dist_param)], update='replace', name=param_name + ' Episode', win=self.window_id[win_name])
 
-        if self.window_id['grad_norms'] is not None:
+    def _plot_grad_means(self, episode_log):
+        if self.window_id['grad_means'] is not None:
             for model_grad_name in self.model_grad_plot_names:
-                self.vis.line(X=[self._step], Y=episode_log[model_grad_name], update='append', name=model_grad_name, win=self.window_id['grad_norms'])
+                self.vis.line(X=[self._step], Y=episode_log[model_grad_name], update='append', name=model_grad_name, win=self.window_id['grad_means'])
         else:
             for model_grad_name in self.model_grad_plot_names:
-                if self.window_id['grad_norms'] is not None:
-                    self.vis.line(X=[self._step], Y=episode_log[model_grad_name], update='replace', name=model_grad_name, win=self.window_id['grad_norms'])
+                if self.window_id['grad_means'] is not None:
+                    self.vis.line(X=[self._step], Y=episode_log[model_grad_name], update='replace', name=model_grad_name, win=self.window_id['grad_means'])
                 else:
-                    opts = self._get_opts('grad_norms')
-                    self.window_id['grad_norms'] = self.vis.line(X=[self._step], Y=episode_log[model_grad_name], name=model_grad_name, opts=opts)
+                    opts = self._get_opts('grad_means')
+                    self.window_id['grad_means'] = self.vis.line(X=[self._step], Y=episode_log[model_grad_name], name=model_grad_name, opts=opts)
+
+    def _plot_episode_length(self, length):
+        if self.window_id['episode_length'] is not None:
+            self.vis.line(X=[self._episode], Y=[length], update='append', name='Episode Length', win=self.window_id['episode_length'])
+        else:
+            self.window_id['episode_length'] = self.vis.line(X=[self._episode], Y=[length], name='Episode Length', opts=self._get_opts('episode_length'))
 
     def plot_image(self, img, title, size=(200,200)):
 
@@ -78,6 +111,8 @@ class Plotter:
             id = 'recon'
         elif title == 'Observation':
             id = 'obs'
+        elif title == 'Prediction':
+            id = 'pred'
         else:
             id = title
 
@@ -88,6 +123,20 @@ class Plotter:
         else:
             self.window_id[id] = self.vis.image(img, opts=opts)
 
+    def _get_window_name(self, plot_name):
+        if plot_name == 'state_approx_post_mean' or plot_name == 'state_prior_mean':
+            return 'state_mean'
+        elif plot_name == 'state_approx_post_log_std' or plot_name == 'state_prior_log_std':
+            return 'state_log_std'
+        elif plot_name == 'obs_cond_likelihood_mean':
+            return 'obs_mean'
+        elif plot_name == 'obs_cond_likelihood_log_std':
+            return 'obs_log_std'
+        elif plot_name == 'reward_cond_likelihood_mean':
+            return 'reward_mean'
+        elif plot_name == 'reward_cond_likelihood_log_std':
+            return 'reward_log_std'
+
     def _get_opts(self, win_name):
         xlabel = 'Time Step'
         ylabel = ''
@@ -95,7 +144,7 @@ class Plotter:
         height = 320
         title = ''
         xformat = 'log'
-        showlegend=True
+        showlegend = True
         if win_name == 'free_energy':
             ylabel = 'Free Energy (nats)'
             title = 'Free Energy'
@@ -120,86 +169,33 @@ class Plotter:
         elif win_name == 'episode_length':
             ylabel = 'Episode Length (steps)'
             title = 'Episode Length'
+            showlegend = False
+            xlabel = 'Episode'
         elif 'grad' in win_name:
-            ylabel = 'Gradient Norms'
-            title = 'Gradient Norms'
+            ylabel = 'Gradient Means'
+            title = 'Gradient Means'
+        elif win_name == 'state_mean':
+            ylabel = 'Average State Mean'
+            title = 'Average State Mean'
+        elif win_name == 'state_log_std':
+            ylabel = 'Average State Log Std. Dev.'
+            title = 'Average State Log Std. Dev.'
+        elif win_name == 'obs_mean':
+            ylabel = 'Obs. Conditional Likeilhood Mean'
+            title = 'Obs. Conditional Likeilhood Mean'
+        elif win_name == 'obs_log_std':
+            ylabel = 'Obs. Conditional Likeilhood Log Std. Dev.'
+            title = 'Obs. Conditional Likeilhood Log Std. Dev.'
+        elif win_name == 'reward_mean':
+            ylabel = 'Reward Conditional Likeilhood Mean'
+            title = 'Reward Conditional Likeilhood Mean'
+        elif win_name == 'reward_log_std':
+            ylabel = 'Reward Conditional Likeilhood Log Std. Dev.'
+            title = 'Reward Conditional Likeilhood Log Std. Dev.'
 
+        layoutopts = {}
+        if xformat == 'log':
+            layoutopts = {'plotly': {'xaxis': {'type': 'log'}}}
         opts = dict(xlabel=xlabel, ylabel=ylabel, title=title, width=width,
-                    height=height, xformat=xformat, showlegend=showlegend)
+                    height=height, layoutopts=layoutopts, showlegend=showlegend)
         return opts
-
-    # def plot_kl(self, log):
-    #     if self.window_id['kl'] is not None:
-    #         vis.line(X=log['Step'], Y=log['KL'], update='replace', name='KL', win=self.window_id['kl'])
-    #         vis.line(X=log['Step'], Y=log['State KL'], update='replace', name='State KL', win=self.window_id['kl'])
-    #         vis.line(X=log['Step'], Y=log['Action KL'], update='replace', name='Action KL', win=self.window_id['kl'])
-    #     else:
-    #         self.window_id['kl'] = vis.line(X=log['Step'], Y=log['KL'], name='KL',
-    #                                         opts=dict(
-    #                                        xlabel='Timestep',
-    #                                        ylabel='KL',
-    #                                        width=450,
-    #                                        height=320,
-    #                                             title = 'KL (State and Action)'
-    #                                         )
-    #                                         )
-    #         vis.line(X=log['Step'], Y=log['State KL'], update = 'append', name='State KL', win=self.window_id['kl'])
-    #         vis.line(X=log['Step'], Y=log['Action KL'], update = 'append', name='Action KL', win=self.window_id['kl'])
-
-    # def plot_cll(self, log):
-    #     if self.window_id['cll'] is not None:
-    #         vis.line(X=log['Step'], Y=log['CLL'], update='replace', name='CLL', win=self.window_id['cll'])
-    #         # vis.line(X=log['Step'], Y=log['Reward CLL'], update = 'replace', name='Reward', win=self.window_id['cll'])
-    #         # vis.line(X=log['Step'], Y=log['Optimality CLL'], update = 'replace', name='Optimality', win=self.window_id['cll'])
-    #         vis.line(X=log['Step'], Y=log['Obs CLL'], update = 'replace', name='Observation', win=self.window_id['cll'])
-    #
-    #     else:
-    #         self.window_id['cll'] = vis.line(X=log['Step'], Y=log['CLL'], name='CLL',
-    #                                          opts=dict(
-    #                                        xlabel='Timestep',
-    #                                        ylabel='CLL',
-    #                                        width=450,
-    #                                        height=320,
-    #                                         title = 'Observation'
-    #                                          )
-    #                                          )
-    #         # vis.line(X=log['Step'], Y=log['Reward CLL'], update = 'append', name='Reward', win=self.window_id['cll'])
-    #         # vis.line(X=log['Step'], Y=log['Optimality CLL'], update = 'append', name='Optimality', win=self.window_id['cll'])
-    #         vis.line(X=log['Step'], Y=log['Obs CLL'], update = 'append', name='Observation', win=self.window_id['cll'])
-
-    # def plot_reward_cll(self, log):
-    #     if self.window_id['reward_cll'] is not None:
-    #         vis.line(X=log['Step'], Y=log['Reward CLL'], update = 'replace', name='Reward', win=self.window_id['reward_cll'])
-    #         vis.line(X=log['Step'], Y=log['Optimality CLL'], update = 'replace', name='Optimality', win=self.window_id['reward_cll'])
-    #         wind = 100
-    #         if len(log['Step']) // wind > self.smooth_reward_len:
-    #             self.smooth_reward_len = len(log['Step']) // wind
-    #             # compute and plot smoothed line
-    #             y = np.convolve(log['Reward CLL'], np.ones(wind)/wind, mode = 'valid')
-    #             x = np.linspace(log['Step'][0]+wind//2, log['Step'][-1]-wind//2, len(y))
-    #             vis.line(X = x, Y = y, update = 'replace', name = 'Smoothed Reward', win = self.window_id['reward_cll'])
-    #
-    #     else:
-    #         self.window_id['reward_cll'] = vis.line(X=log['Step'], Y=log['Reward CLL'], name='CLL',
-    #                                          opts=dict(
-    #                                        xlabel='Timestep',
-    #                                        ylabel='CLL',
-    #                                        width=450,
-    #                                        height=320,
-    #                                         title = 'Reward'
-    #                                          )
-    #                                          )
-    #         vis.line(X=log['Step'], Y=log['Optimality CLL'], update = 'append', name='Optimality', win=self.window_id['reward_cll'])
-    #
-    # def plot_state_inf_improvement(self, log):
-    #     if self.window_id['state_inf_improvement'] is not None:
-    #         vis.line(X=log['Step'], Y=log['State Inf. Improvement'], update='replace', name='State Inf. Improvement', win=self.window_id['state_inf_improvement'])
-    #     else:
-    #         self.window_id['state_inf_improvement'] = vis.line(X=log['Step'], Y=log['State Inf. Improvement'], name='State Inf. Improvement',
-    #                                                  opts=dict(
-    #                                                            xlabel='Timestep',
-    #                                                            ylabel='Percent Improvement',
-    #                                                            width=450,
-    #                                                            height=320,
-    #                                                  )
-    #                                                  )

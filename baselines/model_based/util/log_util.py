@@ -4,7 +4,10 @@ import os
 import torch
 
 log_items = ['free_energy', 'state_kl', 'action_kl', 'obs_cll', 'reward_cll',
-             'optimality_cll', 'state_inf_imp']
+             'optimality_cll', 'state_inf_imp', 'state_approx_post_mean',
+             'state_approx_post_log_std', 'state_prior_mean', 'state_prior_log_std',
+             'obs_cond_likelihood_mean', 'obs_cond_likelihood_log_std',
+             'reward_cond_likelihood_mean', 'reward_cond_likelihood_log_std']
 
 # TODO: implement saving of episode frames (both observations and predictions)
 #       and maybe also distributions of all variables
@@ -58,6 +61,21 @@ class Logger:
         state_inf_improvement *= 100.
         self.episode_log['state_inf_imp'].append(state_inf_improvement.item())
 
+        # distributions
+        self.episode_log['state_approx_post_mean'].append(model.state_variable.approx_post_dist.loc.mean().item())
+        self.episode_log['state_approx_post_log_std'].append(model.state_variable.approx_post_dist.scale.log().mean().item())
+        self.episode_log['state_prior_mean'].append(model.state_variable.prior_dist.loc.mean().item())
+        self.episode_log['state_prior_log_std'].append(model.state_variable.prior_dist.scale.log().mean().item())
+
+        self.episode_log['obs_cond_likelihood_mean'].append(model.observation_variable.likelihood_dist.loc.mean().item())
+        self.episode_log['obs_cond_likelihood_log_std'].append(model.observation_variable.likelihood_dist.scale.log().mean().item())
+
+        self.episode_log['reward_cond_likelihood_mean'].append(model.reward_variable.likelihood_dist.loc.mean().item())
+        self.episode_log['reward_cond_likelihood_log_std'].append(model.reward_variable.likelihood_dist.scale.log().mean().item())
+
+        # TODO: log action and optimality (discrete distributions)
+
+
         if self._episode % self._ckpt_interval == 0:
             pass
             # TODO: save observation, prediction, and reconstruction
@@ -78,11 +96,11 @@ class Logger:
         if self._episode % self._ckpt_interval == 0:
             self.checkpoint(model)
 
-        # copy the episode log and add the gradient norm
+        # copy the episode log and add the gradient mean
         episode_log = {k: v for k, v in self.episode_log.items()}
         for model_name, grad in grads.items():
-            grad_norm = torch.cat([g.view(-1) for g in grad], dim=0).norm()
-            episode_log[model_name + '_grad'] = [grad_norm.item()]
+            grad_mean = torch.cat([g.view(-1) for g in grad], dim=0).abs().mean()
+            episode_log[model_name + '_grad'] = [grad_mean.item()]
 
         self._init_episode_log()
 
