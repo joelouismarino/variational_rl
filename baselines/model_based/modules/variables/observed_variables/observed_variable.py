@@ -35,6 +35,7 @@ class ObservedVariable(nn.Module):
         if self.likelihood_log_scale is not None:
             output_shape = parameters['loc'].shape
             log_scale = self.likelihood_log_scale.repeat(output_shape)
+            log_scale = torch.clamp(log_scale, -15, 5)
             parameters['scale'] = torch.exp(log_scale)
         # create a new distribution with the parameters
         self.likelihood_dist = self.distribution_type(**parameters)

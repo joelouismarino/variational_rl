@@ -44,8 +44,12 @@ class Model(nn.Module):
         self.gamma = 0.99
         self.training = False
 
-        self.rewards = []
-        self.policy_log_probs = []
+        self.objectives = {'observation': [], 'reward': [], 'optimality': [],
+                           'state': [], 'action': []}
+        self.log_probs = {'action': []}
+        # self.free_energies = []
+        # self.rewards = []
+        # self.policy_log_probs = []
         self.state_inf_free_energies = []
         self.obs_reconstruction = None
         self.obs_prediction = None
@@ -58,13 +62,22 @@ class Model(nn.Module):
         self.step_action()
         self.action_inference()
         action = self.action_variable.sample()
-        free_energy = self.free_energy(observation, reward)
         if self.training:
-            free_energy.backward(retain_graph=True)
-            self.rewards.append(reward)
-            log_prob = self.action_variable.approx_post_dist.log_prob(action)
-            self.policy_log_probs.append(log_prob)
-        return self.convert_action(action)
+            self._collect_objectives_and_log_probs(observation, reward)
+        return self.convert_action(action).cpu().numpy()
+
+    def final_reward(self, reward):
+        self.generate_reward()
+        if self.training:
+            self._collect_objectives_and_log_probs(None, reward)
+
+    # free_energy = self.free_energy(observation, reward)
+    # self.free_energies.append(free_energy)
+    # free_energy.backward(retain_graph=True)
+    # if reward is not None:
+        # self.rewards.append(reward)
+    # log_prob = self.action_variable.approx_post_dist.log_prob(action)
+    # self.policy_log_probs.append(log_prob)
 
     # def state_inference(self, observation):
     #     self.inference_mode()
@@ -174,27 +187,40 @@ class Model(nn.Module):
         kl_divergence = state_kl_divergence + action_kl_divergence
         return kl_divergence
 
-    def policy_loss(self):
-        # TODO: incorporate this into the free energy calculation
-        # TODO: we should also be backproping future free energy into these gradients
-        R = 0
-        policy_loss = []
-        returns = []
-        for r in self.rewards[::-1]:
-            if r is None:
-                r = 0
-            R = r + self.gamma * R
-            returns.insert(0, R)
-        returns = torch.tensor(returns)
-        returns = (returns - returns.mean()) / (returns.std() + 1e-6)
-        for log_prob, ret in zip(self.policy_log_probs, returns):
-            policy_loss.append(-log_prob * ret)
-        return torch.cat(policy_loss).sum()
+    def _collect_objectives_and_log_probs(self, observation, reward):
+        if reward is None:
+            # beginning of an episode
+            self.objectives['reward'].append(torch.tensor(0.))
+            self.objectives['optimality'].append(torch.tensor(0.))
+
+            self.log_probs['action'].append(torch.tensor(0.))
+
+        if observation is not None:
+            # beginning of an episode or during an episode
+            self.objectives['observation'].append(-self.observation_variable.cond_log_likelihood(observation).sum())
+            self.objectives['state'].append(self.state_variable.kl_divergence().sum())
+            self.objectives['action'].append(self.action_variable.kl_divergence().sum())
+
+            action = self.convert_action(self.action_variable.sample())
+            self.log_probs['action'].append(self.action_variable.approx_post_dist.log_prob(action).sum())
+
+        if reward is not None:
+            # during an episode or end of an episode
+            # TODO: subtracting 1 is a hack, need to rescale reward
+            self.objectives['reward'].append(-self.reward_variable.cond_log_likelihood(reward).sum())
+            self.objectives['optimality'].append(-torch.tensor(reward - 1.))
+
+        if observation is None:
+            # end of an episode
+            self.objectives['observation'].append(torch.tensor(0.))
+            self.objectives['state'].append(torch.tensor(0.))
+            self.objectives['action'].append(torch.tensor(0.))
 
     def convert_action(self, action):
+        # converts categorical action from one-hot encoding to the action index
         if self.action_variable.approx_post_dist_type == getattr(torch.distributions, 'Categorical'):
             action = one_hot_to_index(action)
-        return action.cpu().numpy()
+        return action
 
     def reset(self):
         # reset the variables
@@ -208,6 +234,15 @@ class Model(nn.Module):
         self.action_prior_model.reset()
         self.obs_likelihood_model.reset()
         self.reward_likelihood_model.reset()
+
+        # reset the objectives and log probs
+        self.objectives = {'observation': [], 'reward': [], 'optimality': [],
+                           'state': [], 'action': []}
+        self.log_probs = {'action': []}
+
+    @property
+    def device(self):
+        return self.inference_parameters()[0].device
 
     def parameters(self):
         param_dict = {}

@@ -19,7 +19,7 @@ def learn(env, seed, total_timesteps, log_dir, **kwargs):
     model = Model(**model_args)
     model.training = True
 
-    grad_buffer = GradientBuffer(model, lr=0.001, capacity=100, batch_size=5)
+    grad_buffer = GradientBuffer(model, lr=0.001, capacity=5, batch_size=5)
 
     observation = env.reset()
     reward = None
@@ -36,11 +36,11 @@ def learn(env, seed, total_timesteps, log_dir, **kwargs):
 
         next_observation, reward, done, _ = env.step(action)
         logger.log_step(model, observation, reward)
-        grad_buffer.accumulate()
         observation = next_observation
 
         if done:
-            model.rewards.append(reward)
+            model.final_reward(reward)
+            grad_buffer.evaluate()
             grads = grad_buffer.collect()
             episode_log = logger.log_episode(model, grads)
             plotter.plot(episode_log)

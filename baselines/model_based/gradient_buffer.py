@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 from torch import optim
-from .misc import clear_gradients, clip_gradients, norm_gradients
+from .misc import clear_gradients, clip_gradients, norm_gradients, normalize_gradients_by_time
 
 
 class GradientBuffer(object):
@@ -20,7 +20,7 @@ class GradientBuffer(object):
         self.model = model
         self.parameters = model.parameters()
         self.opt = {k: optim.Adam(v, lr=lr) for k, v in self.parameters.items()}
-        self.current_grads = {k: None for k in self.parameters}
+        # self.current_grads = {k: None for k in self.parameters}
         self.grad_buffer = {k: [] for k in self.parameters}
         self.capacity = capacity
         self.batch_size = batch_size
@@ -28,73 +28,126 @@ class GradientBuffer(object):
         self.norm_grad = norm_grad
         self.n_steps = 0
 
-    def accumulate(self):
-        """
-        Accumulates the current gradients.
-        """
-        # def _check_norm(grads):
-        #     mean_norm = np.mean([grad.norm() for grad in grads])
-        #     print('Gradient Norm: ' + str(mean_norm))
+    # def accumulate(self):
+    #     """
+    #     Accumulates the current gradients.
+    #     """
+    #     # def _check_norm(grads):
+    #     #     mean_norm = np.mean([grad.norm() for grad in grads])
+    #     #     print('Gradient Norm: ' + str(mean_norm))
+    #
+    #     # helper function for gradient accumulation
+    #     def _accumulate(params, current_grads):
+    #         new_grads = []
+    #         for param in params:
+    #             if param.grad is not None:
+    #                 new_grads.append(param.grad.cpu())
+    #             else:
+    #                 new_grads.append(torch.zeros(param.shape))
+    #         if current_grads is None:
+    #             current_grads = new_grads
+    #         else:
+    #             for ind, grad in enumerate(new_grads):
+    #                 if grad is not None:
+    #                     current_grads[ind] += grad
+    #         # _check_norm(current_grads)
+    #         return current_grads
+    #
+    #     # add gradients to current gradients
+    #     for model_name in self.parameters:
+    #         self.current_grads[model_name] = _accumulate(self.parameters[model_name], self.current_grads[model_name])
+    #         # clear the gradients
+    #         clear_gradients(self.parameters[model_name])
+    #
+    #     self.n_steps += 1
 
-        # helper function for gradient accumulation
-        def _accumulate(params, current_grads):
+    def evaluate(self):
+        """
+        Evaluates the free energy and sets gradients using backprop and REINFORCE.
+        """
+        self.n_steps = len(self.model.objectives['observation']) - 1
+        # compute the free energy at each time step of the episode
+        free_energy = torch.zeros(self.n_steps+1)
+        for objective_name, objective in self.model.objectives.items():
+            free_energy = free_energy + torch.stack(objective)
+
+        # calculate sums of future objective terms for REINFORCE gradients
+        future_sums = torch.flip(torch.cumsum(torch.flip(free_energy.detach(), dims=[0]), dim=0), dims=[0])
+        if future_sums.shape[0] > 2:
+            future_sums = (future_sums - future_sums[1:].mean()) / (future_sums[1:].std() + 1e-6)
+        log_probs = torch.stack(self.model.log_probs['action'])
+        reinforce_terms = - log_probs * future_sums
+
+        modified_free_energy = free_energy + reinforce_terms
+        modified_free_energy.sum().backward()
+        # free_energy.sum().backward()
+
+    def collect(self):
+        """
+        Appends the parameters' gradients to the buffer. Clears current gradients.
+        """
+        def _collect(params, buffer):
+            # collect the new gradients from the parameters
             new_grads = []
             for param in params:
                 if param.grad is not None:
                     new_grads.append(param.grad.cpu())
                 else:
                     new_grads.append(torch.zeros(param.shape))
-            if current_grads is None:
-                current_grads = new_grads
-            else:
-                for ind, grad in enumerate(new_grads):
-                    if grad is not None:
-                        current_grads[ind] += grad
-            # _check_norm(current_grads)
-            return current_grads
-
-        # add gradients to current gradients
-        for model_name in self.parameters:
-            self.current_grads[model_name] = _accumulate(self.parameters[model_name], self.current_grads[model_name])
             # clear the gradients
-            clear_gradients(self.parameters[model_name])
+            clear_gradients(params)
 
-        self.n_steps += 1
+            # normalize and clip the gradients
+            normalize_gradients_by_time(new_grads, self.n_steps)
+            if self.clip_grad is not None:
+                clip_gradients(new_grads, self.clip_grad)
+            if self.norm_grad is not None:
+                norm_gradients(new_grads, self.norm_grad)
 
-    def collect(self):
-        """
-        Appends the parameters' current gradients to the buffer.
-        """
-        # apply policy gradients
-        # TODO: this should be in the model
-        # optimality_loss = self.model.policy_loss()
-        # optimality_loss.backward(retain_graph=True)
-        # self.accumulate()
-
-        def _normalize_gradients_by_time(grads, steps):
-            for g in filter(lambda g: g is not None, grads):
-                g.data.div_(steps)
-
-        # helper function to collect gradients
-        def _collect(buffer, current_grads):
+            # append the new gradients to the gradient buffer
             if len(buffer) >= self.capacity:
                 buffer = buffer[-self.capacity+1:-1]
-            _normalize_gradients_by_time(current_grads, self.n_steps)
-            if self.clip_grad is not None:
-                clip_gradients(current_grads, self.clip_grad)
-            if self.norm_grad is not None:
-                norm_gradients(current_grads, self.norm_grad)
-            buffer.append(current_grads)
-            return current_grads
+            buffer.append(new_grads)
+            return new_grads
 
-        # collect current gradients into the buffer and reset
+        # collect new gradients into the buffer and reset
         episode_grads = {}
         for model_name in self.parameters:
-            episode_grads[model_name] = _collect(self.grad_buffer[model_name], self.current_grads[model_name])
-            self.current_grads[model_name] = None
+            episode_grads[model_name] = _collect(self.parameters[model_name], self.grad_buffer[model_name])
 
         self.n_steps = 0
         return episode_grads
+
+
+    # def collect(self):
+    #     """
+    #     Appends the parameters' current gradients to the buffer.
+    #     """
+    #
+    #     def _normalize_gradients_by_time(grads, steps):
+    #         for g in filter(lambda g: g is not None, grads):
+    #             g.data.div_(steps)
+    #
+    #     # helper function to collect gradients
+    #     def _collect(buffer, current_grads):
+    #         if len(buffer) >= self.capacity:
+    #             buffer = buffer[-self.capacity+1:-1]
+    #         _normalize_gradients_by_time(current_grads, self.n_steps)
+    #         if self.clip_grad is not None:
+    #             clip_gradients(current_grads, self.clip_grad)
+    #         if self.norm_grad is not None:
+    #             norm_gradients(current_grads, self.norm_grad)
+    #         buffer.append(current_grads)
+    #         return current_grads
+    #
+    #     # collect current gradients into the buffer and reset
+    #     episode_grads = {}
+    #     for model_name in self.parameters:
+    #         episode_grads[model_name] = _collect(self.grad_buffer[model_name], self.current_grads[model_name])
+    #         self.current_grads[model_name] = None
+    #
+    #     self.n_steps = 0
+    #     return episode_grads
 
     def update(self):
         """
