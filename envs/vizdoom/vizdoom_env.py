@@ -5,6 +5,7 @@ from gym import Env
 from gym.envs.classic_control import rendering
 from vizdoom import DoomGame
 import itertools as it
+from .reward_ranges import get_reward_range, reward_ranges
 
 
 class VizDoomEnv(Env):
@@ -25,11 +26,12 @@ class VizDoomEnv(Env):
         n_combinations = len(self.action_combinations)
         # self.action_space = spaces.MultiDiscrete([2] * n_combinations) # Joe's implementation
         self.action_space = spaces.Discrete(n_combinations)
-        # import pdb; pdb.set_trace()
         self.action_space.n = n_combinations
         self.action_space.dtype = 'uint8'
         output_shape = (self.game.get_screen_height(), self.game.get_screen_width(), self.game.get_screen_channels())
         self.observation_space = spaces.Box(low=0, high=255, shape=output_shape, dtype='uint8')
+        if cfg_name in reward_ranges:
+            self.reward_range = get_reward_range(cfg_name, repeat)
         self.game.init()
 
     def close(self):
@@ -51,12 +53,12 @@ class VizDoomEnv(Env):
         reward = self.game.make_action(action_combo, self.repeat)
         state = self.game.get_state()
         done = self.game.is_episode_finished()
-        # info = self._get_game_variables(state.game_variables)
-        info = {}
         if state is not None:
             observation = state.screen_buffer.transpose(1, 2, 0)
+            info = self._get_game_variables(state.game_variables)
         else:
             observation = np.zeros(shape=self.observation_space.shape, dtype=np.uint8)
+            info = {}
         return observation, reward, done, info
 
     def reset(self):
@@ -87,26 +89,8 @@ class VizDoomEnv(Env):
     def _get_game_variables(self, state_variables):
         info = {}
         if state_variables is not None:
-            info['KILLCOUNT'] = state_variables[0]
-            info['ITEMCOUNT'] = state_variables[1]
-            info['SECRETCOUNT'] = state_variables[2]
-            info['FRAGCOUNT'] = state_variables[3]
-            info['HEALTH'] = state_variables[4]
-            info['ARMOR'] = state_variables[5]
-            info['DEAD'] = state_variables[6]
-            info['ON_GROUND'] = state_variables[7]
-            info['ATTACK_READY'] = state_variables[8]
-            info['ALTATTACK_READY'] = state_variables[9]
-            info['SELECTED_WEAPON'] = state_variables[10]
-            info['SELECTED_WEAPON_AMMO'] = state_variables[11]
-            info['AMMO1'] = state_variables[12]
-            info['AMMO2'] = state_variables[13]
-            info['AMMO3'] = state_variables[14]
-            info['AMMO4'] = state_variables[15]
-            info['AMMO5'] = state_variables[16]
-            info['AMMO6'] = state_variables[17]
-            info['AMMO7'] = state_variables[18]
-            info['AMMO8'] = state_variables[19]
-            info['AMMO9'] = state_variables[20]
-            info['AMMO0'] = state_variables[21]
+            for ind, state_variable  in enumerate(state_variables):
+                state_var = self.game.get_available_game_variables()[ind]
+                state_var_name = str(state_var).split('.')[1]
+                info[state_var_name] = state_variable
         return info

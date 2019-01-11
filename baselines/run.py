@@ -110,7 +110,7 @@ def build_env(args):
                                                                         'to_tensor': True,
                                                                         'transpose': True,
                                                                         'add_batch_dim': True,
-                                                                        'clip_rewards': True})
+                                                                        'recale_rewards': True})
         else:
             frame_stack_size = 4
             env = make_vec_env(env_id, env_type, nenv, seed, gamestate=args.gamestate, reward_scale=args.reward_scale)

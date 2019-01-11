@@ -10,7 +10,7 @@ class GradientBuffer(object):
 
     Args:
         model (Model): the model to optimize
-        lr (float): learning rate
+        lr (float or dict): learning rate(s)
         capacity (int): the size of the gradient buffer
         batch_size (int): the number of gradients to average per batch
         clip_grad (float): clips gradients to the (absolute) value clip_grad
@@ -19,7 +19,9 @@ class GradientBuffer(object):
     def __init__(self, model, lr, capacity, batch_size, clip_grad=None, norm_grad=None):
         self.model = model
         self.parameters = model.parameters()
-        self.opt = {k: optim.Adam(v, lr=lr) for k, v in self.parameters.items()}
+        if type(lr) == float:
+            lr = {k: lr for k in self.parameters}
+        self.opt = {k: optim.Adam(v, lr=lr[k]) for k, v in self.parameters.items()}
         # self.current_grads = {k: None for k in self.parameters}
         self.grad_buffer = {k: [] for k in self.parameters}
         self.capacity = capacity
@@ -80,7 +82,6 @@ class GradientBuffer(object):
 
         modified_free_energy = free_energy + reinforce_terms
         modified_free_energy.sum().backward()
-        # free_energy.sum().backward()
 
     def collect(self):
         """

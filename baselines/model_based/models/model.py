@@ -13,7 +13,8 @@ class Model(nn.Module):
     def __init__(self, state_variable_args, action_variable_args,
                  observation_variable_args, reward_variable_args,
                  state_prior_args, action_prior_args, obs_likelihood_args,
-                 reward_likelihood_args, state_inference_args, action_inference_args):
+                 reward_likelihood_args, state_inference_args,
+                 action_inference_args, misc_args):
         super(Model, self).__init__()
 
         # networks
@@ -41,15 +42,13 @@ class Model(nn.Module):
 
         # miscellaneous
         self.n_inf_iter = 1
-        self.gamma = 0.99
         self.training = False
+        self.optimality_scale = misc_args['optimality_scale']
 
         self.objectives = {'observation': [], 'reward': [], 'optimality': [],
                            'state': [], 'action': []}
         self.log_probs = {'action': []}
-        # self.free_energies = []
-        # self.rewards = []
-        # self.policy_log_probs = []
+
         self.state_inf_free_energies = []
         self.obs_reconstruction = None
         self.obs_prediction = None
@@ -208,7 +207,8 @@ class Model(nn.Module):
             # during an episode or end of an episode
             # TODO: subtracting 1 is a hack, need to rescale reward
             self.objectives['reward'].append(-self.reward_variable.cond_log_likelihood(reward).sum())
-            self.objectives['optimality'].append(-torch.tensor(reward - 1.))
+            optimality = torch.tensor(self.optimality_scale * (reward - 1.))
+            self.objectives['optimality'].append(-optimality)
 
         if observation is None:
             # end of an episode

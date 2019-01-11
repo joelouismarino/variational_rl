@@ -79,9 +79,21 @@ class ToTensor(gym.ObservationWrapper):
         return torch.from_numpy(obs.astype('float32'))
 
 
-def wrap_deepmind_vizdoom(env, episode_life=False, clip_rewards=False, frame_stack=False, scale = False,
-                          skip_frames = False, frame_width=84, frame_height=84, grayscale=True,
-                          to_tensor=False, transpose=False, add_batch_dim=False):
+class RescaleRewardEnv(gym.RewardWrapper):
+    """
+    Rescales the reward to [0, 1].
+    """
+    def __init__(self, env):
+        gym.RewardWrapper.__init__(self, env)
+
+    def reward(self, reward):
+        range = 1. * (self.reward_range[1] - self.reward_range[0])
+        return (reward - self.reward_range[0]) / range
+
+
+def wrap_deepmind_vizdoom(env, episode_life=False, clip_rewards=False, frame_stack=False, scale=False,
+                          skip_frames=False, frame_width=84, frame_height=84, grayscale=True,
+                          to_tensor=False, transpose=False, add_batch_dim=False, recale_rewards=False):
     env = WarpFrame(env, width=frame_width, height=frame_height, grayscale=grayscale)
     if transpose:
         env = Transpose(env)
@@ -93,6 +105,8 @@ def wrap_deepmind_vizdoom(env, episode_life=False, clip_rewards=False, frame_sta
         env = ScaledFloatFrame(env)
     if clip_rewards:
         env = ClipRewardEnv(env)
+    if rescale_rewards:
+        env = RescaleRewardEnv(env)
     if frame_stack:
         env = FrameStack(env, 1) # in default DQN implementation that came installed with VizDoom this was 1, not 4
     if skip_frames:

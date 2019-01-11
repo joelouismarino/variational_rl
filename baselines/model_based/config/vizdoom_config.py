@@ -100,4 +100,6 @@ def get_vizdoom_config(env):
                                             'non_linearity': 'relu',
                                             'dropout': None}
 
+    model_args['misc_args'] = {'optimality_scale': 1e3}
+
     return model_args

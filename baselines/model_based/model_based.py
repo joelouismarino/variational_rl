@@ -18,8 +18,13 @@ def learn(env, seed, total_timesteps, log_dir, **kwargs):
     model_args = get_model_args(env)
     model = Model(**model_args)
     model.training = True
-
-    grad_buffer = GradientBuffer(model, lr=0.001, capacity=5, batch_size=5)
+    lr = {'state_inference_model': 0.001,
+          'action_inference_model': 0.001,
+          'state_prior_model': 0.001,
+          'action_prior_model': 0.,
+          'obs_likelihood_model': 0.001,
+          'reward_likelihood_model': 0.001}
+    grad_buffer = GradientBuffer(model, lr=lr, capacity=5, batch_size=5, clip_grad=1)
 
     observation = env.reset()
     reward = None
