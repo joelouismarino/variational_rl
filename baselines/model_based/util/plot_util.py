@@ -160,9 +160,11 @@ class Plotter:
         elif win_name == 'reward_cll':
             ylabel = 'Reward Cond. Log Likelihood (nats)'
             title = 'Reward Cond. Log Likelihood'
+            xtype = 'line'
         elif win_name == 'optimality_cll':
             ylabel = 'Optimality Cond. Log Likelihood (nats)'
             title = 'Optimality Cond. Log Likelihood'
+            xtype = 'line'
         elif win_name == 'state_inf_imp':
             ylabel = 'Improvement (percent)'
             title = 'State Inference Improvement'
@@ -171,6 +173,7 @@ class Plotter:
             title = 'Episode Length'
             showlegend = False
             xlabel = 'Episode'
+            xtype = 'line'
         elif 'grad' in win_name:
             ylabel = 'Gradient Means'
             title = 'Gradient Means'
@@ -181,17 +184,17 @@ class Plotter:
             ylabel = 'Average State Log Std. Dev.'
             title = 'Average State Log Std. Dev.'
         elif win_name == 'obs_mean':
-            ylabel = 'Obs. Conditional Likeilhood Mean'
-            title = 'Obs. Conditional Likeilhood Mean'
+            ylabel = 'Obs. Conditional Likelihood Mean'
+            title = 'Obs. Conditional Likelihood Mean'
         elif win_name == 'obs_log_std':
-            ylabel = 'Obs. Conditional Likeilhood Log Std. Dev.'
-            title = 'Obs. Conditional Likeilhood Log Std. Dev.'
+            ylabel = 'Obs. Conditional Likelihood Log Std. Dev.'
+            title = 'Obs. Conditional Likelihood Log Std. Dev.'
         elif win_name == 'reward_mean':
-            ylabel = 'Reward Conditional Likeilhood Mean'
-            title = 'Reward Conditional Likeilhood Mean'
+            ylabel = 'Reward Conditional Likelihood Mean'
+            title = 'Reward Conditional Likelihood Mean'
         elif win_name == 'reward_log_std':
-            ylabel = 'Reward Conditional Likeilhood Log Std. Dev.'
-            title = 'Reward Conditional Likeilhood Log Std. Dev.'
+            ylabel = 'Reward Conditional Likelihood Log Std. Dev.'
+            title = 'Reward Conditional Likelihood Log Std. Dev.'
 
         opts = dict(xlabel=xlabel, ylabel=ylabel, title=title, width=width,
                     height=height, xtype=xtype, showlegend=showlegend)

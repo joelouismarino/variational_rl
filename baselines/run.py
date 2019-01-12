@@ -110,7 +110,7 @@ def build_env(args):
                                                                         'to_tensor': True,
                                                                         'transpose': True,
                                                                         'add_batch_dim': True,
-                                                                        'recale_rewards': True})
+                                                                        'rescale_rewards': True})
         else:
             frame_stack_size = 4
             env = make_vec_env(env_id, env_type, nenv, seed, gamestate=args.gamestate, reward_scale=args.reward_scale)
@@ -239,7 +239,7 @@ def main():
             actions, _, state, _ = model.step(obs,S=state, M=dones)
             obs, _, done, _ = env.step(actions)
             env.render()
-            time.sleep(0.1)
+            time.sleep(0.02)
             done = done.any() if isinstance(done, np.ndarray) else done
             if done:
                 obs = env.reset()

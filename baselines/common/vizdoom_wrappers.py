@@ -93,7 +93,7 @@ class RescaleRewardEnv(gym.RewardWrapper):
 
 def wrap_deepmind_vizdoom(env, episode_life=False, clip_rewards=False, frame_stack=False, scale=False,
                           skip_frames=False, frame_width=84, frame_height=84, grayscale=True,
-                          to_tensor=False, transpose=False, add_batch_dim=False, recale_rewards=False):
+                          to_tensor=False, transpose=False, add_batch_dim=False, rescale_rewards=False):
     env = WarpFrame(env, width=frame_width, height=frame_height, grayscale=grayscale)
     if transpose:
         env = Transpose(env)

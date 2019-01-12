@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import numpy as np
 import torch.distributions.constraints as constraints
 
 
@@ -54,7 +55,7 @@ class ObservedVariable(nn.Module):
         else:
             # probability density function
             if type(observation) != tuple:
-                if len(observation.shape) == 4:
+                if len(np.shape(observation)) == 4:
                     # image observation
                     observation = (observation, observation + 1./256)
                 else:
