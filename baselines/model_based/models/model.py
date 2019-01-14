@@ -54,10 +54,10 @@ class Model(nn.Module):
         self.obs_prediction = None
 
     def act(self, observation, reward=None):
-        self.generate_reward()
         self.step_state()
-        self.state_inference(observation)
+        self.state_inference(observation, reward)
         self.generate_observation()
+        self.generate_reward()
         self.step_action()
         self.action_inference()
         action = self.action_variable.sample()
@@ -66,6 +66,8 @@ class Model(nn.Module):
         return self.convert_action(action).cpu().numpy()
 
     def final_reward(self, reward):
+        self.step_state()
+        self.state_variable.init_approx_post()
         self.generate_reward()
         if self.training:
             self._collect_objectives_and_log_probs(None, reward)
@@ -92,7 +94,7 @@ class Model(nn.Module):
     #     clear_gradients(self.generative_parameters())
     #     self.generative_mode()
 
-    def state_inference(self, observation):
+    def state_inference(self, observation, reward):
         self.inference_mode()
         self.state_inf_free_energies = []
         # infer the approx. posterior on the state
@@ -100,11 +102,17 @@ class Model(nn.Module):
         for inf_iter in range(self.n_inf_iter):
             # evaluate conditional log likelihood of observation and state KL divergence
             self.generate_observation()
+            if reward is not None:
+                self.generate_reward()
             if inf_iter == 0:
                 self.obs_prediction = self.observation_variable.likelihood_dist.loc.detach()
             obs_log_likelihood = self.observation_variable.cond_log_likelihood(observation).sum()
+            if reward is not None:
+                reward_log_likelihood = self.reward_variable.cond_log_likelihood(reward).sum()
             state_kl = self.state_variable.kl_divergence().sum()
             state_inf_free_energy = state_kl - obs_log_likelihood
+            if reward is not None:
+                state_inf_free_energy -= reward_log_likelihood
             self.state_inf_free_energies.append(state_inf_free_energy)
             (state_inf_free_energy).backward(retain_graph=True)
             # update approx. posterior
@@ -113,9 +121,15 @@ class Model(nn.Module):
             self.state_variable.infer(inf_input)
         # final evaluation
         self.generate_observation()
+        if reward is not None:
+            self.generate_reward()
         obs_log_likelihood = self.observation_variable.cond_log_likelihood(observation).sum()
+        if reward is not None:
+            reward_log_likelihood = self.reward_variable.cond_log_likelihood(reward).sum()
         state_kl = self.state_variable.kl_divergence().sum()
         state_inf_free_energy = state_kl - obs_log_likelihood
+        if reward is not None:
+            state_inf_free_energy -= reward_log_likelihood
         self.state_inf_free_energies.append(state_inf_free_energy)
         (state_inf_free_energy).backward(retain_graph=True)
         clear_gradients(self.generative_parameters())
@@ -163,6 +177,7 @@ class Model(nn.Module):
         state = self.state_variable.sample()
         action = self.action_variable.sample()
         likelihood_input = self.reward_likelihood_model(torch.cat((state, action), dim=1))
+        # likelihood_input = self.reward_likelihood_model(state)
         self.reward_variable.generate(likelihood_input)
 
     def free_energy(self, observation, reward):
