@@ -50,7 +50,7 @@ class Logger:
         self.episode_log['obs_cll'].append(model.observation_variable.cond_log_likelihood(observation).sum().item())
         if reward is not None:
             self.episode_log['reward_cll'].append(model.reward_variable.cond_log_likelihood(reward).sum().item())
-            self.episode_log['optimality_cll'].append(reward)
+            self.episode_log['optimality_cll'].append(model.optimality_scale * (reward - 1.))
         else:
             self.episode_log['reward_cll'].append(0)
             self.episode_log['optimality_cll'].append(0)

@@ -13,7 +13,7 @@ def print_step_metrics(step_num, n_episodes, model, observation, reward):
     print('             Observation CLL: ' + str(model.observation_variable.cond_log_likelihood(observation).sum().item()))
     if reward is not None:
         print('             Reward CLL: ' + str(model.reward_variable.cond_log_likelihood(reward).sum().item()))
-        print('             Optimality CLL: ' + str(reward))
+        print('             Optimality CLL: ' + str(model.optimality_scale * (reward - 1.)))
 
 
 def print_episode_metrics(episode, episode_log):
@@ -24,4 +24,4 @@ def print_episode_metrics(episode, episode_log):
     print('         Action KL: ' + str(np.mean(episode_log['action_kl'])))
     print('         Observation CLL: ' + str(np.mean(episode_log['obs_cll'])))
     print('         Reward CLL: ' + str(np.mean(episode_log['reward_cll'])))
-    print('         Optimality CLL: ' + str(np.mean(episode_log['action_kl'])))
+    print('         Optimality CLL: ' + str(np.mean(episode_log['optimality_cll'])))
