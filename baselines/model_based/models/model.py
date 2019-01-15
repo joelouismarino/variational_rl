@@ -59,6 +59,7 @@ class Model(nn.Module):
         self.obs_prediction = None
 
     def act(self, observation, reward=None, done=False):
+        observation, reward, done = self._change_device(observation, reward, done)
         self.step_state()
         self.state_inference(observation, reward)
         self.generate_observation()
@@ -69,9 +70,10 @@ class Model(nn.Module):
         action = self.action_variable.sample()
         if self.training:
             self._collect_objectives_and_log_probs(observation, reward, done)
-        return self.convert_action(action).cpu().numpy()
+        return self._convert_action(action).cpu().numpy()
 
     def final_reward(self, reward, done):
+        _, reward, done = self._change_device(None, reward, done)
         self.step_state()
         self.state_variable.init_approx_post()
         self.generate_reward()
@@ -187,12 +189,14 @@ class Model(nn.Module):
         self.done_variable.generate(likelihood_input)
 
     def free_energy(self, observation, reward, done):
+        observation, reward, done = self._change_device(observation, reward, done)
         cond_log_likelihood = self.cond_log_likelihood(observation, reward, done)
         kl_divergence = self.kl_divergence()
         free_energy = kl_divergence - cond_log_likelihood
         return free_energy
 
     def cond_log_likelihood(self, observation, reward, done):
+        observation, reward, done = self._change_device(observation, reward, done)
         obs_log_likelihood = self.observation_variable.cond_log_likelihood(observation).sum()
         done_log_likelihood = self.done_variable.cond_log_likelihood(done).sum()
         reward_log_likelihood = opt_log_likelihood = 0.
@@ -213,15 +217,15 @@ class Model(nn.Module):
 
         if reward is None:
             # beginning of an episode
-            self.objectives['reward'].append(torch.tensor(0.))
-            self.objectives['optimality'].append(torch.tensor(0.))
+            self.objectives['reward'].append(torch.tensor(0.).to(self.device))
+            self.objectives['optimality'].append(torch.tensor(0.).to(self.device))
 
-            self.log_probs['action'].append(torch.tensor(0.))
+            self.log_probs['action'].append(torch.tensor(0.).to(self.device))
         else:
             # during an episode or end of an episode
             # TODO: subtracting 1 is a hack, need to rescale reward
             self.objectives['reward'].append(-self.reward_variable.cond_log_likelihood(reward).sum())
-            optimality = torch.tensor(self.optimality_scale * (reward - 1.))
+            optimality = self.optimality_scale * (reward - 1.)
             self.objectives['optimality'].append(-optimality)
 
         if observation is not None:
@@ -230,19 +234,34 @@ class Model(nn.Module):
             self.objectives['state'].append(self.state_variable.kl_divergence().sum())
             self.objectives['action'].append(self.action_variable.kl_divergence().sum())
 
-            action = self.convert_action(self.action_variable.sample())
+            action = self._convert_action(self.action_variable.sample())
             self.log_probs['action'].append(self.action_variable.approx_post_dist.log_prob(action).sum())
         else:
             # end of an episode
-            self.objectives['observation'].append(torch.tensor(0.))
-            self.objectives['state'].append(torch.tensor(0.))
-            self.objectives['action'].append(torch.tensor(0.))
+            self.objectives['observation'].append(torch.tensor(0.).to(self.device))
+            self.objectives['state'].append(torch.tensor(0.).to(self.device))
+            self.objectives['action'].append(torch.tensor(0.).to(self.device))
 
-    def convert_action(self, action):
+    def _convert_action(self, action):
         # converts categorical action from one-hot encoding to the action index
         if self.action_variable.approx_post_dist_type == getattr(torch.distributions, 'Categorical'):
             action = one_hot_to_index(action)
         return action
+
+    def _change_device(self, observation, reward, done):
+        if observation is not None:
+            if observation.device != self.device:
+                observation = observation.to(self.device)
+        if reward is not None:
+            if type(reward) == float:
+                reward = torch.tensor(reward).to(torch.float32)
+            if reward.device != self.device:
+                reward = reward.to(self.device)
+        if type(done) == bool:
+            done = torch.tensor(done).to(torch.float32)
+        if done.device != self.device:
+            done = done.to(self.device)
+        return observation, reward, done
 
     def reset(self):
         # reset the variables

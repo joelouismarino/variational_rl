@@ -69,7 +69,7 @@ class GradientBuffer(object):
         """
         self.n_steps = len(self.model.objectives['observation']) - 1
         # compute the free energy at each time step of the episode
-        free_energy = torch.zeros(self.n_steps+1)
+        free_energy = torch.zeros(self.n_steps+1).to(self.model.device)
         for objective_name, objective in self.model.objectives.items():
             free_energy = free_energy + torch.stack(objective)
 
@@ -169,7 +169,7 @@ class GradientBuffer(object):
                     for j in range(self.batch_size):
                         mean_grads[i] += buffer[j][i]
                     mean_grads[i] /= self.batch_size
-                    parameters[i].grad = mean_grads[i]
+                    parameters[i].grad = mean_grads[i].to(self.model.device)
                 optimizer.step()
                 buffer = []
             return buffer

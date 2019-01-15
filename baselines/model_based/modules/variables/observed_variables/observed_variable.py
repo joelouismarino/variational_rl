@@ -54,6 +54,7 @@ class ObservedVariable(nn.Module):
             return self.likelihood_dist.sample()
 
     def cond_log_likelihood(self, observation):
+        observation = self._change_device(observation)
         if self.likelihood_dist.has_enumerate_support:
             # probability mass function
             return self.likelihood_dist.log_prob(observation)
@@ -69,6 +70,17 @@ class ObservedVariable(nn.Module):
                     observation = (observation, observation + 0.01)
 
             return torch.log(self.likelihood_dist.cdf(observation[1]) - self.likelihood_dist.cdf(observation[0]) + 1e-6)
+
+    @property
+    def device(self):
+        return list(self.parameters())[0].device
+
+    def _change_device(self, observation):
+        if type(observation) in [float, bool]:
+            observation = torch.tensor(observation).to(torch.float32)
+        if observation.device != self.device:
+            observation = observation.to(self.device)
+        return observation
 
     def reset(self):
         self.likelihood_dist = None

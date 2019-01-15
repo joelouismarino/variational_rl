@@ -8,7 +8,7 @@ from .util.log_util import Logger
 from .util.print_util import print_step_metrics, print_episode_metrics
 
 
-def learn(env, seed, total_timesteps, log_dir, **kwargs):
+def learn(env, seed, total_timesteps, log_dir, device=None, **kwargs):
 
     # torch.manual_seed(seed)
 
@@ -17,6 +17,9 @@ def learn(env, seed, total_timesteps, log_dir, **kwargs):
 
     model_args = get_model_args(env)
     model = Model(**model_args)
+    if device is not None:
+        model.to(device)
+    model.reset()
     model.training = True
     lr = {'state_inference_model': 0.001,
           'action_inference_model': 0.001,

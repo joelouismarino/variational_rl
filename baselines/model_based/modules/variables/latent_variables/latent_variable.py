@@ -83,7 +83,8 @@ class LatentVariable(nn.Module):
                 sample = self.approx_post_dist.sample()
             if self.approx_post_dist_type == getattr(torch.distributions, 'Categorical'):
                 # convert to one-hot encoding
-                one_hot_sample = torch.zeros(sample.shape[0], self.n_variables)
+                device = self.initial_prior_params['logits'].device
+                one_hot_sample = torch.zeros(sample.shape[0], self.n_variables).to(device)
                 one_hot_sample[:, sample] = 1.
                 sample = one_hot_sample
             self._sample = sample
