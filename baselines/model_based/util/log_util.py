@@ -1,5 +1,6 @@
 from time import strftime
 import pickle
+import numpy as np
 import os
 import torch
 
@@ -20,7 +21,7 @@ class Logger:
         log_str (str): name of the log (date and time)
         chkpt_interval (int): episode interval for model checkpointing
     """
-    def __init__(self, log_dir, log_str=None, ckpt_interval=1000):
+    def __init__(self, log_dir, log_str=None, ckpt_interval=5000):
         self.log_dir = log_dir
         if log_str is not None:
             self.log_str = log_str
@@ -28,10 +29,13 @@ class Logger:
             self.log_str = strftime("%b_%d_%Y_%H_%M_%S")
         self.log_path = os.path.join(self.log_dir, self.log_str)
         os.makedirs(self.log_path)
+        os.makedirs(os.path.join(self.log_path, 'episodes'))
         self.episode_log = {}
         self._init_episode_log()
         self._episode = 0
         self._ckpt_interval = ckpt_interval
+        self._saved_episode = {'reconstruction': [], 'prediction': [],
+                               'observation': []}
 
     def _init_episode_log(self):
         self.episode_log = {}
@@ -74,10 +78,10 @@ class Logger:
 
         # TODO: log action and optimality (discrete distributions)
 
-
         if self._episode % self._ckpt_interval == 0:
-            pass
-            # TODO: save observation, prediction, and reconstruction
+            self._saved_episode['reconstruction'].append(model.obs_reconstruction.detach().cpu().numpy()[0])
+            self._saved_episode['prediction'].append(model.obs_prediction.detach().cpu().numpy()[0])
+            self._saved_episode['observation'].append(observation.detach().cpu().numpy()[0])
 
     def log_episode(self, model, grads):
 
@@ -94,6 +98,7 @@ class Logger:
 
         if self._episode % self._ckpt_interval == 0:
             self.checkpoint(model)
+            self._save_episode()
 
         # copy the episode log and add the gradient mean
         episode_log = {k: v for k, v in self.episode_log.items()}
@@ -102,28 +107,25 @@ class Logger:
             episode_log[model_name + '_grad'] = [grad_mean.item()]
 
         self._init_episode_log()
-
+        self._episode += 1
         return episode_log
+
+    def _save_episode(self):
+        # make a directory for this episode
+        episode_path = os.path.join(self.log_path, 'episodes', str(self._episode))
+        os.makedirs(episode_path)
+
+        reconstructions = np.stack(self._saved_episode['reconstruction'])
+        predictions = np.stack(self._saved_episode['prediction'])
+        observations = np.stack(self._saved_episode['observation'])
+
+        pickle.dump(reconstructions, open(os.path.join(episode_path, 'reconstructions.p'), 'wb'))
+        pickle.dump(predictions, open(os.path.join(episode_path, 'predictions.p'), 'wb'))
+        pickle.dump(observations, open(os.path.join(episode_path, 'observations.p'), 'wb'))
+
+        self._saved_episode = {'reconstruction': [], 'prediction': [],
+                               'observation': []}
 
     def checkpoint(self, model):
         # checkpoint the model, save episode metrics/observations?
         pass
-
-    # def add_log(self, step_num, model, observation, reward):
-    #     self.log['Step'].append(step_num)
-    #     self.log['Free Energy'].append(model.free_energy(observation, reward).item())
-    #     self.log['KL'].append(model.kl_divergence().sum().item())
-    #     self.log['State KL'].append(model.state_variable.kl_divergence().sum().item())
-    #     self.log['Action KL'].append(model.action_variable.kl_divergence().sum().item())
-    #     self.log['CLL'].append(model.cond_log_likelihood(observation, reward).item())
-    #     self.log['Obs CLL'].append(model.observation_variable.cond_log_likelihood(observation).sum().item())
-    #     if reward is not None:
-    #         self.log['Reward CLL'].append(model.reward_variable.cond_log_likelihood(reward).sum().item())
-    #         self.log['Optimality CLL'].append(reward)
-    #     else:
-    #         self.log['Reward CLL'].append(0)
-    #         self.log['Optimality CLL'].append(0)
-    #     state_inf_improvement = model.state_inf_free_energies[0] - model.state_inf_free_energies[-1]
-    #     state_inf_improvement /= model.state_inf_free_energies[0]
-    #     state_inf_improvement *= 100.
-    #     self.log['State Inf. Improvement'].append(state_inf_improvement.item())
