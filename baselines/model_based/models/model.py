@@ -191,7 +191,7 @@ class Model(nn.Module):
         reward_log_likelihood = opt_log_likelihood = 0.
         if reward is not None:
             reward_log_likelihood = self.reward_variable.cond_log_likelihood(reward).sum()
-            opt_log_likelihood = reward
+            opt_log_likelihood = self.optimality_scale * (reward - 1.)
         cond_log_likelihood = obs_log_likelihood + reward_log_likelihood + opt_log_likelihood
         return cond_log_likelihood
 
