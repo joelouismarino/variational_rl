@@ -12,8 +12,9 @@ class Model(nn.Module):
     """
     def __init__(self, state_variable_args, action_variable_args,
                  observation_variable_args, reward_variable_args,
-                 state_prior_args, action_prior_args, obs_likelihood_args,
-                 reward_likelihood_args, state_inference_args,
+                 done_variable_args, state_prior_args, action_prior_args,
+                 obs_likelihood_args, reward_likelihood_args,
+                 done_likelihood_args, state_inference_args,
                  action_inference_args, misc_args):
         super(Model, self).__init__()
 
@@ -22,6 +23,7 @@ class Model(nn.Module):
         self.action_prior_model = get_network(action_prior_args)
         self.obs_likelihood_model = get_network(obs_likelihood_args)
         self.reward_likelihood_model = get_network(reward_likelihood_args)
+        self.done_likelihood_model = get_network(done_likelihood_args)
         self.state_inference_model = get_network(state_inference_args)
         self.action_inference_model = get_network(action_inference_args)
 
@@ -40,45 +42,42 @@ class Model(nn.Module):
         reward_variable_args['n_input'] = self.reward_likelihood_model.n_out
         self.reward_variable = get_variable(latent=False, args=reward_variable_args)
 
+        done_variable_args['n_input'] = self.done_likelihood_model.n_out
+        self.done_variable = get_variable(latent=False, args=done_variable_args)
+
         # miscellaneous
-        self.n_inf_iter = 1
+        self.n_inf_iter = misc_args['n_inf_iter']
         self.training = False
         self.optimality_scale = misc_args['optimality_scale']
 
         self.objectives = {'observation': [], 'reward': [], 'optimality': [],
-                           'state': [], 'action': []}
+                           'done': [], 'state': [], 'action': []}
         self.log_probs = {'action': []}
 
         self.state_inf_free_energies = []
         self.obs_reconstruction = None
         self.obs_prediction = None
 
-    def act(self, observation, reward=None):
+    def act(self, observation, reward=None, done=False):
         self.step_state()
         self.state_inference(observation, reward)
         self.generate_observation()
         self.generate_reward()
+        self.generate_done()
         self.step_action()
         self.action_inference()
         action = self.action_variable.sample()
         if self.training:
-            self._collect_objectives_and_log_probs(observation, reward)
+            self._collect_objectives_and_log_probs(observation, reward, done)
         return self.convert_action(action).cpu().numpy()
 
-    def final_reward(self, reward):
+    def final_reward(self, reward, done):
         self.step_state()
         self.state_variable.init_approx_post()
         self.generate_reward()
+        self.generate_done()
         if self.training:
-            self._collect_objectives_and_log_probs(None, reward)
-
-    # free_energy = self.free_energy(observation, reward)
-    # self.free_energies.append(free_energy)
-    # free_energy.backward(retain_graph=True)
-    # if reward is not None:
-        # self.rewards.append(reward)
-    # log_prob = self.action_variable.approx_post_dist.log_prob(action)
-    # self.policy_log_probs.append(log_prob)
+            self._collect_objectives_and_log_probs(None, reward, done)
 
     # def state_inference(self, observation):
     #     self.inference_mode()
@@ -180,19 +179,27 @@ class Model(nn.Module):
         # likelihood_input = self.reward_likelihood_model(state)
         self.reward_variable.generate(likelihood_input)
 
-    def free_energy(self, observation, reward):
-        cond_log_likelihood = self.cond_log_likelihood(observation, reward)
+    def generate_done(self):
+        # generate the conditional likelihood for episode being done
+        state = self.state_variable.sample()
+        action = self.action_variable.sample()
+        likelihood_input = self.done_likelihood_model(torch.cat((state, action), dim=1))
+        self.done_variable.generate(likelihood_input)
+
+    def free_energy(self, observation, reward, done):
+        cond_log_likelihood = self.cond_log_likelihood(observation, reward, done)
         kl_divergence = self.kl_divergence()
         free_energy = kl_divergence - cond_log_likelihood
         return free_energy
 
-    def cond_log_likelihood(self, observation, reward):
+    def cond_log_likelihood(self, observation, reward, done):
         obs_log_likelihood = self.observation_variable.cond_log_likelihood(observation).sum()
+        done_log_likelihood = self.done_variable.cond_log_likelihood(done).sum()
         reward_log_likelihood = opt_log_likelihood = 0.
         if reward is not None:
             reward_log_likelihood = self.reward_variable.cond_log_likelihood(reward).sum()
             opt_log_likelihood = self.optimality_scale * (reward - 1.)
-        cond_log_likelihood = obs_log_likelihood + reward_log_likelihood + opt_log_likelihood
+        cond_log_likelihood = obs_log_likelihood + reward_log_likelihood + opt_log_likelihood + done_log_likelihood
         return cond_log_likelihood
 
     def kl_divergence(self):
@@ -201,13 +208,21 @@ class Model(nn.Module):
         kl_divergence = state_kl_divergence + action_kl_divergence
         return kl_divergence
 
-    def _collect_objectives_and_log_probs(self, observation, reward):
+    def _collect_objectives_and_log_probs(self, observation, reward, done):
+        self.objectives['done'].append(-self.done_variable.cond_log_likelihood(done).sum())
+
         if reward is None:
             # beginning of an episode
             self.objectives['reward'].append(torch.tensor(0.))
             self.objectives['optimality'].append(torch.tensor(0.))
 
             self.log_probs['action'].append(torch.tensor(0.))
+        else:
+            # during an episode or end of an episode
+            # TODO: subtracting 1 is a hack, need to rescale reward
+            self.objectives['reward'].append(-self.reward_variable.cond_log_likelihood(reward).sum())
+            optimality = torch.tensor(self.optimality_scale * (reward - 1.))
+            self.objectives['optimality'].append(-optimality)
 
         if observation is not None:
             # beginning of an episode or during an episode
@@ -217,15 +232,7 @@ class Model(nn.Module):
 
             action = self.convert_action(self.action_variable.sample())
             self.log_probs['action'].append(self.action_variable.approx_post_dist.log_prob(action).sum())
-
-        if reward is not None:
-            # during an episode or end of an episode
-            # TODO: subtracting 1 is a hack, need to rescale reward
-            self.objectives['reward'].append(-self.reward_variable.cond_log_likelihood(reward).sum())
-            optimality = torch.tensor(self.optimality_scale * (reward - 1.))
-            self.objectives['optimality'].append(-optimality)
-
-        if observation is None:
+        else:
             # end of an episode
             self.objectives['observation'].append(torch.tensor(0.))
             self.objectives['state'].append(torch.tensor(0.))
@@ -243,16 +250,18 @@ class Model(nn.Module):
         self.action_variable.reset()
         self.observation_variable.reset()
         self.reward_variable.reset()
+        self.done_variable.reset()
 
         # reset the networks
         self.state_prior_model.reset()
         self.action_prior_model.reset()
         self.obs_likelihood_model.reset()
         self.reward_likelihood_model.reset()
+        self.done_likelihood_model.reset()
 
         # reset the objectives and log probs
         self.objectives = {'observation': [], 'reward': [], 'optimality': [],
-                           'state': [], 'action': []}
+                           'done': [], 'state': [], 'action': []}
         self.log_probs = {'action': []}
 
     @property
@@ -286,6 +295,10 @@ class Model(nn.Module):
         param_dict['reward_likelihood_model'].extend(list(self.reward_likelihood_model.parameters()))
         param_dict['reward_likelihood_model'].extend(list(self.reward_variable.parameters()))
 
+        param_dict['done_likelihood_model'] = nn.ParameterList()
+        param_dict['done_likelihood_model'].extend(list(self.done_likelihood_model.parameters()))
+        param_dict['done_likelihood_model'].extend(list(self.done_variable.parameters()))
+
         return param_dict
 
     def inference_parameters(self):
@@ -302,10 +315,12 @@ class Model(nn.Module):
         params.extend(list(self.action_prior_model.parameters()))
         params.extend(list(self.obs_likelihood_model.parameters()))
         params.extend(list(self.reward_likelihood_model.parameters()))
+        params.extend(list(self.done_likelihood_model.parameters()))
         params.extend(list(self.state_variable.generative_parameters()))
         params.extend(list(self.action_variable.generative_parameters()))
         params.extend(list(self.observation_variable.parameters()))
         params.extend(list(self.reward_variable.parameters()))
+        params.extend(list(self.done_variable.parameters()))
         return params
 
     def inference_mode(self):
@@ -313,9 +328,11 @@ class Model(nn.Module):
         self.action_variable.inference_mode()
         self.obs_likelihood_model.detach_hidden_state()
         self.reward_likelihood_model.detach_hidden_state()
+        self.done_likelihood_model.detach_hidden_state()
 
     def generative_mode(self):
         self.state_variable.generative_mode()
         self.action_variable.generative_mode()
         self.obs_likelihood_model.attach_hidden_state()
         self.reward_likelihood_model.attach_hidden_state()
+        self.done_likelihood_model.attach_hidden_state()

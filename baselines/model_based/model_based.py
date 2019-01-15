@@ -23,16 +23,18 @@ def learn(env, seed, total_timesteps, log_dir, **kwargs):
           'state_prior_model': 0.001,
           'action_prior_model': 0.,
           'obs_likelihood_model': 0.001,
-          'reward_likelihood_model': 0.001}
+          'reward_likelihood_model': 0.001,
+          'done_likelihood_model': 0.001}
     grad_buffer = GradientBuffer(model, lr=lr, capacity=5, batch_size=5, clip_grad=1)
 
     observation = env.reset()
     reward = None
+    done=False
     episode = 0
 
     for step in range(total_timesteps):
 
-        action = model.act(observation, reward)
+        action = model.act(observation, reward, done)
 
         if step % 50 == 0:
             plotter.plot_image(observation, 'Observation')
@@ -40,11 +42,11 @@ def learn(env, seed, total_timesteps, log_dir, **kwargs):
             plotter.plot_image(model.obs_reconstruction, 'Reconstruction')
 
         next_observation, reward, done, _ = env.step(action)
-        logger.log_step(model, observation, reward)
+        logger.log_step(model, observation, reward, done)
         observation = next_observation
 
         if done:
-            model.final_reward(reward)
+            model.final_reward(reward, done)
             grad_buffer.evaluate()
             grads = grad_buffer.collect()
             episode_log = logger.log_episode(model, grads)

@@ -3,16 +3,12 @@ import pickle
 import os
 import torch
 
-log_items = ['free_energy', 'state_kl', 'action_kl', 'obs_cll', 'reward_cll',
-             'optimality_cll', 'state_inf_imp', 'state_approx_post_mean',
+log_items = ['free_energy', 'state_kl', 'action_kl', 'obs_cll', 'done_cll',
+             'reward_cll', 'optimality_cll', 'state_inf_imp', 'state_approx_post_mean',
              'state_approx_post_log_std', 'state_prior_mean', 'state_prior_log_std',
              'obs_cond_likelihood_mean', 'obs_cond_likelihood_log_std',
-             'reward_cond_likelihood_mean', 'reward_cond_likelihood_log_std']
-
-# TODO: implement saving of episode frames (both observations and predictions)
-#       and maybe also distributions of all variables
-
-# TODO: implement loading model and log from saved files
+             'reward_cond_likelihood_mean', 'reward_cond_likelihood_log_std',
+             'done_cond_likelihood_mean']
 
 class Logger:
     """
@@ -42,12 +38,13 @@ class Logger:
         for metric in log_items:
             self.episode_log[metric] = []
 
-    def log_step(self, model, observation, reward):
+    def log_step(self, model, observation, reward, done):
         # metrics
-        self.episode_log['free_energy'].append(model.free_energy(observation, reward).item())
+        self.episode_log['free_energy'].append(model.free_energy(observation, reward, done).item())
         self.episode_log['state_kl'].append(model.state_variable.kl_divergence().sum().item())
         self.episode_log['action_kl'].append(model.action_variable.kl_divergence().sum().item())
         self.episode_log['obs_cll'].append(model.observation_variable.cond_log_likelihood(observation).sum().item())
+        self.episode_log['done_cll'].append(model.done_variable.cond_log_likelihood(done).sum().item())
         if reward is not None:
             self.episode_log['reward_cll'].append(model.reward_variable.cond_log_likelihood(reward).sum().item())
             self.episode_log['optimality_cll'].append(model.optimality_scale * (reward - 1.))
@@ -72,6 +69,8 @@ class Logger:
 
         self.episode_log['reward_cond_likelihood_mean'].append(model.reward_variable.likelihood_dist.loc.mean().item())
         self.episode_log['reward_cond_likelihood_log_std'].append(model.reward_variable.likelihood_dist.scale.log().mean().item())
+
+        self.episode_log['done_cond_likelihood_mean'].append(model.done_variable.likelihood_dist.logits.sigmoid().mean().item())
 
         # TODO: log action and optimality (discrete distributions)
 

@@ -25,7 +25,7 @@ def get_vizdoom_config(env):
         raise NotImplementedError
 
     # state
-    n_state_variables = 100
+    n_state_variables = 200
     model_args['state_variable_args'] = {'type': 'fully_connected',
                                          'prior_dist': 'Normal',
                                          'approx_post_dist': 'Normal',
@@ -100,6 +100,21 @@ def get_vizdoom_config(env):
                                             'non_linearity': 'relu',
                                             'dropout': None}
 
-    model_args['misc_args'] = {'optimality_scale': 1e3}
+    # done
+    model_args['done_variable_args'] = {'type': 'fully_connected',
+                                        'likelihood_dist': 'Bernoulli',
+                                        'n_variables': 1}
+
+    model_args['done_likelihood_args'] = {'type': 'fully_connected',
+                                          'n_layers': 1,
+                                          'n_input': n_state_variables + n_action_variables,
+                                          'n_units': 100,
+                                          'connectivity': 'sequential',
+                                          'batch_norm': False,
+                                          'non_linearity': 'relu',
+                                          'dropout': None}
+
+    model_args['misc_args'] = {'optimality_scale': 1e3,
+                               'n_inf_iter': 1}
 
     return model_args

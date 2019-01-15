@@ -12,18 +12,21 @@ class Plotter:
     def __init__(self, log_str):
         self.env_id = log_str
         self.vis = Visdom(env=self.env_id)
-        self.metric_plot_names = ['free_energy', 'reward_cll', 'obs_cll',
+        self.metric_plot_names = ['free_energy', 'reward_cll', 'obs_cll', 'done_cll',
                                   'optimality_cll', 'state_kl', 'action_kl',
                                   'state_inf_imp']
         self.dist_plot_names = ['state_approx_post_mean', 'state_approx_post_log_std',
                                 'state_prior_mean', 'state_prior_log_std',
                                 'obs_cond_likelihood_mean', 'obs_cond_likelihood_log_std',
-                                'reward_cond_likelihood_mean', 'reward_cond_likelihood_log_std']
+                                'reward_cond_likelihood_mean', 'reward_cond_likelihood_log_std',
+                                'done_cond_likelihood_mean']
         self.dist_window_names = ['state_mean', 'state_log_std', 'obs_mean',
-                                  'obs_log_std', 'reward_mean', 'reward_log_std']
+                                  'obs_log_std', 'reward_mean', 'reward_log_std',
+                                  'done_mean']
         self.model_grad_plot_names = ['state_inference_model_grad', 'action_inference_model_grad',
                                       'state_prior_model_grad', 'action_prior_model_grad',
-                                      'obs_likelihood_model_grad', 'reward_likelihood_model_grad']
+                                      'obs_likelihood_model_grad', 'reward_likelihood_model_grad',
+                                      'done_likelihood_model_grad']
         self.img_names = ['recon', 'obs', 'pred']
         windows = self.metric_plot_names + self.dist_window_names + self.img_names + ['grad_means', 'episode_length']
         self._init_windows(windows)
@@ -136,6 +139,8 @@ class Plotter:
             return 'reward_mean'
         elif plot_name == 'reward_cond_likelihood_log_std':
             return 'reward_log_std'
+        elif plot_name == 'done_cond_likelihood_mean':
+            return 'done_mean'
 
     def _get_opts(self, win_name):
         xlabel = 'Time Step'
@@ -164,6 +169,10 @@ class Plotter:
         elif win_name == 'optimality_cll':
             ylabel = 'Optimality Cond. Log Likelihood (nats)'
             title = 'Optimality Cond. Log Likelihood'
+            xtype = 'line'
+        elif win_name == 'done_cll':
+            ylabel = 'Done Cond. Log Likelihood (nats)'
+            title = 'Done Cond. Log Likelihood'
             xtype = 'line'
         elif win_name == 'state_inf_imp':
             ylabel = 'Improvement (percent)'
@@ -195,6 +204,9 @@ class Plotter:
         elif win_name == 'reward_log_std':
             ylabel = 'Reward Conditional Likelihood Log Std. Dev.'
             title = 'Reward Conditional Likelihood Log Std. Dev.'
+        elif win_name == 'done_mean':
+            ylabel = 'Done Conditional Likelihood Mean'
+            title = 'Done Conditional Likelihood Mean'
 
         opts = dict(xlabel=xlabel, ylabel=ylabel, title=title, width=width,
                     height=height, xtype=xtype, showlegend=showlegend)

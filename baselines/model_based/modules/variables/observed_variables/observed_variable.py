@@ -11,8 +11,13 @@ class ObservedVariable(nn.Module):
         self.distribution_type = getattr(torch.distributions, likelihood_dist)
         self.likelihood_dist = None
         self.likelihood_log_scale = None
-        parameter_names = list(self.distribution_type.arg_constraints.keys())
+        if likelihood_dist in ['Bernoulli', 'Categorical']:
+            # output the logits
+            parameter_names = ['logits']
+        else:
+            parameter_names = list(self.distribution_type.arg_constraints.keys())
         if 'scale' in parameter_names:
+            # global log scale
             self.likelihood_log_scale = nn.Parameter(torch.zeros(1), requires_grad=True)
             parameter_names.remove('scale')
         self.likelihood_models = nn.ModuleDict({name: None for name in parameter_names})
@@ -61,7 +66,7 @@ class ObservedVariable(nn.Module):
                 else:
                     # reward observation
                     # TODO: change this
-                    observation = (observation, observation + 0.1)
+                    observation = (observation, observation + 0.01)
 
             return torch.log(self.likelihood_dist.cdf(observation[1]) - self.likelihood_dist.cdf(observation[0]) + 1e-6)
 
