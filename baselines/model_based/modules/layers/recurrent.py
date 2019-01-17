@@ -34,6 +34,10 @@ class RecurrentLayer(Layer):
         self.hidden_state = self._hidden_state
         self.cell_state = self._cell_state
 
+    @property
+    def state(self):
+        return self.hidden_state.detach() if self._detach else self.hidden_state
+
     def reset(self):
         self.hidden_state = self._hidden_state = None
         self.cell_state = self._cell_state = None

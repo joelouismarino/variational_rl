@@ -40,6 +40,7 @@ class LatentVariable(nn.Module):
 
         self._sample = None
         self._detach_latent = True
+        self.layer_norm = nn.LayerNorm(self.n_variables)
 
     def infer(self, input):
         # infer the approximate posterior
@@ -61,7 +62,7 @@ class LatentVariable(nn.Module):
             # satisfy any constraints on the parameter value
             if type(constraint) == constraints.greater_than and constraint.lower_bound == 0:
                 # positive value
-                param = torch.clamp(param, -15, 5)
+                param = torch.clamp(param, -5, 5)
                 param = torch.exp(param)
             elif constraint == constraints.simplex:
                 # between 0 and 1
@@ -79,6 +80,7 @@ class LatentVariable(nn.Module):
         if self._sample is None:
             if self.approx_post_dist.has_rsample:
                 sample = self.approx_post_dist.rsample()
+                # sample = self.layer_norm(sample)
             else:
                 sample = self.approx_post_dist.sample()
             if self.approx_post_dist_type == getattr(torch.distributions, 'Categorical'):

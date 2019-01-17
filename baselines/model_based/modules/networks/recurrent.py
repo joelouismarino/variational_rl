@@ -1,3 +1,4 @@
+import torch
 from .network import Network
 from ..layers import RecurrentLayer
 
@@ -43,6 +44,10 @@ class RecurrentNetwork(Network):
     def step(self):
         for layer in self.layers:
             layer.step()
+
+    @property
+    def state(self):
+        return torch.cat([layer.state for layer in self.layers], dim=1)
 
     def reset(self):
         for layer in self.layers:

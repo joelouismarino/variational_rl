@@ -21,18 +21,20 @@ def learn(env, seed, total_timesteps, log_dir, device=None, **kwargs):
         model.to(device)
     model.reset()
     model.training = True
-    lr = {'state_inference_model': 0.001,
-          'action_inference_model': 0.001,
-          'state_prior_model': 0.001,
+    base_lr = 0.001
+    lr = {'state_inference_model': base_lr,
+          'action_inference_model': base_lr,
+          'state_prior_model': base_lr,
           'action_prior_model': 0.,
-          'obs_likelihood_model': 0.001,
-          'reward_likelihood_model': 0.001,
-          'done_likelihood_model': 0.001}
-    grad_buffer = GradientBuffer(model, lr=lr, capacity=5, batch_size=5, clip_grad=1)
+          'obs_likelihood_model': base_lr,
+          'reward_likelihood_model': base_lr,
+          'done_likelihood_model': base_lr}
+    grad_buffer = GradientBuffer(model, lr=lr, capacity=5, batch_size=5,
+                                 update_inf_online=False, clip_grad=1)
 
     observation = env.reset()
     reward = None
-    done=False
+    done = False
     episode = 0
 
     for step in range(total_timesteps):
@@ -46,6 +48,7 @@ def learn(env, seed, total_timesteps, log_dir, device=None, **kwargs):
 
         next_observation, reward, done, _ = env.step(action)
         logger.log_step(model, observation, reward, done)
+        grad_buffer.step()
         observation = next_observation
 
         if done:

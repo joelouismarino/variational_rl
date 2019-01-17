@@ -1,3 +1,5 @@
+import torch
+import torch.nn as nn
 from .observed_variable import ObservedVariable
 from ...layers import TransposedConvLayer
 
@@ -17,3 +19,5 @@ class TransposedConvObservedVariable(ObservedVariable):
                                                                      padding,
                                                                      stride,
                                                                      non_linearity=non_linearity)
+
+        self.likelihood_log_scale = nn.Parameter(torch.zeros(1), requires_grad=False)

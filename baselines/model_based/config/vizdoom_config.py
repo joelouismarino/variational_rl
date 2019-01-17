@@ -25,24 +25,26 @@ def get_vizdoom_config(env):
         raise NotImplementedError
 
     # state
-    n_state_variables = 200
+    n_state_variables = 100
     model_args['state_variable_args'] = {'type': 'fully_connected',
                                          'prior_dist': 'Normal',
                                          'approx_post_dist': 'Normal',
                                          'n_variables': n_state_variables}
 
     model_args['state_prior_args'] = {'type': 'recurrent',
-                                      'n_layers': 2,
+                                      'n_layers': 1,
                                       'n_input': n_state_variables + n_action_variables,
-                                      'n_units': 200,
+                                      'n_units': 512,
                                       'connectivity': 'sequential',
                                       'dropout': None}
 
+    hidden_state_size = model_args['state_prior_args']['n_layers'] * model_args['state_prior_args']['n_units']
+
     model_args['state_inference_args'] = {'type': 'fully_connected',
-                                          'n_layers': 2,
+                                          'n_layers': 3,
                                           'n_input': 4 * n_state_variables,
-                                          'n_units': 500,
-                                          'connectivity': 'sequential',
+                                          'n_units': 1024,
+                                          'connectivity': 'highway',
                                           'batch_norm': False,
                                           'non_linearity': 'elu',
                                           'dropout': None}
@@ -83,8 +85,8 @@ def get_vizdoom_config(env):
                                                'stride': 2}
 
     model_args['obs_likelihood_args'] = {'type': 'vizdoom_skip_decoder',
-                                         'n_input': n_state_variables + n_action_variables,
-                                         'non_linearity': 'elu'}
+                                         'n_input': n_state_variables + hidden_state_size,
+                                         'non_linearity': 'relu'}
 
     # reward
     model_args['reward_variable_args'] = {'type': 'fully_connected',
@@ -93,7 +95,7 @@ def get_vizdoom_config(env):
 
     model_args['reward_likelihood_args'] = {'type': 'fully_connected',
                                             'n_layers': 2,
-                                            'n_input': n_state_variables + n_action_variables,
+                                            'n_input': n_state_variables + hidden_state_size,
                                             'n_units': 200,
                                             'connectivity': 'sequential',
                                             'batch_norm': False,
@@ -107,7 +109,7 @@ def get_vizdoom_config(env):
 
     model_args['done_likelihood_args'] = {'type': 'fully_connected',
                                           'n_layers': 1,
-                                          'n_input': n_state_variables + n_action_variables,
+                                          'n_input': n_state_variables + hidden_state_size,
                                           'n_units': 100,
                                           'connectivity': 'sequential',
                                           'batch_norm': False,

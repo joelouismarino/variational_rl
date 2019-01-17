@@ -167,25 +167,31 @@ class Model(nn.Module):
 
     def generate_observation(self):
         # generate the conditional likelihood for the observation
+        hidden_state = self.state_prior_model.state
         state = self.state_variable.sample()
-        action = self.action_variable.sample()
+        # action = self.action_variable.sample()
         # likelihood_input = self.obs_likelihood_model(state)
-        likelihood_input = self.obs_likelihood_model(torch.cat((state, action), dim=1))
+        likelihood_input = self.obs_likelihood_model(torch.cat([hidden_state, state], dim=1))
+        # likelihood_input = self.obs_likelihood_model(torch.cat((state, action), dim=1))
         self.observation_variable.generate(likelihood_input)
 
     def generate_reward(self):
         # generate the conditional likelihood for the reward
+        hidden_state = self.state_prior_model.state
         state = self.state_variable.sample()
-        action = self.action_variable.sample()
-        likelihood_input = self.reward_likelihood_model(torch.cat((state, action), dim=1))
+        # action = self.action_variable.sample()
+        likelihood_input = self.reward_likelihood_model(torch.cat([hidden_state, state], dim=1))
+        # likelihood_input = self.reward_likelihood_model(torch.cat((state, action), dim=1))
         # likelihood_input = self.reward_likelihood_model(state)
         self.reward_variable.generate(likelihood_input)
 
     def generate_done(self):
         # generate the conditional likelihood for episode being done
+        hidden_state = self.state_prior_model.state
         state = self.state_variable.sample()
-        action = self.action_variable.sample()
-        likelihood_input = self.done_likelihood_model(torch.cat((state, action), dim=1))
+        # action = self.action_variable.sample()
+        likelihood_input = self.done_likelihood_model(torch.cat([hidden_state, state], dim=1))
+        # likelihood_input = self.done_likelihood_model(torch.cat((state, action), dim=1))
         self.done_variable.generate(likelihood_input)
 
     def free_energy(self, observation, reward, done):
