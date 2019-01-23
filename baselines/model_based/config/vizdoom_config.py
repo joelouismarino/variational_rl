@@ -60,7 +60,7 @@ def get_vizdoom_config(env):
 
     model_args['action_prior_args'] = {'type': 'fully_connected',
                                        'n_layers': 2,
-                                       'n_input': n_state_variables + n_action_variables + hidden_state_size,
+                                       'n_input': n_state_variables + n_action_variables,
                                        'n_units': 200,
                                        'connectivity': 'sequential',
                                        'batch_norm': False,
@@ -69,7 +69,7 @@ def get_vizdoom_config(env):
 
     model_args['action_inference_args'] = {'type': 'fully_connected',
                                            'n_layers': 2,
-                                           'n_input': n_state_variables + n_action_variables + hidden_state_size,
+                                           'n_input': n_state_variables + n_action_variables,
                                            'n_units': 200,
                                            'connectivity': 'sequential',
                                            'batch_norm': False,
@@ -84,9 +84,9 @@ def get_vizdoom_config(env):
                                                'padding': 0,
                                                'stride': 2}
 
-    model_args['obs_likelihood_args'] = {'type': 'vizdoom_skip_decoder',
+    model_args['obs_likelihood_args'] = {'type': 'vizdoom_decoder',
                                          'n_input': n_state_variables + hidden_state_size,
-                                         'non_linearity': 'relu'}
+                                         'non_linearity': 'elu'}
 
     # reward
     model_args['reward_variable_args'] = {'type': 'fully_connected',

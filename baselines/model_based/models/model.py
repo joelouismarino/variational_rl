@@ -152,6 +152,8 @@ class Model(nn.Module):
                 self.obs_prediction = self.observation_variable.likelihood_dist.loc.detach()
                 initial_free_energy = state_inf_free_energy
 
+            clamped_state_kl = torch.clamp(self.state_variable.kl_divergence(), min=0.5).sum(dim=1, keepdim=True)
+            state_inf_free_energy = valid * (clamped_state_kl - (1 - done) * obs_log_likelihood - reward_log_likelihood - done_log_likelihood)
             (state_inf_free_energy.sum()).backward(retain_graph=True)
             # update approx. posterior
             inf_input = self.state_variable.params_and_grads()
@@ -173,6 +175,9 @@ class Model(nn.Module):
         inference_improvement[valid_inds] = initial_free_energy[valid_inds] - final_free_energy[valid_inds]
         inference_improvement[valid_inds] = 100 * inference_improvement[valid_inds] / initial_free_energy[valid_inds]
         self.inference_improvement['state'].append(inference_improvement)
+
+        clamped_state_kl = torch.clamp(self.state_variable.kl_divergence(), min=0.5).sum(dim=1, keepdim=True)
+        state_inf_free_energy = valid * (clamped_state_kl - (1 - done) * obs_log_likelihood - reward_log_likelihood - done_log_likelihood)
         (state_inf_free_energy.sum()).backward(retain_graph=True)
         clear_gradients(self.generative_parameters())
         self.generative_mode()
@@ -183,13 +188,14 @@ class Model(nn.Module):
         # infer the approx. posterior on the action
         # self.action_variable.init_approx_post()
         # TODO: implement planning inference
-        hidden_state = self.state_prior_model.state
+        # hidden_state = self.state_prior_model.state
         state = self.state_variable.sample()
         if self._prev_action is not None:
             action = self._prev_action
         else:
             action = self.action_variable.sample()
-        inf_input = self.action_inference_model(torch.cat((state, hidden_state, action), dim=1))
+        # inf_input = self.action_inference_model(torch.cat((state, hidden_state, action), dim=1))
+        inf_input = self.action_inference_model(torch.cat((state, action), dim=1))
         self.action_variable.infer(inf_input)
         # clear_gradients(self.generative_parameters())
         self.generative_mode()
@@ -208,13 +214,14 @@ class Model(nn.Module):
     def step_action(self):
         # calculate the prior on the action variable
         if not self.action_variable.reinitialized:
-            hidden_state = self.state_prior_model.state
+            # hidden_state = self.state_prior_model.state
             state = self.state_variable.sample()
             if self._prev_action is not None:
                 action = self._prev_action
             else:
                 action = self.action_variable.sample()
-            prior_input = self.action_prior_model(torch.cat((state, hidden_state, action), dim=1))
+            # prior_input = self.action_prior_model(torch.cat((state, hidden_state, action), dim=1))
+            prior_input = self.action_prior_model(torch.cat((state, action), dim=1))
             self.action_variable.step(prior_input)
 
     def generate_observation(self):

@@ -30,13 +30,13 @@ def learn(env, seed, total_timesteps, log_dir, batch_size=15, n_updates=1,
     # create the optimizer
     base_lr = lr
     lr = {'state_inference_model': base_lr/10,
-          'action_inference_model': base_lr,
+          'action_inference_model': base_lr/10,
           'state_prior_model': base_lr,
           'action_prior_model': 0.,
           'obs_likelihood_model': base_lr,
           'reward_likelihood_model': base_lr,
           'done_likelihood_model': base_lr}
-    optimizer = Optimizer(model, lr=lr)
+    optimizer = Optimizer(model, lr=lr, norm_grad=1)
 
     # collect episodes and train
     timestep = 0

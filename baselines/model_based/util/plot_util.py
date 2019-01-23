@@ -13,7 +13,10 @@ class Plotter:
     def __init__(self, log_str):
         self.env_id = log_str
         self.vis = Visdom(env=self.env_id)
-        self.metric_plot_names = ['observation', 'reward', 'done', 'optimality', 'state', 'action', 'state_improvement']
+        self.metric_plot_names = ['observation', 'reward', 'done', 'optimality',
+                                  'state', 'action', 'state_improvement']
+        self.episode_plot_names = ['length', 'env_return']
+        self.grad_plot_names = []
         # self.metric_plot_names = ['free_energy', 'reward_cll', 'obs_cll', 'done_cll',
         #                           'optimality_cll', 'state_kl', 'action_kl',
         #                           'state_inf_imp']
@@ -30,11 +33,11 @@ class Plotter:
         #                               'obs_likelihood_model_grad', 'reward_likelihood_model_grad',
         #                               'done_likelihood_model_grad']
         self.img_names = ['recon', 'obs', 'pred']
-        windows = self.metric_plot_names + self.img_names
+        windows = self.metric_plot_names + self.episode_plot_names + self.img_names
         self._init_windows(windows)
         # self.smooth_reward_len = 1
         self._step = 1
-        # self._episode = 1
+        self._episode = 1
 
     def _init_windows(self, window_names):
         self.window_id = {}
@@ -45,7 +48,7 @@ class Plotter:
         # plot a training step
         for metric_name in self.metric_plot_names:
             if metric_name in results.keys():
-                self._plot_metric(results[metric_name], metric_name,
+                self._plot_metric(self._step, results[metric_name], metric_name,
                                   opts=self._get_opts(metric_name))
         self._step += 1
         self.vis.save([self.env_id])
@@ -56,7 +59,12 @@ class Plotter:
         self.plot_image(episode['observation'][time_step], 'Observation')
         self.plot_image(episode['prediction'][time_step], 'Prediction')
         self.plot_image(episode['reconstruction'][time_step], 'Reconstruction')
-        # TODO: plot episode statistics?
+
+        self._plot_metric(self._episode, n_steps, 'length',
+                          opts=self._get_opts('length'), name='Episode')
+        self._plot_metric(self._episode, episode['reward'].sum().item(), 'env_return',
+                          opts=self._get_opts('env_return'), name='Episode')
+        self._episode += 1
 
     # def plot(self, episode_log):
     #     # plot metrics
@@ -79,11 +87,11 @@ class Plotter:
     #     self._episode += 1
     #     self.vis.save([self.env_id])
 
-    def _plot_metric(self, metric, win_name, opts=None):
+    def _plot_metric(self, step, metric, win_name, opts=None, name='Train Step'):
         if self.window_id[win_name] is not None:
-            self.vis.line(X=[self._step], Y=[metric], update='append', name='Train Step', win=self.window_id[win_name])
+            self.vis.line(X=[step], Y=[metric], update='append', name=name, win=self.window_id[win_name])
         else:
-            self.window_id[win_name] = self.vis.line(X=[self._step], Y=[metric], name='Train Step', opts=opts)
+            self.window_id[win_name] = self.vis.line(X=[step], Y=[metric], name=name, opts=opts)
 
     # def _plot_dist(self, dist_param, param_name):
     #     steps = list(range(self._step, self._step + len(dist_param)))
@@ -259,6 +267,16 @@ class Plotter:
         elif win_name == 'state_improvement':
             ylabel = 'Improvement (%)'
             title = 'State Inf. Improvement'
+            xtype = 'line'
+        elif win_name == 'length':
+            ylabel = 'Number of Steps'
+            title = 'Episode Length'
+            xlabel = 'Episode'
+            xtype = 'line'
+        elif win_name == 'env_return':
+            ylabel = 'Return'
+            title = 'Environment Return'
+            xlabel = 'Episode'
             xtype = 'line'
 
         opts = dict(xlabel=xlabel, ylabel=ylabel, title=title, width=width,

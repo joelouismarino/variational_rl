@@ -12,7 +12,7 @@ class DataBuffer(object):
     """
     def __init__(self, batch_size, capacity=1e3):
         self.batch_size = batch_size
-        self.capacity = capacity
+        self.capacity = int(capacity)
         self.buffer = []
 
     def sample(self):
@@ -31,6 +31,7 @@ class DataBuffer(object):
             for k in episode:
                 batch[k][:episode_len, batch_ind] = episode[k]
             batch['valid'][:episode_len, batch_ind] = torch.ones(episode_len, 1)
+        # self.buffer = []
         return batch
 
     def append(self, episode):
