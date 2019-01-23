@@ -117,6 +117,7 @@ def get_vizdoom_config(env):
                                           'dropout': None}
 
     model_args['misc_args'] = {'optimality_scale': 1e3,
-                               'n_inf_iter': 1}
+                               'n_inf_iter': 1,
+                               'kl_min': dict(state=0., action=0.)}
 
     return model_args

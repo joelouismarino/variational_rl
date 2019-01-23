@@ -9,7 +9,7 @@ from .util.print_util import print_step_metrics, print_episode_metrics
 from .util.train_util import collect_episode, train
 
 
-def learn(env, seed, total_timesteps, log_dir, batch_size=15, n_updates=1,
+def learn(env, seed, total_timesteps, log_dir, batch_size=15, n_updates=3,
           n_initial_batches=1, lr=0.001, device=None, **kwargs):
 
     # torch.manual_seed(seed)
@@ -36,7 +36,7 @@ def learn(env, seed, total_timesteps, log_dir, batch_size=15, n_updates=1,
           'obs_likelihood_model': base_lr,
           'reward_likelihood_model': base_lr,
           'done_likelihood_model': base_lr}
-    optimizer = Optimizer(model, lr=lr, norm_grad=1)
+    optimizer = Optimizer(model, lr=lr)
 
     # collect episodes and train
     timestep = 0

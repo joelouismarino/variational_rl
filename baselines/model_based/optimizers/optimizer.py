@@ -30,6 +30,7 @@ class Optimizer(object):
             if self.norm_grad is not None:
                 norm_gradients(grads, self.norm_grad)
             self.opt['state_inference_model'].step()
+            self.opt['state_inference_model'].zero_grad()
 
     def apply(self):
         for model_name, params in self.parameters.items():

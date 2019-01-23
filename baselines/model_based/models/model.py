@@ -48,6 +48,7 @@ class Model(nn.Module):
         # miscellaneous
         self.n_inf_iter = misc_args['n_inf_iter']
         self.optimality_scale = misc_args['optimality_scale']
+        self.kl_min = misc_args['kl_min']
 
         # mode (either 'train' or 'eval')
         self._mode = 'train'
@@ -152,7 +153,7 @@ class Model(nn.Module):
                 self.obs_prediction = self.observation_variable.likelihood_dist.loc.detach()
                 initial_free_energy = state_inf_free_energy
 
-            clamped_state_kl = torch.clamp(self.state_variable.kl_divergence(), min=0.5).sum(dim=1, keepdim=True)
+            clamped_state_kl = torch.clamp(self.state_variable.kl_divergence(), min=self.kl_min['state']).sum(dim=1, keepdim=True)
             state_inf_free_energy = valid * (clamped_state_kl - (1 - done) * obs_log_likelihood - reward_log_likelihood - done_log_likelihood)
             (state_inf_free_energy.sum()).backward(retain_graph=True)
             # update approx. posterior
@@ -176,7 +177,7 @@ class Model(nn.Module):
         inference_improvement[valid_inds] = 100 * inference_improvement[valid_inds] / initial_free_energy[valid_inds]
         self.inference_improvement['state'].append(inference_improvement)
 
-        clamped_state_kl = torch.clamp(self.state_variable.kl_divergence(), min=0.5).sum(dim=1, keepdim=True)
+        clamped_state_kl = torch.clamp(self.state_variable.kl_divergence(), min=self.kl_min['state']).sum(dim=1, keepdim=True)
         state_inf_free_energy = valid * (clamped_state_kl - (1 - done) * obs_log_likelihood - reward_log_likelihood - done_log_likelihood)
         (state_inf_free_energy.sum()).backward(retain_graph=True)
         clear_gradients(self.generative_parameters())
@@ -330,7 +331,7 @@ class Model(nn.Module):
         self.objectives['observation'].append(-observation_log_likelihood * (1 - done) * valid)
 
         state_kl = self.state_variable.kl_divergence()
-        state_kl = torch.clamp(state_kl, min=0.5).sum(dim=1, keepdim=True)
+        state_kl = torch.clamp(state_kl, min=self.kl_min['state']).sum(dim=1, keepdim=True)
         self.objectives['state'].append(state_kl * (1 - done) * valid)
 
         action_kl = self.action_variable.kl_divergence().view(-1, 1)
