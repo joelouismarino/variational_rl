@@ -240,35 +240,34 @@ class Model(nn.Module):
         likelihood_input = self.done_likelihood_model(torch.cat([hidden_state, state], dim=1))
         self.done_variable.generate(likelihood_input)
 
-    def free_energy(self, observation, reward, done):
+    def free_energy(self, observation, reward, done, valid):
         observation, reward, done = self._change_device(observation, reward, done)
         cond_log_likelihood = self.cond_log_likelihood(observation, reward, done)
         kl_divergence = self.kl_divergence()
         free_energy = kl_divergence - cond_log_likelihood
         return free_energy
 
-    def cond_log_likelihood(self, observation, reward, done):
+    def cond_log_likelihood(self, observation, reward, done, valid):
         observation, reward, done = self._change_device(observation, reward, done)
-        obs_log_likelihood = self.observation_variable.cond_log_likelihood(observation).sum(dim=(2,3)).sum(dim=1, keepdim=True)
+        obs_log_likelihood = (1 - done) * self.observation_variable.cond_log_likelihood(observation).sum(dim=(2,3)).sum(dim=1, keepdim=True)
         done_log_likelihood = self.done_variable.cond_log_likelihood(done).sum(dim=1, keepdim=True)
-        reward_log_likelihood = opt_log_likelihood = 0.
-        if reward is not None:
-            reward_log_likelihood = self.reward_variable.cond_log_likelihood(reward).sum(dim=1, keepdim=True)
-            opt_log_likelihood = self.optimality_scale * (reward - 1.)
-        cond_log_likelihood = obs_log_likelihood + reward_log_likelihood + opt_log_likelihood + done_log_likelihood
+        reward_log_likelihood = self.reward_variable.cond_log_likelihood(reward).sum(dim=1, keepdim=True)
+        opt_log_likelihood = self.optimality_scale * (reward - 1.)
+        cond_log_likelihood = valid * (obs_log_likelihood + reward_log_likelihood + opt_log_likelihood + done_log_likelihood)
         return cond_log_likelihood
 
-    def kl_divergence(self):
+    def kl_divergence(self, valid):
         state_kl_divergence = self.state_variable.kl_divergence().sum(dim=1, keepdim=True)
         action_kl_divergence = self.action_variable.kl_divergence().view(-1, 1)
-        kl_divergence = state_kl_divergence + action_kl_divergence
+        kl_divergence = valid * (state_kl_divergence + action_kl_divergence)
         return kl_divergence
 
     def evaluate(self):
         # evaluate the objective, averaged over the batch, backprop
 
         results = {}
-        n_valid_steps = torch.stack(self.valid).sum(dim=0).sub(1)
+        valid = torch.stack(self.valid)
+        n_valid_steps = valid.sum(dim=0).sub(1)
         # average objectives over time and batch for reporting
         for objective_name, objective in self.objectives.items():
             obj = torch.stack(objective).sum(dim=0).div(n_valid_steps).mean(dim=0)
@@ -289,11 +288,14 @@ class Model(nn.Module):
 
         # calculate the reinforce terms
         future_sums = torch.flip(torch.cumsum(torch.flip(free_energy.detach(), dims=[0]), dim=0), dims=[0])
-        # if future_sums.shape[0] > 2:
-        #     future_sums = (future_sums - future_sums[1:].mean()) / (future_sums[1:].std() + 1e-6)
+        if future_sums.shape[0] > 2:
+            # normalize the future sums
+            future_sums_mean = future_sums[1:].sum(dim=0, keepdim=True).div(n_valid_steps)
+            future_sums_std = (future_sums[1:] - future_sums_mean).pow(2).mul(valid[1:]).sum(dim=0, keepdim=True).div(n_valid_steps-1).pow(0.5)
+            future_sums = (future_sums - future_sums_mean) / (future_sums_std + 1e-6)
         log_probs = torch.stack(self.log_probs['action'])
         reinforce_terms = - log_probs * future_sums
-        # free_energy = free_energy + reinforce_terms
+        free_energy = free_energy + reinforce_terms
 
         # time average
         free_energy = free_energy.sum(dim=0).div(n_valid_steps)
@@ -320,7 +322,8 @@ class Model(nn.Module):
         observation_log_likelihood = self.observation_variable.cond_log_likelihood(observation).sum(dim=(2,3)).sum(dim=1, keepdim=True)
         self.objectives['observation'].append(-observation_log_likelihood * (1 - done) * valid)
 
-        state_kl = self.state_variable.kl_divergence().sum(dim=1, keepdim=True)
+        state_kl = self.state_variable.kl_divergence()
+        state_kl = torch.clamp(state_kl, min=0.5).sum(dim=1, keepdim=True)
         self.objectives['state'].append(state_kl * (1 - done) * valid)
 
         action_kl = self.action_variable.kl_divergence().view(-1, 1)
@@ -342,6 +345,8 @@ class Model(nn.Module):
             action = self.episode['action'][0]
             state = self.episode['state'][0]
             self.episode['observation'].append(obs.new(obs.shape).zero_())
+            self.episode['reconstruction'].append(obs.new(obs.shape).zero_())
+            self.episode['prediction'].append(obs.new(obs.shape).zero_())
             self.episode['action'].append(action.new(action.shape).zero_())
             self.episode['state'].append(state.new(state.shape).zero_())
         self.episode['reward'].append(reward)
@@ -485,6 +490,8 @@ class Model(nn.Module):
     def inference_mode(self):
         self.state_variable.inference_mode()
         self.action_variable.inference_mode()
+        self.state_prior_model.detach_hidden_state()
+        self.action_prior_model.detach_hidden_state()
         self.obs_likelihood_model.detach_hidden_state()
         self.reward_likelihood_model.detach_hidden_state()
         self.done_likelihood_model.detach_hidden_state()
@@ -492,6 +499,8 @@ class Model(nn.Module):
     def generative_mode(self):
         self.state_variable.generative_mode()
         self.action_variable.generative_mode()
+        self.state_prior_model.attach_hidden_state()
+        self.action_prior_model.attach_hidden_state()
         self.obs_likelihood_model.attach_hidden_state()
         self.reward_likelihood_model.attach_hidden_state()
         self.done_likelihood_model.attach_hidden_state()

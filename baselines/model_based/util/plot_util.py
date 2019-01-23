@@ -228,7 +228,7 @@ class Plotter:
     #                 height=height, xtype=xtype, showlegend=showlegend)
     #     return opts
     def _get_opts(self, win_name):
-        xlabel = 'Time Step'
+        xlabel = 'Train Step'
         ylabel = ''
         width = 450
         height = 320

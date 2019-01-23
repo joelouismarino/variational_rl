@@ -9,8 +9,8 @@ from .util.print_util import print_step_metrics, print_episode_metrics
 from .util.train_util import collect_episode, train
 
 
-def learn(env, seed, total_timesteps, log_dir, batch_size=25, n_updates=5,
-          n_initial_batches=5, lr=0.0001, device=None, **kwargs):
+def learn(env, seed, total_timesteps, log_dir, batch_size=15, n_updates=1,
+          n_initial_batches=1, lr=0.001, device=None, **kwargs):
 
     # torch.manual_seed(seed)
 
@@ -29,7 +29,7 @@ def learn(env, seed, total_timesteps, log_dir, batch_size=25, n_updates=5,
 
     # create the optimizer
     base_lr = lr
-    lr = {'state_inference_model': base_lr,
+    lr = {'state_inference_model': base_lr/10,
           'action_inference_model': base_lr,
           'state_prior_model': base_lr,
           'action_prior_model': 0.,
