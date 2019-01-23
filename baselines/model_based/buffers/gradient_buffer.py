@@ -1,7 +1,6 @@
-import numpy as np
 import torch
 from torch import optim
-from .misc import clear_gradients, clip_gradients, norm_gradients, normalize_gradients_by_time
+from ..misc import clear_gradients, clip_gradients, norm_gradients, normalize_gradients_by_time
 
 
 class GradientBuffer(object):

@@ -29,13 +29,14 @@ class LatentVariable(nn.Module):
         for param in self.initial_prior_params:
             constraint = self.prior_dist_type.arg_constraints[param]
             if type(constraint) == constraints.greater_than and constraint.lower_bound == 0:
-                self.initial_prior_params[param] = nn.Parameter(torch.ones(n_variables))
+                self.initial_prior_params[param] = nn.Parameter(torch.ones(1, n_variables))
             else:
-                self.initial_prior_params[param] = nn.Parameter(torch.zeros(n_variables))
+                self.initial_prior_params[param] = nn.Parameter(torch.zeros(1, n_variables))
 
         # TODO: we will need to reshape the initial parameters
         self.prior_dist = None
         self.approx_post_dist = None
+        self.reinitialized = True
         self.reset()
 
         self._sample = None
@@ -74,6 +75,7 @@ class LatentVariable(nn.Module):
         # create a new distribution with the parameters
         self.approx_post_dist = self.approx_post_dist_type(**parameters)
         self._sample = None
+        self.reinitialized = False
 
     def sample(self, input=None):
         # sample the latent variable
@@ -115,6 +117,7 @@ class LatentVariable(nn.Module):
             parameters[param_name] = param
         # create a new distribution with the parameters
         self.prior_dist = self.prior_dist_type(**parameters)
+        self.reinitialized = False
 
     def init_approx_post(self):
         # initialize the approximate posterior from the prior
@@ -126,10 +129,12 @@ class LatentVariable(nn.Module):
         self.approx_post_dist = self.approx_post_dist_type(**parameters)
         self._sample = None
 
-    def reset(self):
+    def reset(self, batch_size=1):
         # reset the prior and approximate posterior
-        self.prior_dist = self.prior_dist_type(**self.initial_prior_params)
+        prior_params = {k: v.repeat(batch_size, 1) for k, v in self.initial_prior_params.items()}
+        self.prior_dist = self.prior_dist_type(**prior_params)
         self.init_approx_post()
+        self.reinitialized = True
         # self.approx_post_dist = None
         self._sample = None
 

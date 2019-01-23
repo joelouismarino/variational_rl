@@ -49,9 +49,9 @@ class RecurrentNetwork(Network):
     def state(self):
         return torch.cat([layer.state for layer in self.layers], dim=1)
 
-    def reset(self):
+    def reset(self, batch_size):
         for layer in self.layers:
-            layer.reset()
+            layer.reset(batch_size)
 
     def detach_hidden_state(self):
         for layer in self.layers:

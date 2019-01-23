@@ -50,7 +50,7 @@ def get_vizdoom_config(env):
                                           'dropout': None}
 
     # model_args['state_inference_args'] = {'type': 'vizdoom_skip_encoder',
-    #                                       'non_linearity': 'elu'}
+    #                                       'non_linearity': 'relu'}
 
     # action
     model_args['action_variable_args'] = {'type': 'fully_connected',
@@ -60,7 +60,7 @@ def get_vizdoom_config(env):
 
     model_args['action_prior_args'] = {'type': 'fully_connected',
                                        'n_layers': 2,
-                                       'n_input': n_state_variables + n_action_variables,
+                                       'n_input': n_state_variables + n_action_variables + hidden_state_size,
                                        'n_units': 200,
                                        'connectivity': 'sequential',
                                        'batch_norm': False,
@@ -69,7 +69,7 @@ def get_vizdoom_config(env):
 
     model_args['action_inference_args'] = {'type': 'fully_connected',
                                            'n_layers': 2,
-                                           'n_input': action_inf_n_input,
+                                           'n_input': n_state_variables + n_action_variables + hidden_state_size,
                                            'n_units': 200,
                                            'connectivity': 'sequential',
                                            'batch_norm': False,

@@ -38,7 +38,7 @@ class Network(nn.Module):
                 out = torch.cat([layer(out), input], dim=1)
         return out
 
-    def reset(self):
+    def reset(self, *args, **kwargs):
         pass
 
     def detach_hidden_state(self):

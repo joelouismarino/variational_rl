@@ -44,3 +44,7 @@ def calc_norm(grads, norm_type=2):
 def normalize_gradients_by_time(grads, steps):
     for g in filter(lambda g: g is not None, grads):
         g.data.div_(steps)
+
+def divide_gradients_by_value(grads, value):
+    for g in filter(lambda g: g is not None, grads):
+        g.data.div_(value)
