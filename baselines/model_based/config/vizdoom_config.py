@@ -41,7 +41,7 @@ def get_vizdoom_config(env):
     hidden_state_size = model_args['state_prior_args']['n_layers'] * model_args['state_prior_args']['n_units']
 
     model_args['state_inference_args'] = {'type': 'fully_connected',
-                                          'n_layers': 3,
+                                          'n_layers': 1,
                                           'n_input': 4 * n_state_variables,
                                           'n_units': 1024,
                                           'connectivity': 'highway',
@@ -99,7 +99,7 @@ def get_vizdoom_config(env):
                                             'n_units': 200,
                                             'connectivity': 'sequential',
                                             'batch_norm': False,
-                                            'non_linearity': 'relu',
+                                            'non_linearity': 'elu',
                                             'dropout': None}
 
     # done
@@ -113,7 +113,7 @@ def get_vizdoom_config(env):
                                           'n_units': 100,
                                           'connectivity': 'sequential',
                                           'batch_norm': False,
-                                          'non_linearity': 'relu',
+                                          'non_linearity': 'elu',
                                           'dropout': None}
 
     model_args['misc_args'] = {'optimality_scale': 1e3,

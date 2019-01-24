@@ -265,7 +265,7 @@ class Plotter:
             title = 'Done Cond. Log Likelihood'
             xtype = 'line'
         elif win_name == 'state_improvement':
-            ylabel = 'Improvement (%)'
+            ylabel = 'Improvement (nats)'
             title = 'State Inf. Improvement'
             xtype = 'line'
         elif win_name == 'length':

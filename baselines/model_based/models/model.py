@@ -174,7 +174,7 @@ class Model(nn.Module):
         inference_improvement = torch.zeros(initial_free_energy.shape).to(self.device)
         valid_inds = torch.nonzero(valid[:,0])
         inference_improvement[valid_inds] = initial_free_energy[valid_inds] - final_free_energy[valid_inds]
-        inference_improvement[valid_inds] = 100 * inference_improvement[valid_inds] / initial_free_energy[valid_inds]
+        # inference_improvement[valid_inds] = 100 * inference_improvement[valid_inds] / initial_free_energy[valid_inds]
         self.inference_improvement['state'].append(inference_improvement)
 
         clamped_state_kl = torch.clamp(self.state_variable.kl_divergence(), min=self.kl_min['state']).sum(dim=1, keepdim=True)

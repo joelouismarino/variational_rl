@@ -42,6 +42,7 @@ class LatentVariable(nn.Module):
         self._sample = None
         self._detach_latent = True
         self.layer_norm = nn.LayerNorm(self.n_variables)
+        self._log_var_limits = [-5, 5]
 
     def infer(self, input):
         # infer the approximate posterior
@@ -63,7 +64,7 @@ class LatentVariable(nn.Module):
             # satisfy any constraints on the parameter value
             if type(constraint) == constraints.greater_than and constraint.lower_bound == 0:
                 # positive value
-                param = torch.clamp(param, -5, 5)
+                param = torch.clamp(param, self._log_var_limits[0], self._log_var_limits[1])
                 param = torch.exp(param)
             elif constraint == constraints.simplex:
                 # between 0 and 1
@@ -108,7 +109,7 @@ class LatentVariable(nn.Module):
             if type(constraint) == constraints.greater_than:
                 # positive value
                 if constraint.lower_bound == 0:
-                    param = torch.clamp(param, -15, 5)
+                    param = torch.clamp(param, self._log_var_limits[0], self._log_var_limits[1])
                     param = torch.exp(param)
             elif constraint == constraints.simplex:
                 # between 0 and 1
