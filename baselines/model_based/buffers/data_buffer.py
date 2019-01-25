@@ -10,7 +10,7 @@ class DataBuffer(object):
         batch_size (int): number of episodes to sample for each batch
         capacity (int): the number of episodes to store in the buffer
     """
-    def __init__(self, batch_size, capacity=1e3):
+    def __init__(self, batch_size, capacity=5e3):
         self.batch_size = batch_size
         self.capacity = int(capacity)
         self.buffer = []

@@ -82,7 +82,8 @@ def get_vizdoom_config(env):
                                                'n_variables': env.observation_space.shape[1],
                                                'filter_size': 6,
                                                'padding': 0,
-                                               'stride': 2}
+                                               'stride': 2,
+                                               'sigmoid_loc': True}
 
     model_args['obs_likelihood_args'] = {'type': 'vizdoom_decoder',
                                          'n_input': n_state_variables + hidden_state_size,
@@ -91,7 +92,8 @@ def get_vizdoom_config(env):
     # reward
     model_args['reward_variable_args'] = {'type': 'fully_connected',
                                           'likelihood_dist': 'Normal',
-                                          'n_variables': 1}
+                                          'n_variables': 1,
+                                          'sigmoid_loc': True}
 
     model_args['reward_likelihood_args'] = {'type': 'fully_connected',
                                             'n_layers': 2,
@@ -116,7 +118,7 @@ def get_vizdoom_config(env):
                                           'non_linearity': 'elu',
                                           'dropout': None}
 
-    model_args['misc_args'] = {'optimality_scale': 1e3,
+    model_args['misc_args'] = {'optimality_scale': 5e3,
                                'n_inf_iter': 1,
                                'kl_min': dict(state=0., action=0.)}
 
