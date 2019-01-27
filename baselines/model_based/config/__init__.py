@@ -1,3 +1,8 @@
+try:
+    import gym_minigrid
+except ImportError:
+    gym_minigrid = None
+
 def get_model_args(env):
     """
     Get the model configuration arguments for the specific environment.
@@ -13,6 +18,9 @@ def get_model_args(env):
     if env_name in ['VizDoom-v0']:
         from .vizdoom_config import get_vizdoom_config
         return get_vizdoom_config(env)
+    elif env_name in gym_minigrid.register.env_list:
+        from .minigrid_config import get_minigrid_config
+        return get_minigrid_config(env)
     # Atari environments
     elif env_name in ['SpaceInvaders-v0']:
         from .atari_config import get_atari_config

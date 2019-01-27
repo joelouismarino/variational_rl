@@ -45,6 +45,11 @@ for env in gym.envs.registry.all():
     env_type = env._entry_point.split(':')[0].split('.')[-1]
     _game_envs[env_type].add(env.id)
 
+if gym_minigrid is not None:
+    # minigrid loads the envs under envs, rename for clarity
+    _game_envs['minigrid'] = _game_envs['envs']
+    _game_envs.pop('envs')
+
 # reading benchmark names directly from retro requires
 # importing retro here, and for some reason that crashes tensorflow
 # in ubuntu
@@ -121,6 +126,11 @@ def build_env(args):
             env = make_vec_env(env_id, env_type, nenv, seed, gamestate=args.gamestate, reward_scale=args.reward_scale)
             env = VecFrameStack(env, frame_stack_size)
 
+    elif env_type == 'minigrid':
+        if alg == 'model_based':
+            env = make_env(env_id, env_type, seed=seed, wrapper_kwargs={'to_tensor': True,
+                                                                        'transpose': True,
+                                                                        'add_batch_dim': True})
     else:
        config = tf.ConfigProto(allow_soft_placement=True,
                                intra_op_parallelism_threads=1,
