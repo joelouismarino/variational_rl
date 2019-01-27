@@ -34,6 +34,11 @@ try:
 except ImportError:
     roboschool = None
 
+try:
+    import gym_minigrid
+except ImportError:
+    gym_minigrid = None
+
 _game_envs = defaultdict(set)
 for env in gym.envs.registry.all():
     # TODO: solve this with regexes
@@ -215,9 +220,6 @@ def main():
     else:
         logger.configure(format_strs=[])
         rank = MPI.COMM_WORLD.Get_rank()
-
-    # super hacky, but somehow, we need to do this to use matplotlib later...
-    plt.imshow(np.random.rand(64,64,3))
 
     model, env = train(args, extra_args)
     env.close()

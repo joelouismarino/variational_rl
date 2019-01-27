@@ -296,11 +296,10 @@ class Model(nn.Module):
 
         # calculate the reinforce terms
         future_sums = torch.flip(torch.cumsum(torch.flip(free_energy.detach(), dims=[0]), dim=0), dims=[0])
-        if future_sums.shape[0] > 2:
-            # normalize the future sums
-            future_sums_mean = future_sums[1:].sum(dim=0, keepdim=True).div(n_valid_steps)
-            future_sums_std = (future_sums[1:] - future_sums_mean).pow(2).mul(valid[1:]).sum(dim=0, keepdim=True).div(n_valid_steps-1).pow(0.5)
-            future_sums = (future_sums - future_sums_mean) / (future_sums_std + 1e-6)
+        # normalize the future sums
+        future_sums_mean = future_sums[1:].sum(dim=0, keepdim=True).div(n_valid_steps)
+        future_sums_std = (future_sums[1:] - future_sums_mean).pow(2).mul(valid[1:]).sum(dim=0, keepdim=True).div(n_valid_steps-1).pow(0.5)
+        future_sums = (future_sums - future_sums_mean) / (future_sums_std + 1e-6)
         log_probs = torch.stack(self.log_probs['action'])
         reinforce_terms = - log_probs * future_sums
         free_energy = free_energy + reinforce_terms
