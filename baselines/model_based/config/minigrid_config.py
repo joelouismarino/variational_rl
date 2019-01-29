@@ -1,4 +1,5 @@
 import gym.spaces as spaces
+import numpy as np
 
 
 def get_minigrid_config(env):
@@ -13,8 +14,9 @@ def get_minigrid_config(env):
         # TODO: used reparameterized categorical?
         action_prior_dist = 'Categorical'
         action_approx_post_dist = 'Categorical'
-        n_action_variables = env.action_space.n
-        action_inf_n_input = 2 * n_action_variables
+        # n_action_variables = env.action_space.n
+        n_action_variables = 3
+        action_inf_n_input = 2 * n_action_variables # not currently used
     elif type(action_space) == spaces.Box:
         # continuous control
         action_prior_dist = 'Normal'
@@ -49,9 +51,6 @@ def get_minigrid_config(env):
                                           'non_linearity': 'elu',
                                           'dropout': None}
 
-    # model_args['state_inference_args'] = {'type': 'vizdoom_skip_encoder',
-    #                                       'non_linearity': 'relu'}
-
     # action
     model_args['action_variable_args'] = {'type': 'fully_connected',
                                           'prior_dist': action_prior_dist,
@@ -59,7 +58,7 @@ def get_minigrid_config(env):
                                           'n_variables': n_action_variables}
 
     model_args['action_prior_args'] = {'type': 'fully_connected',
-                                       'n_layers': 2,
+                                       'n_layers': 1,
                                        'n_input': n_state_variables + n_action_variables,
                                        'n_units': 200,
                                        'connectivity': 'sequential',
@@ -68,7 +67,7 @@ def get_minigrid_config(env):
                                        'dropout': None}
 
     model_args['action_inference_args'] = {'type': 'fully_connected',
-                                           'n_layers': 2,
+                                           'n_layers': 1,
                                            'n_input': n_state_variables + n_action_variables,
                                            'n_units': 200,
                                            'connectivity': 'sequential',
@@ -77,26 +76,30 @@ def get_minigrid_config(env):
                                            'dropout': None}
 
     # observation
-    model_args['observation_variable_args'] = {'type': 'transposed_conv',
+    model_args['observation_variable_args'] = {'type': 'fully_connected',
                                                'likelihood_dist': 'Normal',
-                                               'n_variables': env.observation_space.shape[1],
-                                               'filter_size': 6,
-                                               'padding': 0,
-                                               'stride': 2,
+                                               'integration_window': 1./6,
+                                               'n_variables': np.prod(env.observation_space.shape),
                                                'sigmoid_loc': True}
 
-    model_args['obs_likelihood_args'] = {'type': 'vizdoom_decoder',
+    model_args['obs_likelihood_args'] = {'type': 'fully_connected',
+                                         'n_layers': 2,
                                          'n_input': n_state_variables + hidden_state_size,
-                                         'non_linearity': 'elu'}
+                                         'n_units': 200,
+                                         'connectivity': 'sequential',
+                                         'batch_norm': False,
+                                         'non_linearity': 'elu',
+                                         'dropout': None}
 
     # reward
     model_args['reward_variable_args'] = {'type': 'fully_connected',
                                           'likelihood_dist': 'Normal',
+                                          'integration_window': 0.1, # TODO: set this in a principled way
                                           'n_variables': 1,
                                           'sigmoid_loc': True}
 
     model_args['reward_likelihood_args'] = {'type': 'fully_connected',
-                                            'n_layers': 2,
+                                            'n_layers': 1,
                                             'n_input': n_state_variables + hidden_state_size,
                                             'n_units': 200,
                                             'connectivity': 'sequential',
@@ -118,7 +121,7 @@ def get_minigrid_config(env):
                                           'non_linearity': 'elu',
                                           'dropout': None}
 
-    model_args['misc_args'] = {'optimality_scale': 5e3,
+    model_args['misc_args'] = {'optimality_scale': 1e3,
                                'n_inf_iter': 1,
                                'kl_min': dict(state=0., action=0.)}
 

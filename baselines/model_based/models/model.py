@@ -101,7 +101,7 @@ class Model(nn.Module):
     #     self.generate_reward()
     #     self.generate_done()
     #     self.obs_prediction = self.observation_variable.likelihood_dist.loc.detach()
-    #     obs_log_likelihood = self.observation_variable.cond_log_likelihood(observation).sum(dim=(2,3)).sum(dim=1, keepdim=True)
+    #     obs_log_likelihood = self.observation_variable.cond_log_likelihood(observation).sum(dim=1, keepdim=True)
     #     reward_log_likelihood = self.reward_variable.cond_log_likelihood(reward).sum(dim=1, keepdim=True)
     #     done_log_likelihood = self.done_variable.cond_log_likelihood(done).sum(dim=1, keepdim=True)
     #     state_kl = self.state_variable.kl_divergence().sum(dim=1, keepdim=True)
@@ -117,7 +117,7 @@ class Model(nn.Module):
     #     self.generate_observation()
     #     self.generate_reward()
     #     self.generate_done()
-    #     obs_log_likelihood = self.observation_variable.cond_log_likelihood(observation).sum(dim=(2,3)).sum(dim=1, keepdim=True)
+    #     obs_log_likelihood = self.observation_variable.cond_log_likelihood(observation).sum(dim=1, keepdim=True)
     #     reward_log_likelihood = self.reward_variable.cond_log_likelihood(reward).sum(dim=1, keepdim=True)
     #     done_log_likelihood = self.done_variable.cond_log_likelihood(done).sum(dim=1, keepdim=True)
     #     state_kl = self.state_variable.kl_divergence().sum(dim=1, keepdim=True)
@@ -143,7 +143,7 @@ class Model(nn.Module):
             self.generate_observation()
             self.generate_reward()
             self.generate_done()
-            obs_log_likelihood = self.observation_variable.cond_log_likelihood(observation).sum(dim=(2,3)).sum(dim=1, keepdim=True)
+            obs_log_likelihood = self.observation_variable.cond_log_likelihood(observation).sum(dim=1, keepdim=True)
             reward_log_likelihood = self.reward_variable.cond_log_likelihood(reward).sum(dim=1, keepdim=True)
             done_log_likelihood = self.done_variable.cond_log_likelihood(done).sum(dim=1, keepdim=True)
             state_kl = self.state_variable.kl_divergence().sum(dim=1, keepdim=True)
@@ -151,6 +151,8 @@ class Model(nn.Module):
             state_inf_free_energy = valid * state_inf_free_energy
             if inf_iter == 0:
                 self.obs_prediction = self.observation_variable.likelihood_dist.loc.detach()
+                if len(self.obs_prediction.shape) != len(observation.shape):
+                    self.obs_prediction = self.obs_prediction.view(observation.shape)
                 initial_free_energy = state_inf_free_energy
 
             clamped_state_kl = torch.clamp(self.state_variable.kl_divergence(), min=self.kl_min['state']).sum(dim=1, keepdim=True)
@@ -164,7 +166,7 @@ class Model(nn.Module):
         self.generate_observation()
         self.generate_reward()
         self.generate_done()
-        obs_log_likelihood = self.observation_variable.cond_log_likelihood(observation).sum(dim=(2,3)).sum(dim=1, keepdim=True)
+        obs_log_likelihood = self.observation_variable.cond_log_likelihood(observation).sum(dim=1, keepdim=True)
         reward_log_likelihood = self.reward_variable.cond_log_likelihood(reward).sum(dim=1, keepdim=True)
         done_log_likelihood = self.done_variable.cond_log_likelihood(done).sum(dim=1, keepdim=True)
         state_kl = self.state_variable.kl_divergence().sum(dim=1, keepdim=True)
@@ -183,6 +185,8 @@ class Model(nn.Module):
         clear_gradients(self.generative_parameters())
         self.generative_mode()
         self.obs_reconstruction = self.observation_variable.likelihood_dist.loc.detach()
+        if len(self.obs_reconstruction.shape) != len(observation.shape):
+            self.obs_reconstruction = self.obs_reconstruction.view(observation.shape)
 
     def action_inference(self, action=None):
         self.inference_mode()
@@ -257,7 +261,7 @@ class Model(nn.Module):
 
     def cond_log_likelihood(self, observation, reward, done, valid):
         observation, reward, done = self._change_device(observation, reward, done)
-        obs_log_likelihood = (1 - done) * self.observation_variable.cond_log_likelihood(observation).sum(dim=(2,3)).sum(dim=1, keepdim=True)
+        obs_log_likelihood = (1 - done) * self.observation_variable.cond_log_likelihood(observation).sum(dim=1, keepdim=True)
         done_log_likelihood = self.done_variable.cond_log_likelihood(done).sum(dim=1, keepdim=True)
         reward_log_likelihood = self.reward_variable.cond_log_likelihood(reward).sum(dim=1, keepdim=True)
         opt_log_likelihood = self.optimality_scale * (reward - 1.)
@@ -302,7 +306,7 @@ class Model(nn.Module):
         future_sums = (future_sums - future_sums_mean) / (future_sums_std + 1e-6)
         log_probs = torch.stack(self.log_probs['action'])
         reinforce_terms = - log_probs * future_sums
-        free_energy = free_energy + reinforce_terms
+        # free_energy = free_energy + reinforce_terms
 
         # time average
         free_energy = free_energy.sum(dim=0).div(n_valid_steps)
@@ -326,7 +330,7 @@ class Model(nn.Module):
         optimality_log_likelihood = self.optimality_scale * (reward - 1.)
         self.objectives['optimality'].append(-optimality_log_likelihood * valid)
 
-        observation_log_likelihood = self.observation_variable.cond_log_likelihood(observation).sum(dim=(2,3)).sum(dim=1, keepdim=True)
+        observation_log_likelihood = self.observation_variable.cond_log_likelihood(observation).sum(dim=1, keepdim=True)
         self.objectives['observation'].append(-observation_log_likelihood * (1 - done) * valid)
 
         state_kl = self.state_variable.kl_divergence()
@@ -370,7 +374,7 @@ class Model(nn.Module):
             observation = torch.zeros(self.episode['observation'][0].shape)
         if observation.device != self.device:
             observation = observation.to(self.device)
-        if type(reward) == float:
+        if type(reward) in [float, int]:
             reward = torch.tensor(reward).to(torch.float32).view(1, 1)
         if reward.device != self.device:
             reward = reward.to(self.device)

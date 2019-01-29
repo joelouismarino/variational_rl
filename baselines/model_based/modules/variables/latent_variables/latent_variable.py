@@ -83,7 +83,7 @@ class LatentVariable(nn.Module):
         if self._sample is None:
             if self.approx_post_dist.has_rsample:
                 sample = self.approx_post_dist.rsample()
-                # sample = self.layer_norm(sample)
+                sample = self.layer_norm(sample)
             else:
                 sample = self.approx_post_dist.sample()
             if self.approx_post_dist_type == getattr(torch.distributions, 'Categorical'):

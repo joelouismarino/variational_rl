@@ -79,19 +79,21 @@ def get_vizdoom_config(env):
     # observation
     model_args['observation_variable_args'] = {'type': 'transposed_conv',
                                                'likelihood_dist': 'Normal',
+                                               'integration_window': 1.256,
                                                'n_variables': env.observation_space.shape[1],
                                                'filter_size': 6,
                                                'padding': 0,
                                                'stride': 2,
                                                'sigmoid_loc': True}
 
-    model_args['obs_likelihood_args'] = {'type': 'vizdoom_decoder',
+    model_args['obs_likelihood_args'] = {'type': 'vizdoom_skip_decoder',
                                          'n_input': n_state_variables + hidden_state_size,
                                          'non_linearity': 'elu'}
 
     # reward
     model_args['reward_variable_args'] = {'type': 'fully_connected',
                                           'likelihood_dist': 'Normal',
+                                          'integration_window': 0.1, # TODO: set this in a principled way
                                           'n_variables': 1,
                                           'sigmoid_loc': True}
 

@@ -30,7 +30,7 @@ def learn(env, seed, total_timesteps, log_dir, batch_size=15, n_updates=5,
     # create the optimizer
     base_lr = lr
     lr = {'state_inference_model': base_lr/20,
-          'action_inference_model': base_lr/20,
+          'action_inference_model': 0.,
           'state_prior_model': base_lr,
           'action_prior_model': base_lr,
           'obs_likelihood_model': base_lr,

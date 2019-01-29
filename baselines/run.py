@@ -128,7 +128,8 @@ def build_env(args):
 
     elif env_type == 'minigrid':
         if alg == 'model_based':
-            env = make_env(env_id, env_type, seed=seed, wrapper_kwargs={'to_tensor': True,
+            env = make_env(env_id, env_type, seed=seed, wrapper_kwargs={'scale': True,
+                                                                        'to_tensor': True,
                                                                         'transpose': True,
                                                                         'add_batch_dim': True})
     else:

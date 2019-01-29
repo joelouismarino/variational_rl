@@ -6,9 +6,10 @@ import torch.distributions.constraints as constraints
 
 class ObservedVariable(nn.Module):
 
-    def __init__(self, likelihood_dist):
+    def __init__(self, likelihood_dist, integration_window=1.):
         super(ObservedVariable, self).__init__()
         self.distribution_type = getattr(torch.distributions, likelihood_dist)
+        self.integration_window = integration_window
         self.likelihood_dist = None
         self.likelihood_log_scale = None
         if likelihood_dist in ['Bernoulli', 'Categorical']:
@@ -60,16 +61,19 @@ class ObservedVariable(nn.Module):
             return self.likelihood_dist.log_prob(observation)
         else:
             # probability density function
+            if len(observation.shape) > len(self.likelihood_dist.loc.shape):
+                # convert image to fully-connected
+                batch_size = observation.shape[0]
+                observation = observation.contiguous().view(batch_size, -1)
             if type(observation) != tuple:
-                if len(np.shape(observation)) == 4:
-                    # image observation
-                    observation = (observation, observation + 1./256)
-                else:
-                    # reward observation
-                    # TODO: change this
-                    observation = (observation, observation + 0.01)
+                # convert to tuple for integration
+                observation = (observation - self.integration_window/2, observation + self.integration_window/2)
 
-            return torch.log(self.likelihood_dist.cdf(observation[1]) - self.likelihood_dist.cdf(observation[0]) + 1e-6)
+            cll = torch.log(self.likelihood_dist.cdf(observation[1]) - self.likelihood_dist.cdf(observation[0]) + 1e-6)
+            if len(cll.shape) > 2:
+                # if image, sum over height and width
+                cll = cll.sum(dim=(2,3))
+            return cll
 
     @property
     def device(self):
