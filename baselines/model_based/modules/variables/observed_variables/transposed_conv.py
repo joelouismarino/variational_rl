@@ -20,4 +20,4 @@ class TransposedConvObservedVariable(ObservedVariable):
                                                                      stride,
                                                                      non_linearity=non_linearity)
 
-        self.likelihood_log_scale = nn.Parameter(torch.zeros(1), requires_grad=False)
+        # self.likelihood_log_scale = nn.Parameter(torch.zeros(1), requires_grad=False)
