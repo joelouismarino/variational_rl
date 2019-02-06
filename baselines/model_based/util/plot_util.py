@@ -33,7 +33,8 @@ class Plotter:
         #                               'obs_likelihood_model_grad', 'reward_likelihood_model_grad',
         #                               'done_likelihood_model_grad']
         self.img_names = ['recon', 'obs', 'pred']
-        windows = self.metric_plot_names + self.episode_plot_names + self.img_names
+        self.grad_names = ['grads', 'grad_norms']
+        windows = self.metric_plot_names + self.episode_plot_names + self.img_names + self.grad_names
         self._init_windows(windows)
         # self.smooth_reward_len = 1
         self._step = 1
@@ -50,6 +51,8 @@ class Plotter:
             if metric_name in results.keys():
                 self._plot_metric(self._step, results[metric_name], metric_name,
                                   opts=self._get_opts(metric_name))
+        self._plot_grads(results['grads'], 'grads')
+        self._plot_grads(results['grad_norms'], 'grad_norms')
         self._step += 1
         self.vis.save([self.env_id])
 
@@ -105,17 +108,17 @@ class Plotter:
     #         self.window_id[win_name] = self.vis.line(X=steps, Y=dist_param, name=param_name + ' Step', opts=opts)
     #         self.vis.line(X=[steps[-1]], Y=[np.mean(dist_param)], update='replace', name=param_name + ' Episode', win=self.window_id[win_name])
     #
-    # def _plot_grad_means(self, episode_log):
-    #     if self.window_id['grad_means'] is not None:
-    #         for model_grad_name in self.model_grad_plot_names:
-    #             self.vis.line(X=[self._step], Y=episode_log[model_grad_name], update='append', name=model_grad_name, win=self.window_id['grad_means'])
-    #     else:
-    #         for model_grad_name in self.model_grad_plot_names:
-    #             if self.window_id['grad_means'] is not None:
-    #                 self.vis.line(X=[self._step], Y=episode_log[model_grad_name], update='replace', name=model_grad_name, win=self.window_id['grad_means'])
-    #             else:
-    #                 opts = self._get_opts('grad_means')
-    #                 self.window_id['grad_means'] = self.vis.line(X=[self._step], Y=episode_log[model_grad_name], name=model_grad_name, opts=opts)
+    def _plot_grads(self, grads, window_name):
+        if self.window_id[window_name] is not None:
+            for model_name in grads:
+                self.vis.line(X=[self._step], Y=[grads[model_name]], update='append', name=model_name, win=self.window_id[window_name])
+        else:
+            for model_name in grads:
+                if self.window_id[window_name] is not None:
+                    self.vis.line(X=[self._step], Y=[grads[model_name]], update='replace', name=model_name, win=self.window_id[window_name])
+                else:
+                    opts = self._get_opts(window_name)
+                    self.window_id[window_name] = self.vis.line(X=[self._step], Y=[grads[model_name]], name=model_name, opts=opts)
     #
     # def _plot_episode_length(self, length):
     #     if self.window_id['episode_length'] is not None:
@@ -277,6 +280,14 @@ class Plotter:
             ylabel = 'Return'
             title = 'Environment Return'
             xlabel = 'Episode'
+            xtype = 'line'
+        elif win_name == 'grads':
+            ylabel = 'Ave. Gradient Abs. Value'
+            title = 'Gradients'
+            xtype = 'line'
+        elif win_name == 'grad_norms':
+            ylabel = 'Gradient Norm'
+            title = 'Gradient Norms'
             xtype = 'line'
 
         opts = dict(xlabel=xlabel, ylabel=ylabel, title=title, width=width,

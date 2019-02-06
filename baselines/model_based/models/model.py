@@ -306,7 +306,7 @@ class Model(nn.Module):
         future_sums = (future_sums - future_sums_mean) / (future_sums_std + 1e-6)
         log_probs = torch.stack(self.log_probs['action'])
         reinforce_terms = - log_probs * future_sums
-        # free_energy = free_energy + reinforce_terms
+        free_energy = free_energy + reinforce_terms
 
         # time average
         free_energy = free_energy.sum(dim=0).div(n_valid_steps)
@@ -316,6 +316,16 @@ class Model(nn.Module):
 
         # backprop
         free_energy.sum().backward()
+
+        # calculate the average gradient for each model
+        grads_dict = {}
+        grad_norm_dict = {}
+        for model_name, params in self.parameters().items():
+            grads = torch.cat([param.grad.view(-1) for param in params], dim=0)
+            grads_dict[model_name] = grads.abs().mean().cpu().numpy().item()
+            grad_norm_dict[model_name] = grads.norm().cpu().numpy().item()
+        results['grads'] = grads_dict
+        results['grad_norms'] = grad_norm_dict
 
         return results
 

@@ -121,7 +121,7 @@ def get_minigrid_config(env):
                                           'non_linearity': 'elu',
                                           'dropout': None}
 
-    model_args['misc_args'] = {'optimality_scale': 1e3,
+    model_args['misc_args'] = {'optimality_scale': 1e4,
                                'n_inf_iter': 1,
                                'kl_min': dict(state=0., action=0.)}
 
