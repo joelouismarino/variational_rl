@@ -1,14 +1,15 @@
 import torch
 import torch.nn as nn
 import torch.distributions as dist
+from .agent import Agent
 from ..modules.networks import get_network
 from ..modules.variables import get_variable
 from ..misc import clear_gradients, one_hot_to_index
 
 
-class Model(nn.Module):
+class GenerativeAgent(Agent):
     """
-    Generative Model-Based Agent
+    Variational RL Agent with Generative State Estimation
     """
     def __init__(self, state_variable_args, action_variable_args,
                  observation_variable_args, reward_variable_args,
@@ -16,7 +17,7 @@ class Model(nn.Module):
                  obs_likelihood_args, reward_likelihood_args,
                  done_likelihood_args, state_inference_args,
                  action_inference_args, misc_args):
-        super(Model, self).__init__()
+        super(Agent, self).__init__()
 
         # networks
         self.state_prior_model = get_network(state_prior_args)
@@ -191,16 +192,16 @@ class Model(nn.Module):
     def action_inference(self, action=None):
         self.inference_mode()
         # infer the approx. posterior on the action
-        # self.action_variable.init_approx_post()
+        self.action_variable.init_approx_post()
         # TODO: implement planning inference
-        # hidden_state = self.state_prior_model.state
+        hidden_state = self.state_prior_model.state.detach()
         state = self.state_variable.sample()
         if self._prev_action is not None:
             action = self._prev_action
         else:
             action = self.action_variable.sample()
-        # inf_input = self.action_inference_model(torch.cat((state, hidden_state, action), dim=1))
-        inf_input = self.action_inference_model(torch.cat((state, action), dim=1))
+        inf_input = self.action_inference_model(torch.cat((state, hidden_state, action), dim=1))
+        # inf_input = self.action_inference_model(torch.cat((state, action), dim=1))
         self.action_variable.infer(inf_input)
         # clear_gradients(self.generative_parameters())
         self.generative_mode()
@@ -299,7 +300,8 @@ class Model(nn.Module):
             free_energy = free_energy + torch.stack(objective)
 
         # calculate the reinforce terms
-        future_sums = torch.flip(torch.cumsum(torch.flip(free_energy.detach(), dims=[0]), dim=0), dims=[0])
+        optimality = torch.stack(self.objectives['optimality'])
+        future_sums = torch.flip(torch.cumsum(torch.flip(optimality.detach(), dims=[0]), dim=0), dims=[0])
         # normalize the future sums
         future_sums_mean = future_sums[1:].sum(dim=0, keepdim=True).div(n_valid_steps)
         future_sums_std = (future_sums[1:] - future_sums_mean).pow(2).mul(valid[1:]).sum(dim=0, keepdim=True).div(n_valid_steps-1).pow(0.5)

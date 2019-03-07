@@ -34,6 +34,8 @@ class Optimizer(object):
 
     def apply(self):
         for model_name, params in self.parameters.items():
+            if self.update_inf_online and model_name == 'state_inference_model':
+                continue
             grads = [param.grad for param in params]
             if self.clip_grad is not None:
                 clip_gradients(grads, self.clip_grad)

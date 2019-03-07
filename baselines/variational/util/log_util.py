@@ -25,7 +25,7 @@ class Logger:
         log_str (str): name of the log (date and time)
         chkpt_interval (int): interval for model checkpointing (in train steps)
     """
-    def __init__(self, log_dir, log_str=None, ckpt_interval=5000):
+    def __init__(self, log_dir, exp_args, log_str=None, ckpt_interval=5000):
         self.log_dir = log_dir
         if log_str is not None:
             self.log_str = log_str

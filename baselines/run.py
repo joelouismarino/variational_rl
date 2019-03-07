@@ -112,7 +112,7 @@ def build_env(args):
             env = make_env(env_id, env_type, seed=seed, wrapper_kwargs={'frame_stack': True})
         elif alg == 'trpo_mpi':
             env = make_env(env_id, env_type, seed=seed)
-        elif alg == 'model_based':
+        elif alg == 'variational':
             env = make_env(env_id, env_type, seed=seed, wrapper_kwargs={'frame_width': 64,
                                                                         'frame_height': 64,
                                                                         'grayscale': False,
@@ -127,7 +127,7 @@ def build_env(args):
             env = VecFrameStack(env, frame_stack_size)
 
     elif env_type == 'minigrid':
-        if alg == 'model_based':
+        if alg == 'variational':
             env = make_env(env_id, env_type, seed=seed, wrapper_kwargs={'scale': True,
                                                                         'to_tensor': True,
                                                                         'transpose': True,

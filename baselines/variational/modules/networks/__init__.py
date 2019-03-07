@@ -1,4 +1,6 @@
 def get_network(network_args):
+    if network_args is None:
+        return None
     network_type = network_args['type'].lower()
     del network_args['type']
     if network_type == 'fully_connected':

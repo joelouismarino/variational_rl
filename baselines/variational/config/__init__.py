@@ -3,15 +3,15 @@ try:
 except ImportError:
     gym_minigrid = None
 
-def get_model_args(env):
+def get_agent_args(env):
     """
-    Get the model configuration arguments for the specific environment.
+    Get the agent configuration arguments for the specific environment.
 
     Args:
         env (OpenAI gym environment): the environment for the model
 
     Return:
-        dictionary containing model configuration arguments
+        dictionary containing agent configuration arguments
     """
     env_name = env.spec.id
     # VizDoom environments

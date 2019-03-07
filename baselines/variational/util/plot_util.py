@@ -10,8 +10,8 @@ class Plotter:
     Args:
         log_str (str): name of visdom environment
     """
-    def __init__(self, log_str):
-        self.env_id = log_str
+    def __init__(self, exp_args):
+        self.env_id = exp_args['log_str']
         self.vis = Visdom(env=self.env_id)
         self.metric_plot_names = ['observation', 'reward', 'done', 'optimality',
                                   'state', 'action', 'state_improvement']
@@ -36,6 +36,7 @@ class Plotter:
         self.grad_names = ['grads', 'grad_norms']
         windows = self.metric_plot_names + self.episode_plot_names + self.img_names + self.grad_names
         self._init_windows(windows)
+        self.plot_config(exp_args)
         # self.smooth_reward_len = 1
         self._step = 1
         self._episode = 1
@@ -44,6 +45,22 @@ class Plotter:
         self.window_id = {}
         for w in window_names:
             self.window_id[w] = None
+
+    def plot_config(self, args):
+        agent_args = args.pop('agent_args')
+        exp_config_str = '<b> EXPERIMENT CONFIG </b> <br/>'
+        for arg_name, arg in args.items():
+            arg_str = '<b> ' + arg_name + ':</b> '
+            arg_str += str(arg) + '<br/>'
+            exp_config_str += arg_str
+        self.vis.text(exp_config_str)
+
+        agent_config_str = '<b> AGENT CONFIG </b> <br/>'
+        for arg_name, arg in agent_args.items():
+            arg_str = '<b> ' + arg_name + ':</b> '
+            arg_str += str(arg) + '<br/>'
+            agent_config_str += arg_str
+        self.vis.text(agent_config_str)
 
     def plot_train_step(self, results):
         # plot a training step

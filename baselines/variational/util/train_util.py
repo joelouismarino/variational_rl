@@ -1,32 +1,32 @@
 import torch
 
 
-def collect_episode(env, model):
+def collect_episode(env, agent):
     """
     Collects an episode of experience using the model and environment.
     """
-    model.reset(); model.eval()
+    agent.reset(); agent.eval()
     observation = env.reset()
     reward = 0.
     done = False
     n_steps = 0
 
     while not done:
-        action = model.act(observation, reward, done)
+        action = agent.act(observation, reward, done)
         observation, reward, done, _ = env.step(action)
         n_steps += 1
-    model.act(None, reward, done)
+    agent.act(None, reward, done)
 
-    return model.get_episode(), n_steps
+    return agent.get_episode(), n_steps
 
 
-def train(model, data, optimizer):
+def train(agent, data, optimizer):
     """
-    Trains the model on the data using the optimizer.
+    Trains the agent on the data using the optimizer.
     """
     optimizer.zero_grad()
     n_steps, batch_size = data['observation'].shape[:2]
-    model.reset(batch_size); model.train()
+    agent.reset(batch_size); agent.train()
 
     observation = data['observation']
     reward = data['reward']
@@ -35,8 +35,8 @@ def train(model, data, optimizer):
     action = data['action']
 
     for step in range(n_steps):
-        model.act(observation[step], reward[step], done[step], action[step], valid[step])
+        agent.act(observation[step], reward[step], done[step], action[step], valid[step])
         optimizer.step()
-    results = model.evaluate()
+    results = agent.evaluate()
     optimizer.apply()
     return results
