@@ -14,15 +14,21 @@ class Agent(nn.Module):
     def __init__(self):
         super(Agent, self).__init__()
 
-        # networks
+        # models
         self.state_prior_model = None
         self.action_prior_model = None
+        self.obs_likelihood_model = None
+        self.reward_likelihood_model = None
+        self.done_likelihood_model = None
         self.state_inference_model = None
         self.action_inference_model = None
 
         # variables
         self.state_variable = None
         self.action_variable = None
+        self.observation_variable = None
+        self.reward_variable = None
+        self.done_variable = None
 
         # miscellaneous
         self.optimality_scale = 1.
@@ -45,12 +51,15 @@ class Agent(nn.Module):
         self._prev_action = None
         self.batch_size = 1
 
+        self.obs_reconstruction = None
+        self.obs_prediction = None
+
     def act(self, observation, reward=None, done=False, action=None, valid=None):
         observation, reward, action, done, valid = self._change_device(observation, reward, action, done, valid)
-        self.step_state()
-        self.state_inference(observation, reward, done, valid)
-        self.step_action()
-        self.action_inference()
+        self.step_state(observation=observation, reward=reward, done=done, valid=valid)
+        self.state_inference(observation=observation, reward=reward, done=done, valid=valid)
+        self.step_action(observation=observation, reward=reward, done=done, valid=valid, action=action)
+        self.action_inference(observation=observation, reward=reward, done=done, valid=valid, action=action)
         if self._mode == 'train':
             self._collect_objectives_and_log_probs(observation, reward, done, action, valid)
             self._prev_action = action
@@ -67,15 +76,27 @@ class Agent(nn.Module):
         pass
 
     @abstractmethod
-    def action_inference(self, action=None):
+    def action_inference(self, observation, reward, done, valid, action=None):
         pass
 
     @abstractmethod
-    def step_state(self):
+    def step_state(self, observation, reward, done, valid):
         pass
 
     @abstractmethod
-    def step_action(self):
+    def step_action(self, observation, reward, done, valid, action=None):
+        pass
+
+    def generate_observation(self):
+        # generate the conditional likelihood for the observation
+        pass
+
+    def generate_reward(self):
+        # generate the conditional likelihood for the reward
+        pass
+
+    def generate_done(self):
+        # generate the conditional likelihood for episode being done
         pass
 
     def free_energy(self, observation, reward, done, valid):
@@ -88,7 +109,17 @@ class Agent(nn.Module):
     def cond_log_likelihood(self, observation, reward, done, valid):
         observation, reward, done = self._change_device(observation, reward, done)
         opt_log_likelihood = self.optimality_scale * (reward - 1.)
-        return valid * opt_log_likelihood
+        cond_log_likelihood = valid * opt_log_likelihood
+        if self.observation_variable is not None:
+            obs_log_likelihood = (1 - done) * self.observation_variable.cond_log_likelihood(observation).sum(dim=1, keepdim=True)
+            cond_log_likelihood += valid * obs_log_likelihood
+        if self.reward_variable is not None:
+            reward_log_likelihood = self.reward_variable.cond_log_likelihood(reward).sum(dim=1, keepdim=True)
+            cond_log_likelihood += valid * reward_log_likelihood
+        if self.done_variable is not None:
+            done_log_likelihood = self.done_variable.cond_log_likelihood(done).sum(dim=1, keepdim=True)
+            cond_log_likelihood += valid * done_log_likelihood
+        return cond_log_likelihood
 
     def kl_divergence(self, valid):
         state_kl_divergence = self.state_variable.kl_divergence().sum(dim=1, keepdim=True)
@@ -115,14 +146,13 @@ class Agent(nn.Module):
                 results[name + '_improvement'] = imp.detach().cpu().item()
 
         # sum the objectives
-        n_steps = len(self.objectives['observation'])
+        n_steps = len(self.objectives['optimality'])
         free_energy = torch.zeros(n_steps, self.batch_size, 1).to(self.device)
         for objective_name, objective in self.objectives.items():
             free_energy = free_energy + torch.stack(objective)
 
         # calculate the reinforce terms
-        optimality = torch.stack(self.objectives['optimality'])
-        future_sums = torch.flip(torch.cumsum(torch.flip(optimality.detach(), dims=[0]), dim=0), dims=[0])
+        future_sums = torch.flip(torch.cumsum(torch.flip(free_energy.detach(), dims=[0]), dim=0), dims=[0])
         # normalize the future sums
         future_sums_mean = future_sums[1:].sum(dim=0, keepdim=True).div(n_valid_steps)
         future_sums_std = (future_sums[1:] - future_sums_mean).pow(2).mul(valid[1:]).sum(dim=0, keepdim=True).div(n_valid_steps-1).pow(0.5)
@@ -144,7 +174,8 @@ class Agent(nn.Module):
         grads_dict = {}
         grad_norm_dict = {}
         for model_name, params in self.parameters().items():
-            grads = torch.cat([param.grad.view(-1) for param in params], dim=0)
+            grads = [param.grad for param in params if param.grad is not None]
+            grads = torch.cat([grad.view(-1) for grad in grads], dim=0)
             grads_dict[model_name] = grads.abs().mean().cpu().numpy().item()
             grad_norm_dict[model_name] = grads.norm().cpu().numpy().item()
         results['grads'] = grads_dict
@@ -152,8 +183,18 @@ class Agent(nn.Module):
 
         return results
 
-
     def _collect_objectives_and_log_probs(self, observation, reward, done, action, valid):
+        if self.done_likelihood_model is not None:
+            done_log_likelihood = self.done_variable.cond_log_likelihood(done).sum(dim=1, keepdim=True)
+            self.objectives['done'].append(-done_log_likelihood * valid)
+
+        if self.reward_likelihood_model is not None:
+            reward_log_likelihood = self.reward_variable.cond_log_likelihood(reward).sum(dim=1, keepdim=True)
+            self.objectives['reward'].append(-reward_log_likelihood * valid)
+
+        if self.obs_likelihood_model is not None:
+            observation_log_likelihood = self.observation_variable.cond_log_likelihood(observation).sum(dim=1, keepdim=True)
+            self.objectives['observation'].append(-observation_log_likelihood * (1 - done) * valid)
 
         optimality_log_likelihood = self.optimality_scale * (reward - 1.)
         self.objectives['optimality'].append(-optimality_log_likelihood * valid)
@@ -174,6 +215,10 @@ class Agent(nn.Module):
             self.episode['observation'].append(observation)
             self.episode['action'].append(self.action_variable.sample())
             self.episode['state'].append(self.state_variable.sample())
+            if self.obs_reconstruction is not None:
+                self.episode['reconstruction'].append(self.obs_reconstruction)
+            if self.obs_prediction is not None:
+                self.episode['prediction'].append(self.obs_prediction)
         else:
             obs = self.episode['observation'][0]
             action = self.episode['action'][0]
@@ -181,6 +226,10 @@ class Agent(nn.Module):
             self.episode['observation'].append(obs.new(obs.shape).zero_())
             self.episode['action'].append(action.new(action.shape).zero_())
             self.episode['state'].append(state.new(state.shape).zero_())
+            if self.obs_reconstruction is not None:
+                self.episode['reconstruction'].append(obs.new(obs.shape).zero_())
+            if self.obs_prediction is not None:
+                self.episode['prediction'].append(obs.new(obs.shape).zero_())
         self.episode['reward'].append(reward)
         self.episode['done'].append(done)
 
@@ -225,15 +274,40 @@ class Agent(nn.Module):
         # reset the variables
         self.state_variable.reset(batch_size)
         self.action_variable.reset(batch_size)
+        if self.observation_variable is not None:
+            self.observation_variable.reset()
+        if self.reward_variable is not None:
+            self.reward_variable.reset()
+        if self.done_variable is not None:
+            self.done_variable.reset()
 
         # reset the networks
-        self.state_prior_model.reset(batch_size)
-        self.action_prior_model.reset(batch_size)
+        if self.state_prior_model is not None:
+            self.state_prior_model.reset(batch_size)
+        if self.action_prior_model is not None:
+            self.action_prior_model.reset(batch_size)
+        if self.obs_likelihood_model is not None:
+            self.obs_likelihood_model.reset()
+        if self.reward_likelihood_model is not None:
+            self.reward_likelihood_model.reset()
+        if self.done_likelihood_model is not None:
+            self.done_likelihood_model.reset()
 
         # reset the episode, objectives, and log probs
         self.episode = {'observation': [], 'reward': [], 'done': [],
                         'state': [], 'action': []}
+        if self.obs_likelihood_model is not None:
+            self.episode['reconstruction'] = []
+            self.episode['prediction'] = []
+
         self.objectives = {'optimality': [], 'state': [], 'action': []}
+        if self.observation_variable is not None:
+            self.objectives['observation'] = []
+        if self.reward_variable is not None:
+            self.objectives['reward'] = []
+        if self.done_variable is not None:
+            self.objectives['done'] = []
+
         self.inference_improvement = {'state': [], 'action': []}
         self.log_probs = {'action': []}
 
@@ -241,64 +315,114 @@ class Agent(nn.Module):
         self.valid = []
         self.batch_size = batch_size
         self.state_inf_free_energies = []
+        self.obs_reconstruction = None
+        self.obs_prediction = None
 
     @property
     def device(self):
-        return self.inference_parameters()[0].device
+        return self.generative_parameters()[0].device
 
     def train(self, *args):
-        super(Model, self).train(*args)
+        super(Agent, self).train(*args)
         self._mode = 'train'
 
     def eval(self, *args):
-        super(Model, self).eval(*args)
+        super(Agent, self).eval(*args)
         self._mode = 'eval'
 
     def parameters(self):
         param_dict = {}
 
-        param_dict['state_inference_model'] = nn.ParameterList()
-        param_dict['state_inference_model'].extend(list(self.state_inference_model.parameters()))
-        param_dict['state_inference_model'].extend(list(self.state_variable.inference_parameters()))
+        if self.state_inference_model is not None:
+            param_dict['state_inference_model'] = nn.ParameterList()
+            param_dict['state_inference_model'].extend(list(self.state_inference_model.parameters()))
+            param_dict['state_inference_model'].extend(list(self.state_variable.inference_parameters()))
 
-        param_dict['action_inference_model'] = nn.ParameterList()
-        param_dict['action_inference_model'].extend(list(self.action_inference_model.parameters()))
-        param_dict['action_inference_model'].extend(list(self.action_variable.inference_parameters()))
+        if self.action_inference_model is not None:
+            param_dict['action_inference_model'] = nn.ParameterList()
+            param_dict['action_inference_model'].extend(list(self.action_inference_model.parameters()))
+            param_dict['action_inference_model'].extend(list(self.action_variable.inference_parameters()))
 
-        param_dict['state_prior_model'] = nn.ParameterList()
-        param_dict['state_prior_model'].extend(list(self.state_prior_model.parameters()))
-        param_dict['state_prior_model'].extend(list(self.state_variable.generative_parameters()))
+        if self.state_prior_model is not None:
+            param_dict['state_prior_model'] = nn.ParameterList()
+            param_dict['state_prior_model'].extend(list(self.state_prior_model.parameters()))
+            param_dict['state_prior_model'].extend(list(self.state_variable.generative_parameters()))
 
-        param_dict['action_prior_model'] = nn.ParameterList()
-        param_dict['action_prior_model'].extend(list(self.action_prior_model.parameters()))
-        param_dict['action_prior_model'].extend(list(self.action_variable.generative_parameters()))
+        if self.action_prior_model is not None:
+            param_dict['action_prior_model'] = nn.ParameterList()
+            param_dict['action_prior_model'].extend(list(self.action_prior_model.parameters()))
+            param_dict['action_prior_model'].extend(list(self.action_variable.generative_parameters()))
+
+        if self.obs_likelihood_model is not None:
+            param_dict['obs_likelihood_model'] = nn.ParameterList()
+            param_dict['obs_likelihood_model'].extend(list(self.obs_likelihood_model.parameters()))
+            param_dict['obs_likelihood_model'].extend(list(self.observation_variable.parameters()))
+
+        if self.reward_likelihood_model is not None:
+            param_dict['reward_likelihood_model'] = nn.ParameterList()
+            param_dict['reward_likelihood_model'].extend(list(self.reward_likelihood_model.parameters()))
+            param_dict['reward_likelihood_model'].extend(list(self.reward_variable.parameters()))
+
+        if self.done_likelihood_model is not None:
+            param_dict['done_likelihood_model'] = nn.ParameterList()
+            param_dict['done_likelihood_model'].extend(list(self.done_likelihood_model.parameters()))
+            param_dict['done_likelihood_model'].extend(list(self.done_variable.parameters()))
 
         return param_dict
 
     def inference_parameters(self):
         params = nn.ParameterList()
-        params.extend(list(self.state_inference_model.parameters()))
-        params.extend(list(self.action_inference_model.parameters()))
-        params.extend(list(self.state_variable.inference_parameters()))
-        params.extend(list(self.action_variable.inference_parameters()))
+        if self.state_inference_model is not None:
+            params.extend(list(self.state_inference_model.parameters()))
+            params.extend(list(self.state_variable.inference_parameters()))
+        if self.action_inference_model is not None:
+            params.extend(list(self.action_inference_model.parameters()))
+            params.extend(list(self.action_variable.inference_parameters()))
         return params
 
     def generative_parameters(self):
         params = nn.ParameterList()
-        params.extend(list(self.state_prior_model.parameters()))
-        params.extend(list(self.action_prior_model.parameters()))
-        params.extend(list(self.state_variable.generative_parameters()))
-        params.extend(list(self.action_variable.generative_parameters()))
+        if self.state_prior_model is not None:
+            params.extend(list(self.state_prior_model.parameters()))
+            params.extend(list(self.state_variable.generative_parameters()))
+        if self.action_prior_model is not None:
+            params.extend(list(self.action_prior_model.parameters()))
+            params.extend(list(self.action_variable.generative_parameters()))
+        if self.obs_likelihood_model is not None:
+            params.extend(list(self.obs_likelihood_model.parameters()))
+            params.extend(list(self.observation_variable.parameters()))
+        if self.reward_likelihood_model is not None:
+            params.extend(list(self.reward_likelihood_model.parameters()))
+            params.extend(list(self.reward_variable.parameters()))
+        if self.done_likelihood_model is not None:
+            params.extend(list(self.done_likelihood_model.parameters()))
+            params.extend(list(self.done_variable.parameters()))
         return params
 
     def inference_mode(self):
         self.state_variable.inference_mode()
         self.action_variable.inference_mode()
-        self.state_prior_model.detach_hidden_state()
-        self.action_prior_model.detach_hidden_state()
+        if self.state_prior_model is not None:
+            self.state_prior_model.detach_hidden_state()
+        if self.action_prior_model is not None:
+            self.action_prior_model.detach_hidden_state()
+        if self.obs_likelihood_model is not None:
+            self.obs_likelihood_model.detach_hidden_state()
+        if self.reward_likelihood_model is not None:
+            self.reward_likelihood_model.detach_hidden_state()
+        if self.done_likelihood_model is not None:
+            self.done_likelihood_model.detach_hidden_state()
 
     def generative_mode(self):
         self.state_variable.generative_mode()
         self.action_variable.generative_mode()
-        self.state_prior_model.attach_hidden_state()
-        self.action_prior_model.attach_hidden_state()
+        if self.state_prior_model is not None:
+            self.state_prior_model.attach_hidden_state()
+        if self.action_prior_model is not None:
+            self.action_prior_model.attach_hidden_state()
+        if self.obs_likelihood_model is not None:
+            self.obs_likelihood_model.attach_hidden_state()
+        if self.reward_likelihood_model is not None:
+            self.reward_likelihood_model.attach_hidden_state()
+        if self.done_likelihood_model is not None:
+            self.done_likelihood_model.attach_hidden_state()
