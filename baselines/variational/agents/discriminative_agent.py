@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from .agent import Agent
-from ..modules.networks import get_network
+from ..modules.models import get_model
 from ..modules.variables import get_variable
 from ..misc import clear_gradients, one_hot_to_index
 
@@ -16,11 +16,11 @@ class DiscriminativeAgent(Agent):
         super(Agent, self).__init__()
 
         # networks
-        self.state_prior_model = get_network(state_prior_args)
-        self.action_prior_model = get_network(action_prior_args)
+        self.state_prior_model = get_model('discriminative', 'state', 'prior', state_prior_args)
+        self.action_prior_model = get_model('discriminative', 'action', 'prior', action_prior_args)
 
-        self.state_inference_model = get_network(state_inference_args)
-        self.action_inference_model = get_network(action_inference_args)
+        self.state_inference_model = get_model('discriminative', 'state', 'inference', state_inference_args)
+        self.action_inference_model = get_model('discriminative', 'action', 'inference', action_inference_args)
 
         # variables
         state_variable_args['n_input'] = [None, None]
@@ -59,10 +59,13 @@ class DiscriminativeAgent(Agent):
         self._prev_action = None
         self.batch_size = 1
 
+        self.state_variable.inference_mode()
+        self.action_variable.inference_mode()
+
     def act(self, observation, reward=None, done=False, action=None, valid=None):
         observation, reward, action, done, valid = self._change_device(observation, reward, action, done, valid)
         self.step_state(observation, reward)
-        self.state_inference(observation, reward, done, valid)
+        self.state_inference(observation, reward)
         self.step_action(observation, reward)
         self.action_inference(observation, reward)
         if self._mode == 'train':
@@ -76,54 +79,64 @@ class DiscriminativeAgent(Agent):
                 action = self._convert_action(action).cpu().numpy()
         return action
 
-    def state_inference(self, observation, reward, done, valid):
+    def state_inference(self, observation, reward):
+        observation = (observation / 5.) - 0.5
+        # infer the approx. posterior on the state
         if self.state_inference_model is not None:
-            self.inference_mode()
-            # infer the approx. posterior on the state
-            self.state_variable.init_approx_post()
-            inf_input = self.state_inference_model(observation)
-            self.state_variable.infer(inf_input)
-            self.generative_mode()
-
-    def action_inference(self, action=None):
-        if self.action_inference_model is not None:
-            self.inference_mode()
-            # infer the approx. posterior on the action
-            self.action_variable.init_approx_post()
-            hidden_state = self.state_prior_model.state.detach()
             state = self.state_variable.sample()
-            if self._prev_action is not None:
-                action = self._prev_action
-            else:
+            action = self._prev_action
+            if action is None:
                 action = self.action_variable.sample()
-            inf_input = self.action_inference_model(torch.cat((state, hidden_state, action), dim=1))
-            # inf_input = self.action_inference_model(torch.cat((state, action), dim=1))
+            if self.state_variable.reinitialized:
+                # use zeros as initial state and action inputs
+                state = state.new_zeros(state.shape)
+                action = self.action_variable.sample()
+                action = action.new_zeros(action.shape)
+            inf_input = self.state_inference_model(observation, reward, state, action)
+            self.state_variable.infer(inf_input)
+
+    def action_inference(self, observation, reward, action=None):
+        observation = (observation / 5.) - 0.5
+        # infer the approx. posterior on the action
+        if self.action_inference_model is not None:
+            state = self.state_variable.sample()
+            action = self._prev_action
+            if action is None:
+                action = self.action_variable.sample()
+            if self.action_variable.reinitialized:
+                action = self.action_variable.sample()
+                action = action.new_zeros(action.shape)
+            inf_input = self.action_inference_model(observation, reward, state, action)
             self.action_variable.infer(inf_input)
-            # clear_gradients(self.generative_parameters())
-            self.generative_mode()
 
     def step_state(self, observation, reward):
-        # calculate the prior (filtering posterior) on the state variable
-        if not self.state_variable.reinitialized:
+        observation = (observation / 5.) - 0.5
+        # calculate the prior on the state variable
+        if self.state_prior_model is not None:
             state = self.state_variable.sample()
-            if self._prev_action is not None:
-                action = self._prev_action
-            else:
+            action = self._prev_action
+            if action is None:
                 action = self.action_variable.sample()
-            prior_input = self.state_prior_model(torch.cat((state, action), dim=1))
+            if self.state_variable.reinitialized:
+                # use zeros as initial state and action inputs
+                state = state.new_zeros(state.shape)
+                action = self.action_variable.sample()
+                action = action.new_zeros(action.shape)
+            prior_input = self.state_prior_model(observation, reward, state, action)
             self.state_variable.step(prior_input)
 
     def step_action(self, observation, reward):
+        observation = (observation / 5.) - 0.5
         # calculate the prior on the action variable
-        if not self.action_variable.reinitialized:
-            # hidden_state = self.state_prior_model.state
+        if self.action_prior_model is not None:
             state = self.state_variable.sample()
-            if self._prev_action is not None:
-                action = self._prev_action
-            else:
+            action = self._prev_action
+            if action is None:
                 action = self.action_variable.sample()
-            # prior_input = self.action_prior_model(torch.cat((state, hidden_state, action), dim=1))
-            prior_input = self.action_prior_model(torch.cat((state, action), dim=1))
+            if self.action_variable.reinitialized:
+                action = self.action_variable.sample()
+                action = action.new_zeros(action.shape)
+            prior_input = self.action_prior_model(observation, reward, state, action)
             self.action_variable.step(prior_input)
 
     def free_energy(self, observation, reward, done, valid):
@@ -146,14 +159,14 @@ class DiscriminativeAgent(Agent):
 
     def evaluate(self):
         # evaluate the objective, averaged over the batch, backprop
-
+        # import ipdb; ipdb.set_trace()
         results = {}
         valid = torch.stack(self.valid)
         n_valid_steps = valid.sum(dim=0).sub(1)
         # average objectives over time and batch for reporting
         for objective_name, objective in self.objectives.items():
             obj = torch.stack(objective).sum(dim=0).div(n_valid_steps).mean(dim=0)
-            if objective_name in ['observation', 'reward', 'optimality', 'done']:
+            if objective_name == 'optimality':
                 obj = obj * -1
             results[objective_name] = obj.detach().cpu().item()
 
@@ -163,7 +176,7 @@ class DiscriminativeAgent(Agent):
                 results[name + '_improvement'] = imp.detach().cpu().item()
 
         # sum the objectives
-        n_steps = len(self.objectives['observation'])
+        n_steps = len(self.objectives['optimality'])
         free_energy = torch.zeros(n_steps, self.batch_size, 1).to(self.device)
         for objective_name, objective in self.objectives.items():
             free_energy = free_energy + torch.stack(objective)
@@ -192,7 +205,8 @@ class DiscriminativeAgent(Agent):
         grads_dict = {}
         grad_norm_dict = {}
         for model_name, params in self.parameters().items():
-            grads = torch.cat([param.grad.view(-1) for param in params], dim=0)
+            grads = [param.grad for param in params if param.grad is not None]
+            grads = torch.cat([grad.view(-1) for grad in grads], dim=0)
             grads_dict[model_name] = grads.abs().mean().cpu().numpy().item()
             grad_norm_dict[model_name] = grads.norm().cpu().numpy().item()
         results['grads'] = grads_dict
@@ -347,19 +361,3 @@ class DiscriminativeAgent(Agent):
             params.extend(list(self.action_prior_model.parameters()))
             params.extend(list(self.action_variable.generative_parameters()))
         return params
-
-    def inference_mode(self):
-        self.state_variable.inference_mode()
-        self.action_variable.inference_mode()
-        if self.state_prior_model is not None:
-            self.state_prior_model.detach_hidden_state()
-        if self.action_prior_model is not None:
-            self.action_prior_model.detach_hidden_state()
-
-    def generative_mode(self):
-        self.state_variable.generative_mode()
-        self.action_variable.generative_mode()
-        if self.state_prior_model is not None:
-            self.state_prior_model.attach_hidden_state()
-        if self.action_prior_model is not None:
-            self.action_prior_model.attach_hidden_state()

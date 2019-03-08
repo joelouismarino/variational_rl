@@ -10,7 +10,7 @@ def get_minigrid_config(env):
 
     agent_args['agent_type'] = 'discriminative'
 
-    agent_args['misc_args'] = {'optimality_scale': 1e4,
+    agent_args['misc_args'] = {'optimality_scale': 1e1,
                                'n_inf_iter': 1,
                                'kl_min': dict(state=0., action=0.)}
 
@@ -43,7 +43,7 @@ def get_minigrid_config(env):
 
         agent_args['state_prior_args'] = {'type': 'recurrent',
                                           'n_layers': 1,
-                                          'n_input': n_state_variables + n_action_variables + observation_size,
+                                          'n_input': n_state_variables + n_action_variables + observation_size + 1,
                                           'n_units': 512,
                                           'connectivity': 'sequential',
                                           'dropout': None}
@@ -62,7 +62,7 @@ def get_minigrid_config(env):
 
         agent_args['action_inference_args'] = {'type': 'fully_connected',
                                                'n_layers': 1,
-                                               'n_input': n_state_variables + n_action_variables + hidden_state_size,
+                                               'n_input': n_state_variables + n_action_variables + observation_size + 1,
                                                'n_units': 200,
                                                'connectivity': 'sequential',
                                                'batch_norm': False,

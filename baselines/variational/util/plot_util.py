@@ -13,8 +13,7 @@ class Plotter:
     def __init__(self, exp_args):
         self.env_id = exp_args['log_str']
         self.vis = Visdom(env=self.env_id)
-        self.metric_plot_names = ['observation', 'reward', 'done', 'optimality',
-                                  'state', 'action', 'state_improvement']
+        self.metric_plot_names = ['optimality', 'state', 'action']
         self.episode_plot_names = ['length', 'env_return']
         self.grad_plot_names = []
         # self.metric_plot_names = ['free_energy', 'reward_cll', 'obs_cll', 'done_cll',
@@ -32,8 +31,13 @@ class Plotter:
         #                               'state_prior_model_grad', 'action_prior_model_grad',
         #                               'obs_likelihood_model_grad', 'reward_likelihood_model_grad',
         #                               'done_likelihood_model_grad']
-        self.img_names = ['recon', 'obs', 'pred']
+        self.img_names = ['obs']
         self.grad_names = ['grads', 'grad_norms']
+        if exp_args['agent_args']['agent_type'] == 'generative':
+            # additional plots for likelihoods and inference improvement
+            self.metric_plot_names += ['observation', 'reward', 'done', 'state_improvement']
+            # additional images for reconstruction and prediction
+            self.img_names += ['recon', 'pred']
         windows = self.metric_plot_names + self.episode_plot_names + self.img_names + self.grad_names
         self._init_windows(windows)
         self.plot_config(exp_args)
@@ -77,8 +81,10 @@ class Plotter:
         n_steps = episode['observation'].shape[0] - 1
         time_step = random.randint(0, n_steps-1)
         self.plot_image(episode['observation'][time_step], 'Observation')
-        self.plot_image(episode['prediction'][time_step], 'Prediction')
-        self.plot_image(episode['reconstruction'][time_step], 'Reconstruction')
+        if 'prediction' in episode:
+            self.plot_image(episode['prediction'][time_step], 'Prediction')
+        if 'reconstruction' in episode:
+            self.plot_image(episode['reconstruction'][time_step], 'Reconstruction')
 
         self._plot_metric(self._episode, n_steps, 'length',
                           opts=self._get_opts('length'), name='Episode')

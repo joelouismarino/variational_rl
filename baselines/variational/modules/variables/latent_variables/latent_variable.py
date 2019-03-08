@@ -101,12 +101,18 @@ class LatentVariable(nn.Module):
     def sample(self, input=None):
         # sample the latent variable
         if self._sample is None:
-            if self.approx_post_dist.has_rsample:
-                sample = self.approx_post_dist.rsample()
-                sample = self.layer_norm(sample)
+            # sample from the approximate posterior if available
+            sampling_dist = self.approx_post_dist
+            sampling_dist_type = self.approx_post_dist_type
+            if sampling_dist is None:
+                sampling_dist = self.prior_dist
+                sampling_dist_type = self.prior_dist_type
+            if sampling_dist.has_rsample:
+                sample = sampling_dist.rsample()
+                # sample = self.layer_norm(sample)
             else:
-                sample = self.approx_post_dist.sample()
-            if self.approx_post_dist_type == getattr(torch.distributions, 'Categorical'):
+                sample = sampling_dist.sample()
+            if sampling_dist_type == getattr(torch.distributions, 'Categorical'):
                 # convert to one-hot encoding
                 device = self.initial_prior_params['logits'].device
                 one_hot_sample = torch.zeros(sample.shape[0], self.n_variables).to(device)
@@ -140,6 +146,7 @@ class LatentVariable(nn.Module):
             # create a new distribution with the parameters
             self.prior_dist = self.prior_dist_type(**parameters)
             self.reinitialized = False
+            self._sample = None
 
     def init_approx_post(self):
         if self.approx_post_dist_type is not None:
@@ -173,7 +180,7 @@ class LatentVariable(nn.Module):
                     sample = self.approx_post_dist.sample()
                 return self.approx_post_dist.log_prob(sample) - self.prior_dist.log_prob(sample)
         else:
-            return 0.
+            return self._sample.new_zeros(self._sample.shape)
 
     def params_and_grads(self, concat=True, normalize=True, norm_type='layer'):
         # get current gradients and parameters

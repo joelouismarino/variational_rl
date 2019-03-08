@@ -21,16 +21,17 @@ class Optimizer(object):
     def step(self):
         # collect and apply inference parameter gradients if necessary
         if self.update_inf_online:
-            params = self.parameters['state_inference_model']
-            grads = [param.grad for param in params]
-            divide_gradients_by_value(grads, self.model.batch_size)
-            divide_gradients_by_value(grads, self.model.n_inf_iter)
-            if self.clip_grad is not None:
-                clip_gradients(grads, self.clip_grad)
-            if self.norm_grad is not None:
-                norm_gradients(grads, self.norm_grad)
-            self.opt['state_inference_model'].step()
-            self.opt['state_inference_model'].zero_grad()
+            if self.model.state_inference_model is not None:
+                params = self.parameters['state_inference_model']
+                grads = [param.grad for param in params]
+                divide_gradients_by_value(grads, self.model.batch_size)
+                divide_gradients_by_value(grads, self.model.n_inf_iter)
+                if self.clip_grad is not None:
+                    clip_gradients(grads, self.clip_grad)
+                if self.norm_grad is not None:
+                    norm_gradients(grads, self.norm_grad)
+                self.opt['state_inference_model'].step()
+                self.opt['state_inference_model'].zero_grad()
 
     def apply(self):
         for model_name, params in self.parameters.items():

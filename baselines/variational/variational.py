@@ -9,7 +9,7 @@ from .util.train_util import collect_episode, train
 
 
 def learn(env, seed, total_timesteps, log_dir, batch_size=50, n_updates=5,
-          n_initial_batches=1, lr=0.001, device=None, **kwargs):
+          n_initial_batches=1, lr=1e-6, device=None, **kwargs):
 
     # torch.manual_seed(seed)
 
@@ -25,10 +25,10 @@ def learn(env, seed, total_timesteps, log_dir, batch_size=50, n_updates=5,
 
     # create the optimizer
     base_lr = lr
-    lr = {'state_inference_model': base_lr/20,
-          'action_inference_model': base_lr * 1e-5,
+    lr = {'state_inference_model': base_lr,
+          'action_inference_model': base_lr,
           'state_prior_model': base_lr,
-          'action_prior_model': 0.,
+          'action_prior_model': base_lr,
           'obs_likelihood_model': base_lr,
           'reward_likelihood_model': base_lr,
           'done_likelihood_model': base_lr}
