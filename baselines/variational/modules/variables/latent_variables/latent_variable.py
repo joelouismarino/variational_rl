@@ -12,12 +12,16 @@ class LatentVariable(nn.Module):
         approx_post_dist (str or None): name of the approx. posterior distribution type (e.g. Normal)
         n_variables (int): number of variables
         n_input (list): the size of the inputs to the prior and approximate posterior respectively
-        constant_prior (bool, optional): whether to set the prior as a constant
+        constant_prior (bool): whether to set the prior as a constant
+        inference_type (str): direct or iterative
+        norm_samples (bool): whether to normalize samples
     """
-    def __init__(self, prior_dist, approx_post_dist, n_variables, n_input, constant_prior=False):
+    def __init__(self, prior_dist, approx_post_dist, n_variables, n_input, constant_prior=False, inference_type='direct', norm_samples=False):
         super(LatentVariable, self).__init__()
         self.n_variables = n_variables
         self.constant_prior = constant_prior
+        self.inference_type = inference_type
+        self.norm_samples = norm_samples
         self.prior_dist_type = getattr(torch.distributions, prior_dist)
         self.approx_post_dist_type = None
         if approx_post_dist is not None:
@@ -39,7 +43,8 @@ class LatentVariable(nn.Module):
             else:
                 approx_post_param_names = self.approx_post_dist_type.arg_constraints.keys()
             self.approx_post_models = nn.ModuleDict({name: None for name in approx_post_param_names})
-            self.approx_post_gates = nn.ModuleDict({name: None for name in approx_post_param_names})
+            if self.inference_type != 'direct':
+                self.approx_post_gates = nn.ModuleDict({name: None for name in approx_post_param_names})
 
         # initialize the prior
         self.initial_prior_params = nn.ParameterDict({name: None for name in prior_param_names})
@@ -59,7 +64,9 @@ class LatentVariable(nn.Module):
 
         self._sample = None
         self._detach_latent = True
-        self.layer_norm = nn.LayerNorm(self.n_variables)
+        self.layer_norm = None
+        if self.norm_samples:
+            self.layer_norm = nn.LayerNorm(self.n_variables)
         self._log_var_limits = [-5, 5]
 
     def infer(self, input):
@@ -69,7 +76,8 @@ class LatentVariable(nn.Module):
             for param_name in self.approx_post_models:
                 # calculate the parameter update and the gate
                 param_update = self.approx_post_models[param_name](input)
-                param_gate = self.approx_post_gates[param_name](input)
+                if self.inference_type != 'direct':
+                    param_gate = self.approx_post_gates[param_name](input)
 
                 # update the parameter value
                 param = getattr(self.approx_post_dist, param_name).detach()
@@ -77,8 +85,11 @@ class LatentVariable(nn.Module):
                 if type(constraint) == constraints.greater_than and constraint.lower_bound == 0:
                     # convert to log-space (for scale parameters)
                     param = torch.log(param)
-                param = param_gate * param + (1. - param_gate) * param_update
-                # param = param_update
+
+                if self.inference_type == 'direct':
+                    param = param_update
+                else:
+                    param = param_gate * param + (1. - param_gate) * param_update
 
                 # satisfy any constraints on the parameter value
                 if type(constraint) == constraints.greater_than and constraint.lower_bound == 0:
@@ -109,7 +120,8 @@ class LatentVariable(nn.Module):
                 sampling_dist_type = self.prior_dist_type
             if sampling_dist.has_rsample:
                 sample = sampling_dist.rsample()
-                # sample = self.layer_norm(sample)
+                if self.norm_samples:
+                    sample = self.layer_norm(sample)
             else:
                 sample = sampling_dist.sample()
             if sampling_dist_type == getattr(torch.distributions, 'Categorical'):
@@ -182,7 +194,7 @@ class LatentVariable(nn.Module):
         else:
             return self._sample.new_zeros(self._sample.shape)
 
-    def params_and_grads(self, concat=True, normalize=True, norm_type='layer'):
+    def params_and_grads(self, concat=False, normalize=True, norm_type='layer'):
         # get current gradients and parameters
         params = [getattr(self.approx_post_dist, param).detach() for param in self.approx_post_models]
         grads = [getattr(self.approx_post_dist, param).grad.detach() for param in self.approx_post_models]
@@ -205,7 +217,7 @@ class LatentVariable(nn.Module):
         if concat:
             return torch.cat(params + grads, dim=1)
         else:
-            return params, grads
+            return torch.cat(params, dim=1), torch.cat(grads, dim=1)
 
     def inference_parameters(self):
         params = nn.ParameterList()

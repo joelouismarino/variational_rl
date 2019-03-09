@@ -25,7 +25,7 @@ class Optimizer(object):
                 params = self.parameters['state_inference_model']
                 grads = [param.grad for param in params]
                 divide_gradients_by_value(grads, self.model.batch_size)
-                divide_gradients_by_value(grads, self.model.n_inf_iter)
+                divide_gradients_by_value(grads, self.model.n_inf_iter['state'])
                 if self.clip_grad is not None:
                     clip_gradients(grads, self.clip_grad)
                 if self.norm_grad is not None:

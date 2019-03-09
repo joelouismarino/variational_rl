@@ -1,13 +1,13 @@
 import torch
 from ..model import Model
-from ...networks.network import FullyConnectedNetwork
+from ...networks import get_network
 
 
 class StatePrior(Model):
 
     def __init__(self, network_args):
         super(StatePrior, self).__init__()
-        self.network = FullyConnectedNetwork(**network_args)
+        self.network = get_network(network_args)
 
     def forward(self, state, action):
         # combine inputs

@@ -24,20 +24,27 @@ def get_model(type, variable, dist, network_args):
     elif type == 'generative':
         if variable == 'state':
             if dist == 'prior':
-                pass
+                from .generative.state_prior import StatePrior
+                return StatePrior(network_args)
             elif dist == 'inference':
-                pass
+                from .generative.state_inference import StateInference
+                return StateInference(network_args)
         elif variable == 'action':
             if dist == 'prior':
-                pass
+                from .generative.action_prior import ActionPrior
+                return ActionPrior(network_args)
             elif dist == 'inference':
-                pass
+                from .generative.action_inference import ActionInference
+                return ActionInference(network_args)
         elif variable == 'observation':
             if dist == 'likelihood':
-                pass
+                from .generative.observation_likelihood import ObservationLikelihood
+                return ObservationLikelihood(network_args)
         elif variable == 'reward':
             if dist == 'likelihood':
-                pass
+                from .generative.reward_likelihood import RewardLikelihood
+                return RewardLikelihood(network_args)
         elif variable == 'done':
             if dist == 'likelihood':
-                pass
+                from .generative.done_likelihood import DoneLikelihood
+                return DoneLikelihood(network_args)

@@ -5,7 +5,7 @@ from ...layers import FullyConnectedLayer
 
 class FullyConnectedLatentVariable(LatentVariable):
 
-    def __init__(self, prior_dist, approx_post_dist, n_variables, n_input, constant_prior=False):
+    def __init__(self, prior_dist, approx_post_dist, n_variables, n_input, constant_prior=False, inference_type='direct'):
         super(FullyConnectedLatentVariable, self).__init__(prior_dist,
                                                            approx_post_dist,
                                                            n_variables,
@@ -20,9 +20,10 @@ class FullyConnectedLatentVariable(LatentVariable):
             for model_name in self.approx_post_models:
                 self.approx_post_models[model_name] = FullyConnectedLayer(n_input[1],
                                                                           n_variables)
-                self.approx_post_gates[model_name] = FullyConnectedLayer(n_input[1],
-                                                                         n_variables,
-                                                                         non_linearity='sigmoid')
+                if self.inference_type != 'direct':
+                    self.approx_post_gates[model_name] = FullyConnectedLayer(n_input[1],
+                                                                             n_variables,
+                                                                             non_linearity='sigmoid')
 
         # reshape the initial prior params
         for param_name, param in self.initial_prior_params.items():

@@ -9,7 +9,5 @@ class ObservationLikelihood(Model):
         super(ObservationLikelihood, self).__init__()
         self.network = get_network(network_args)
 
-    def forward(self, state, action):
-        # combine inputs
-        inputs = torch.cat([state, action], dim=1)
-        return self.network(inputs)
+    def forward(self, state):
+        return self.network(state)

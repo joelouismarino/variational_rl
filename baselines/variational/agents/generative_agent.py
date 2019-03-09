@@ -86,7 +86,7 @@ class GenerativeAgent(Agent):
         if self.state_inference_model is not None:
             self.inference_mode()
             self.state_variable.init_approx_post()
-            for inf_iter in range(self.n_inf_iter):
+            for inf_iter in range(self.n_inf_iter['state']):
                 # evaluate conditional log likelihood of observation and state KL divergence
                 self.generate_observation()
                 self.generate_reward()
@@ -107,8 +107,8 @@ class GenerativeAgent(Agent):
                 state_inf_free_energy = valid * (clamped_state_kl - (1 - done) * obs_log_likelihood - reward_log_likelihood - done_log_likelihood)
                 (state_inf_free_energy.sum()).backward(retain_graph=True)
                 # update approx. posterior
-                inf_input = self.state_variable.params_and_grads()
-                inf_input = self.state_inference_model(inf_input)
+                params, grads = self.state_variable.params_and_grads()
+                inf_input = self.state_inference_model(params, grads)
                 self.state_variable.infer(inf_input)
             # final evaluation
             self.generate_observation()
@@ -145,14 +145,12 @@ class GenerativeAgent(Agent):
             self.inference_mode()
             # infer the approx. posterior on the action
             self.action_variable.init_approx_post()
-            # TODO: implement planning inference
-            hidden_state = self.state_prior_model.state.detach()
             state = self.state_variable.sample()
             if self._prev_action is not None:
                 action = self._prev_action
             else:
                 action = self.action_variable.sample()
-            inf_input = self.action_inference_model(torch.cat((state, hidden_state, action), dim=1))
+            inf_input = self.action_inference_model(state, action)
             # inf_input = self.action_inference_model(torch.cat((state, action), dim=1))
             self.action_variable.infer(inf_input)
             # clear_gradients(self.generative_parameters())
@@ -167,21 +165,19 @@ class GenerativeAgent(Agent):
                     action = self._prev_action
                 else:
                     action = self.action_variable.sample()
-                prior_input = self.state_prior_model(torch.cat((state, action), dim=1))
+                prior_input = self.state_prior_model(state, action)
                 self.state_variable.step(prior_input)
 
     def step_action(self, action=None, **kwargs):
         # calculate the prior on the action variable
         if self.action_prior_model is not None:
             if not self.action_variable.reinitialized:
-                # hidden_state = self.state_prior_model.state
                 state = self.state_variable.sample()
                 if self._prev_action is not None:
                     action = self._prev_action
                 else:
                     action = self.action_variable.sample()
-                # prior_input = self.action_prior_model(torch.cat((state, hidden_state, action), dim=1))
-                prior_input = self.action_prior_model(torch.cat((state, action), dim=1))
+                prior_input = self.action_prior_model(state, action)
                 self.action_variable.step(prior_input)
 
     def generate_observation(self):
