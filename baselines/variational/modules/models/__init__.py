@@ -1,4 +1,4 @@
-def get_model(type, variable, dist, network_args):
+def get_model(type, *args):
     """
     Function to create each model.
 
@@ -8,8 +8,17 @@ def get_model(type, variable, dist, network_args):
         dist (str): type of distribution, e.g. 'prior'
         network_args (dict): arguments to create the network
     """
+
+    if len(args) == 1:
+        network_args = args[0]
+    elif len(args) == 3:
+        variable, dist, network_args = args
+    else:
+        raise NotImplementedError
+
     if network_args is None:
         return None
+
     if type == 'discriminative':
         if variable == 'state':
             if dist in ['prior', 'inference']:
@@ -48,3 +57,6 @@ def get_model(type, variable, dist, network_args):
             if dist == 'likelihood':
                 from .generative.done_likelihood import DoneLikelihood
                 return DoneLikelihood(network_args)
+    elif type == 'value':
+        from .value.value_model import ValueModel
+        return ValueModel(network_args)

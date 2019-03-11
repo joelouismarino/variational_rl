@@ -22,6 +22,7 @@ class Agent(nn.Module):
         self.done_likelihood_model = None
         self.state_inference_model = None
         self.action_inference_model = None
+        self.value_model = None
 
         # variables
         self.state_variable = None
@@ -41,14 +42,17 @@ class Agent(nn.Module):
         self.episode = {'observation': [], 'reward': [], 'done': [],
                         'state': [], 'action': []}
         # stores the objectives during an episode
-        self.objectives = {'optimality': [], 'state': [], 'action': []}
+        self.objectives = {'optimality': [], 'state': [], 'action': [], 'value': []}
         # stores inference improvement
         self.inference_improvement = {'state': [], 'action': []}
         # stores the log probabilities during an episode
         self.log_probs = {'action': []}
+        # store the temporal difference errors during training
+        self.td_errors = []
 
         self.valid = []
         self._prev_action = None
+        self._prev_value = None
         self.batch_size = 1
 
         self.obs_reconstruction = None
@@ -61,7 +65,11 @@ class Agent(nn.Module):
         self.step_action(observation=observation, reward=reward, done=done, valid=valid, action=action)
         self.action_inference(observation=observation, reward=reward, done=done, valid=valid, action=action)
         if self._mode == 'train':
-            self._collect_objectives_and_log_probs(observation, reward, done, action, valid)
+            value = None
+            if self.value_model is not None:
+                value = self.estimate_value(observation=observation, reward=reward, done=done, valid=valid)
+                self._prev_value = value
+            self._collect_objectives_and_log_probs(observation, reward, done, action, value, valid)
             self._prev_action = action
             self.valid.append(valid)
         else:
@@ -99,6 +107,10 @@ class Agent(nn.Module):
         # generate the conditional likelihood for episode being done
         pass
 
+    def estimate_value(self, observation, reward, done, valid):
+        # estimate the value of the current state
+        pass
+
     def free_energy(self, observation, reward, done, valid):
         observation, reward, done = self._change_device(observation, reward, done)
         cond_log_likelihood = self.cond_log_likelihood(observation, reward, done)
@@ -129,11 +141,10 @@ class Agent(nn.Module):
 
     def evaluate(self):
         # evaluate the objective, averaged over the batch, backprop
-
         results = {}
         valid = torch.stack(self.valid)
         n_valid_steps = valid.sum(dim=0).sub(1)
-        # average objectives over time and batch for reporting
+        # average objectives over time and batch (for reporting)
         for objective_name, objective in self.objectives.items():
             obj = torch.stack(objective).sum(dim=0).div(n_valid_steps).mean(dim=0)
             if objective_name in ['observation', 'reward', 'optimality', 'done']:
@@ -145,20 +156,28 @@ class Agent(nn.Module):
                 imp = torch.stack(improvement).sum(dim=0).div(n_valid_steps).mean(dim=0)
                 results[name + '_improvement'] = imp.detach().cpu().item()
 
-        # sum the objectives
+        # sum the objectives (for training)
         n_steps = len(self.objectives['optimality'])
         free_energy = torch.zeros(n_steps, self.batch_size, 1).to(self.device)
         for objective_name, objective in self.objectives.items():
             free_energy = free_energy + torch.stack(objective)
 
-        # calculate the reinforce terms
-        future_sums = torch.flip(torch.cumsum(torch.flip(free_energy.detach(), dims=[0]), dim=0), dims=[0])
-        # normalize the future sums
-        future_sums_mean = future_sums[1:].sum(dim=0, keepdim=True).div(n_valid_steps)
-        future_sums_std = (future_sums[1:] - future_sums_mean).pow(2).mul(valid[1:]).sum(dim=0, keepdim=True).div(n_valid_steps-1).pow(0.5)
-        future_sums = (future_sums - future_sums_mean) / (future_sums_std + 1e-6)
+        # calculate the REINFORCE terms from optimality
+        optimality = torch.stack(self.objectives['optimality'])
+        if self.value_model is not None:
+            # use actor-critic baseline
+            advantages = torch.stack(self.td_errors).detach() * valid
+        else:
+            # TODO: this is hacky and doesn't work
+            # use Monte Carlo baseline
+            returns = torch.flip(torch.cumsum(torch.flip(optimality.detach(), dims=[0]), dim=0), dims=[0])
+            # normalize the future sums
+            returns_mean = returns[1:].sum(dim=0, keepdim=True).div(n_valid_steps)
+            returns_std = (returns[1:] - returns_mean).pow(2).mul(valid[1:]).sum(dim=0, keepdim=True).div(n_valid_steps-1).pow(0.5)
+            advantages = (returns - returns_mean) / (returns_std + 1e-6)
+        # add the REINFORCE terms to the total objective
         log_probs = torch.stack(self.log_probs['action'])
-        reinforce_terms = - log_probs * future_sums
+        reinforce_terms = - log_probs * advantages
         free_energy = free_energy + reinforce_terms
 
         # time average
@@ -170,7 +189,7 @@ class Agent(nn.Module):
         # backprop
         free_energy.sum().backward()
 
-        # calculate the average gradient for each model
+        # calculate the average gradient for each model (for reporting)
         grads_dict = {}
         grad_norm_dict = {}
         for model_name, params in self.parameters().items():
@@ -183,7 +202,7 @@ class Agent(nn.Module):
 
         return results
 
-    def _collect_objectives_and_log_probs(self, observation, reward, done, action, valid):
+    def _collect_objectives_and_log_probs(self, observation, reward, done, action, value, valid):
         if self.done_likelihood_model is not None:
             done_log_likelihood = self.done_variable.cond_log_likelihood(done).sum(dim=1, keepdim=True)
             self.objectives['done'].append(-done_log_likelihood * valid)
@@ -209,6 +228,10 @@ class Agent(nn.Module):
         action_ind = self._convert_action(action)
         action_log_prob = self.action_variable.approx_post_dist.log_prob(action_ind).view(-1, 1)
         self.log_probs['action'].append(action_log_prob * valid)
+
+        if self.value_model is not None:
+            if len(self.td_errors) > 0:
+                self.objectives['value'].append(0.5 * (self.td_errors[-1] ** 2) * valid)
 
     def _collect_episode(self, observation, reward, done):
         if not done:
@@ -307,11 +330,15 @@ class Agent(nn.Module):
             self.objectives['reward'] = []
         if self.done_variable is not None:
             self.objectives['done'] = []
+        if self.value_model is not None:
+            self.objectives['value'] = []
 
         self.inference_improvement = {'state': [], 'action': []}
         self.log_probs = {'action': []}
+        self.td_errors = []
 
         self._prev_action = None
+        self._prev_value = None
         self.valid = []
         self.batch_size = batch_size
         self.state_inf_free_energies = []
@@ -367,6 +394,10 @@ class Agent(nn.Module):
             param_dict['done_likelihood_model'] = nn.ParameterList()
             param_dict['done_likelihood_model'].extend(list(self.done_likelihood_model.parameters()))
             param_dict['done_likelihood_model'].extend(list(self.done_variable.parameters()))
+
+        if self.value_model is not None:
+            param_dict['value_model'] = nn.ParameterList()
+            param_dict['value_model'].extend(list(self.value_model.parameters()))
 
         return param_dict
 

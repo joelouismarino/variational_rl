@@ -16,7 +16,7 @@ class GenerativeAgent(Agent):
                  done_variable_args, state_prior_args, action_prior_args,
                  obs_likelihood_args, reward_likelihood_args,
                  done_likelihood_args, state_inference_args,
-                 action_inference_args, misc_args):
+                 action_inference_args, value_args, misc_args):
         super(GenerativeAgent, self).__init__()
 
         # models
@@ -27,6 +27,7 @@ class GenerativeAgent(Agent):
         self.done_likelihood_model = get_model('generative', 'done', 'likelihood', done_likelihood_args)
         self.state_inference_model = get_model('generative', 'state', 'inference', state_inference_args)
         self.action_inference_model = get_model('generative', 'action', 'inference', action_inference_args)
+        self.value_model = get_model('value', value_args)
 
         # variables
         state_variable_args['n_input'] = [None, None]
@@ -68,14 +69,17 @@ class GenerativeAgent(Agent):
                         'prediction': []}
         # stores the objectives during an episode
         self.objectives = {'observation': [], 'reward': [], 'optimality': [],
-                           'done': [], 'state': [], 'action': []}
+                           'done': [], 'state': [], 'action': [], 'value': []}
         # stores inference improvement
         self.inference_improvement = {'state': [], 'action': []}
         # stores the log probabilities during an episode
         self.log_probs = {'action': []}
+        # store the temporal difference errors during training
+        self.td_errors = []
 
         self.valid = []
         self._prev_action = None
+        self._prev_value = None
         self.batch_size = 1
 
         self.obs_reconstruction = None
@@ -197,3 +201,14 @@ class GenerativeAgent(Agent):
         state = self.state_variable.sample()
         likelihood_input = self.done_likelihood_model(state)
         self.done_variable.generate(likelihood_input)
+
+    def estimate_value(self, reward, done, **kwargs):
+        # estimate the value of the current state
+        state = self.state_variable.sample()
+        value = self.value_model(state)
+        if self._prev_value is not None:
+            td_error = value * (1 - done) + self.optimality_scale * (reward - 1.) - self._prev_value
+            self.td_errors.append(td_error)
+        else:
+            self.td_errors.append(value.new_zeros(value.shape))
+        return value

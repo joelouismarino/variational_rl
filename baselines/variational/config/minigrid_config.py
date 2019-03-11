@@ -8,9 +8,9 @@ def get_minigrid_config(env):
     """
     agent_args = {}
 
-    agent_args['agent_type'] = 'generative'
+    agent_args['agent_type'] = 'discriminative'
 
-    agent_args['misc_args'] = {'optimality_scale': 1e1,
+    agent_args['misc_args'] = {'optimality_scale': 1,
                                'n_inf_iter': dict(state=1, action=1),
                                'kl_min': dict(state=0., action=0.)}
 
@@ -32,6 +32,7 @@ def get_minigrid_config(env):
         action_inf_n_input = 4 * n_action_variables
     else:
         raise NotImplementedError
+
 
     if agent_args['agent_type'] == 'discriminative':
         # state
@@ -69,6 +70,13 @@ def get_minigrid_config(env):
                                                'batch_norm': False,
                                                'non_linearity': 'elu',
                                                'dropout': None}
+
+        agent_args['value_args'] = {'type': 'fully_connected',
+                                    'n_layers': 1,
+                                    'n_input': n_state_variables,
+                                    'n_units': 1,
+                                    'connectivity': 'sequential',
+                                    'dropout': None}
 
     if agent_args['agent_type'] == 'generative':
         # state
@@ -161,5 +169,12 @@ def get_minigrid_config(env):
                                               'batch_norm': False,
                                               'non_linearity': 'elu',
                                               'dropout': None}
+
+        agent_args['value_args'] = {'type': 'fully_connected',
+                                    'n_layers': 1,
+                                    'n_input': n_state_variables,
+                                    'n_units': 1,
+                                    'connectivity': 'sequential',
+                                    'dropout': None}
 
     return agent_args

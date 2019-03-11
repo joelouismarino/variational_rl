@@ -13,7 +13,7 @@ class Plotter:
     def __init__(self, exp_args):
         self.env_id = exp_args['log_str']
         self.vis = Visdom(env=self.env_id)
-        self.metric_plot_names = ['optimality', 'state', 'action']
+        self.metric_plot_names = ['optimality', 'state', 'action', 'value']
         self.episode_plot_names = ['length', 'env_return']
         self.grad_plot_names = []
         # self.metric_plot_names = ['free_energy', 'reward_cll', 'obs_cll', 'done_cll',
@@ -289,6 +289,10 @@ class Plotter:
         elif win_name == 'done':
             ylabel = 'Done Cond. Log Likelihood (nats)'
             title = 'Done Cond. Log Likelihood'
+            xtype = 'line'
+        elif win_name == 'value':
+            ylabel = 'Squared TD Error'
+            title = 'Value Loss'
             xtype = 'line'
         elif win_name == 'state_improvement':
             ylabel = 'Improvement (nats)'
