@@ -12,6 +12,8 @@ class FullyConnectedNetwork(Network):
 
         if type(n_units) == int:
             n_units = [n_units for _ in range(n_layers)]
+        else:
+            assert len(n_units) == n_layers
 
         n_in = n_input
         for l in range(n_layers):

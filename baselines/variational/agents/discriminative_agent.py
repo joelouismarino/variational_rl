@@ -12,7 +12,7 @@ class DiscriminativeAgent(Agent):
     """
     def __init__(self, state_variable_args, action_variable_args,
                  state_prior_args, action_prior_args, state_inference_args,
-                 action_inference_args, value_args, misc_args):
+                 action_inference_args, value_model_args, misc_args):
         super(DiscriminativeAgent, self).__init__()
 
         # models
@@ -20,7 +20,7 @@ class DiscriminativeAgent(Agent):
         self.action_prior_model = get_model('discriminative', 'action', 'prior', action_prior_args)
         self.state_inference_model = get_model('discriminative', 'state', 'inference', state_inference_args)
         self.action_inference_model = get_model('discriminative', 'action', 'inference', action_inference_args)
-        self.value_model = get_model('value', value_args)
+        self.value_model = get_model('value', value_model_args)
 
         # variables
         state_variable_args['n_input'] = [None, None]
@@ -28,14 +28,17 @@ class DiscriminativeAgent(Agent):
             state_variable_args['n_input'][0] = self.state_prior_model.n_out
         if self.state_inference_model is not None:
             state_variable_args['n_input'][1] = self.state_inference_model.n_out
-        self.state_variable = get_variable(latent=True, args=state_variable_args)
+        self.state_variable = get_variable(type='latent', args=state_variable_args)
 
         action_variable_args['n_input'] = [None, None]
         if self.action_prior_model is not None:
             action_variable_args['n_input'][0] = self.action_prior_model.n_out
         if self.action_inference_model is not None:
            action_variable_args['n_input'][1] = self.action_inference_model.n_out
-        self.action_variable = get_variable(latent=True, args=action_variable_args)
+        self.action_variable = get_variable(type='latent', args=action_variable_args)
+
+        if self.value_model is not None:
+            self.value_variable = get_variable(type='value', args={'n_input': self.value_model.n_out})
 
         # miscellaneous
         self.optimality_scale = misc_args['optimality_scale']
@@ -49,24 +52,24 @@ class DiscriminativeAgent(Agent):
         self.episode = {'observation': [], 'reward': [], 'done': [],
                         'state': [], 'action': []}
         # stores the objectives during an episode
-        self.objectives = {'optimality': [], 'state': [], 'action': [], 'value': []}
+        self.objectives = {'optimality': [], 'state': [], 'action': []}
         # stores inference improvement
         self.inference_improvement = {'state': [], 'action': []}
         # stores the log probabilities during an episode
         self.log_probs = {'action': []}
-        # store the temporal difference errors during training
-        self.td_errors = []
+        # store the values during training
+        self.values = []
 
         self.valid = []
         self._prev_action = None
-        self._prev_value = None
         self.batch_size = 1
+        self.gae_lambda = misc_args['gae_lambda']
 
         self.state_variable.inference_mode()
         self.action_variable.inference_mode()
 
     def state_inference(self, observation, reward, **kwargs):
-        observation = observation - 0.5
+        # observation = observation - 0.5
         # infer the approx. posterior on the state
         if self.state_inference_model is not None:
             state = self.state_variable.sample()
@@ -82,7 +85,7 @@ class DiscriminativeAgent(Agent):
             self.state_variable.infer(inf_input)
 
     def action_inference(self, observation, reward, action=None, **kwargs):
-        observation = observation - 0.5
+        # observation = observation - 0.5
         # infer the approx. posterior on the action
         if self.action_inference_model is not None:
             state = self.state_variable.sample()
@@ -96,7 +99,7 @@ class DiscriminativeAgent(Agent):
             self.action_variable.infer(inf_input)
 
     def step_state(self, observation, reward, **kwargs):
-        observation = observation - 0.5
+        # observation = observation - 0.5
         # calculate the prior on the state variable
         if self.state_prior_model is not None:
             state = self.state_variable.sample()
@@ -112,7 +115,7 @@ class DiscriminativeAgent(Agent):
             self.state_variable.step(prior_input)
 
     def step_action(self, observation, reward, **kwargs):
-        observation = observation - 0.5
+        # observation = observation - 0.5
         # calculate the prior on the action variable
         if self.action_prior_model is not None:
             state = self.state_variable.sample()
@@ -128,10 +131,6 @@ class DiscriminativeAgent(Agent):
     def estimate_value(self, reward, done, **kwargs):
         # estimate the value of the current state
         state = self.state_variable.sample()
-        value = self.value_model(state)
-        if self._prev_value is not None:
-            td_error = value * (1 - done) + self.optimality_scale * (reward - 1.) - self._prev_value
-            self.td_errors.append(td_error)
-        else:
-            self.td_errors.append(value.new_zeros(value.shape))
+        value = self.value_variable(self.value_model(state)) * (1 - done)
+        self.values.append(value)
         return value

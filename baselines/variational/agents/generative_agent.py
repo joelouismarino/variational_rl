@@ -16,7 +16,7 @@ class GenerativeAgent(Agent):
                  done_variable_args, state_prior_args, action_prior_args,
                  obs_likelihood_args, reward_likelihood_args,
                  done_likelihood_args, state_inference_args,
-                 action_inference_args, value_args, misc_args):
+                 action_inference_args, value_model_args, misc_args):
         super(GenerativeAgent, self).__init__()
 
         # models
@@ -27,7 +27,7 @@ class GenerativeAgent(Agent):
         self.done_likelihood_model = get_model('generative', 'done', 'likelihood', done_likelihood_args)
         self.state_inference_model = get_model('generative', 'state', 'inference', state_inference_args)
         self.action_inference_model = get_model('generative', 'action', 'inference', action_inference_args)
-        self.value_model = get_model('value', value_args)
+        self.value_model = get_model('value', value_model_args)
 
         # variables
         state_variable_args['n_input'] = [None, None]
@@ -35,23 +35,26 @@ class GenerativeAgent(Agent):
             state_variable_args['n_input'][0] = self.state_prior_model.n_out
         if self.state_inference_model is not None:
             state_variable_args['n_input'][1] = self.state_inference_model.n_out
-        self.state_variable = get_variable(latent=True, args=state_variable_args)
+        self.state_variable = get_variable(type='latent', args=state_variable_args)
 
         action_variable_args['n_input'] = [None, None]
         if self.action_prior_model is not None:
             action_variable_args['n_input'][0] = self.action_prior_model.n_out
         if self.action_inference_model is not None:
             action_variable_args['n_input'][1] = self.action_inference_model.n_out
-        self.action_variable = get_variable(latent=True, args=action_variable_args)
+        self.action_variable = get_variable(type='latent', args=action_variable_args)
 
         observation_variable_args['n_input'] = self.obs_likelihood_model.n_out
-        self.observation_variable = get_variable(latent=False, args=observation_variable_args)
+        self.observation_variable = get_variable(type='observed', args=observation_variable_args)
 
         reward_variable_args['n_input'] = self.reward_likelihood_model.n_out
-        self.reward_variable = get_variable(latent=False, args=reward_variable_args)
+        self.reward_variable = get_variable(type='observed', args=reward_variable_args)
 
         done_variable_args['n_input'] = self.done_likelihood_model.n_out
-        self.done_variable = get_variable(latent=False, args=done_variable_args)
+        self.done_variable = get_variable(type='observed', args=done_variable_args)
+
+        if self.value_model is not None:
+            self.value_variable = get_variable(type='value', args={'n_input': self.value_model.n_out})
 
         # miscellaneous
         self.optimality_scale = misc_args['optimality_scale']
@@ -74,13 +77,13 @@ class GenerativeAgent(Agent):
         self.inference_improvement = {'state': [], 'action': []}
         # stores the log probabilities during an episode
         self.log_probs = {'action': []}
-        # store the temporal difference errors during training
-        self.td_errors = []
+        # store the values during training
+        self.values = []
 
         self.valid = []
         self._prev_action = None
-        self._prev_value = None
         self.batch_size = 1
+        self.gae_lambda = misc_args['gae_lambda']
 
         self.obs_reconstruction = None
         self.obs_prediction = None
@@ -205,10 +208,6 @@ class GenerativeAgent(Agent):
     def estimate_value(self, reward, done, **kwargs):
         # estimate the value of the current state
         state = self.state_variable.sample()
-        value = self.value_model(state)
-        if self._prev_value is not None:
-            td_error = value * (1 - done) + self.optimality_scale * (reward - 1.) - self._prev_value
-            self.td_errors.append(td_error)
-        else:
-            self.td_errors.append(value.new_zeros(value.shape))
+        value = self.value_variable(self.value_model(state)) * (1 - done)
+        self.values.append(value)
         return value

@@ -42,18 +42,18 @@ class Agent(nn.Module):
         self.episode = {'observation': [], 'reward': [], 'done': [],
                         'state': [], 'action': []}
         # stores the objectives during an episode
-        self.objectives = {'optimality': [], 'state': [], 'action': [], 'value': []}
+        self.objectives = {'optimality': [], 'state': [], 'action': []}
         # stores inference improvement
         self.inference_improvement = {'state': [], 'action': []}
         # stores the log probabilities during an episode
         self.log_probs = {'action': []}
-        # store the temporal difference errors during training
-        self.td_errors = []
+        # store the values during training
+        self.values = []
 
         self.valid = []
         self._prev_action = None
-        self._prev_value = None
         self.batch_size = 1
+        self.gae_lambda = 0.
 
         self.obs_reconstruction = None
         self.obs_prediction = None
@@ -139,18 +139,25 @@ class Agent(nn.Module):
         kl_divergence = valid * (state_kl_divergence + action_kl_divergence)
         return kl_divergence
 
+    def value_loss(self):
+        pass
+
     def evaluate(self):
         # evaluate the objective, averaged over the batch, backprop
+
         results = {}
         valid = torch.stack(self.valid)
         n_valid_steps = valid.sum(dim=0).sub(1)
+
         # average objectives over time and batch (for reporting)
         for objective_name, objective in self.objectives.items():
             obj = torch.stack(objective).sum(dim=0).div(n_valid_steps).mean(dim=0)
             if objective_name in ['observation', 'reward', 'optimality', 'done']:
+                # negate for plotting in log scale
                 obj = obj * -1
             results[objective_name] = obj.detach().cpu().item()
 
+        # evaluate inference improvement (for reporting)
         for name, improvement in self.inference_improvement.items():
             if len(improvement) > 0:
                 imp = torch.stack(improvement).sum(dim=0).div(n_valid_steps).mean(dim=0)
@@ -161,32 +168,38 @@ class Agent(nn.Module):
         free_energy = torch.zeros(n_steps, self.batch_size, 1).to(self.device)
         for objective_name, objective in self.objectives.items():
             free_energy = free_energy + torch.stack(objective)
-
-        # calculate the REINFORCE terms from optimality
-        optimality = torch.stack(self.objectives['optimality'])
+        free_energy = free_energy * 0.01
+        # calculate the REINFORCE terms
+        rewards = (-torch.stack(self.objectives['optimality']) + 1.) * valid
         if self.value_model is not None:
-            # use actor-critic baseline
-            advantages = torch.stack(self.td_errors).detach() * valid
+            # calculate TD errors
+            values = torch.stack(self.values)
+            deltas = rewards[1:] + values[1:] * valid[1:] - values[:-1]
+            advantages = deltas.detach()
+            # use generalized advantage estimator
+            for i in range(advantages.shape[0]-1, 0, -1):
+                advantages[i-1] = advantages[i-1] + self.gae_lambda * advantages[i] * valid[i]
+            # calculate value loss
+            returns = advantages + values[:-1].detach()
+            value_loss = 0.5 * (values[:-1] - returns).pow(2)
+            free_energy[:-1] = free_energy[:-1] + value_loss
+            results['value'] = value_loss.sum(dim=0).div(n_valid_steps).mean(dim=0).detach().cpu().item()
         else:
             # TODO: this is hacky and doesn't work
             # use Monte Carlo baseline
-            returns = torch.flip(torch.cumsum(torch.flip(optimality.detach(), dims=[0]), dim=0), dims=[0])
+            returns = torch.flip(torch.cumsum(torch.flip(rewards.detach(), dims=[0]), dim=0), dims=[0])
             # normalize the future sums
             returns_mean = returns[1:].sum(dim=0, keepdim=True).div(n_valid_steps)
             returns_std = (returns[1:] - returns_mean).pow(2).mul(valid[1:]).sum(dim=0, keepdim=True).div(n_valid_steps-1).pow(0.5)
             advantages = (returns - returns_mean) / (returns_std + 1e-6)
         # add the REINFORCE terms to the total objective
         log_probs = torch.stack(self.log_probs['action'])
-        reinforce_terms = - log_probs * advantages
-        free_energy = free_energy + reinforce_terms
+        reinforce_terms = - log_probs[:-1] * advantages
+        free_energy[:-1] = free_energy[:-1] + reinforce_terms
 
-        # time average
+        # time average, batch average, and backprop
         free_energy = free_energy.sum(dim=0).div(n_valid_steps)
-
-        # batch average
         free_energy = free_energy.mean(dim=0)
-
-        # backprop
         free_energy.sum().backward()
 
         # calculate the average gradient for each model (for reporting)
@@ -228,10 +241,6 @@ class Agent(nn.Module):
         action_ind = self._convert_action(action)
         action_log_prob = self.action_variable.approx_post_dist.log_prob(action_ind).view(-1, 1)
         self.log_probs['action'].append(action_log_prob * valid)
-
-        if self.value_model is not None:
-            if len(self.td_errors) > 0:
-                self.objectives['value'].append(0.5 * (self.td_errors[-1] ** 2) * valid)
 
     def _collect_episode(self, observation, reward, done):
         if not done:
@@ -330,15 +339,14 @@ class Agent(nn.Module):
             self.objectives['reward'] = []
         if self.done_variable is not None:
             self.objectives['done'] = []
-        if self.value_model is not None:
-            self.objectives['value'] = []
+        # if self.value_model is not None:
+        #     self.objectives['value'] = []
 
         self.inference_improvement = {'state': [], 'action': []}
         self.log_probs = {'action': []}
-        self.td_errors = []
+        self.values = []
 
         self._prev_action = None
-        self._prev_value = None
         self.valid = []
         self.batch_size = batch_size
         self.state_inf_free_energies = []

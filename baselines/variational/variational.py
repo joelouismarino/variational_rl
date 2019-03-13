@@ -8,8 +8,8 @@ from .util.print_util import print_step_metrics, print_episode_metrics
 from .util.train_util import collect_episode, train
 
 
-def learn(env, seed, total_timesteps, log_dir, batch_size=50, n_updates=15,
-          n_initial_batches=1, lr=5e-6, device=None, **kwargs):
+def learn(env, seed, total_timesteps, log_dir, batch_size=200, n_updates=1,
+          n_initial_batches=1, lr=1e-4, device=None, **kwargs):
 
     # torch.manual_seed(seed)
 
@@ -33,7 +33,7 @@ def learn(env, seed, total_timesteps, log_dir, batch_size=50, n_updates=15,
           'reward_likelihood_model': base_lr,
           'done_likelihood_model': base_lr,
           'value_model': base_lr}
-    optimizer = Optimizer(agent, lr=lr)
+    optimizer = Optimizer(agent, lr=lr, norm_grad=1.0)
 
     # logging and plotting
     exp_args = {'env': env.spec.id, 'seed': seed,

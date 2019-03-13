@@ -24,8 +24,11 @@ def get_network(network_args):
     elif network_type == 'vizdoom_skip_decoder':
         from .vizdoom import SkipConvDecoder
         return SkipConvDecoder(**network_args)
-    elif network_type == 'minigrid_discriminative':
-        from .minigrid import DiscriminativeEncoder
-        return DiscriminativeEncoder(**network_args)
+    # elif network_type == 'minigrid_discriminative':
+    #     from .minigrid import DiscriminativeEncoder
+    #     return DiscriminativeEncoder(**network_args)
+    elif network_type == 'minigrid_conv':
+        from .minigrid import MiniGridConv
+        return MiniGridConv(**network_args)
     else:
         raise NotImplementedError

@@ -1,8 +1,13 @@
-def get_variable(latent, args):
-    if latent:
+def get_variable(type, args):
+    if type == 'latent':
         return get_latent_variable(args)
-    else:
+    elif type == 'observed':
         return get_observed_variable(args)
+    elif type == 'value':
+        from .value_variable import ValueVariable
+        return ValueVariable(**args)
+    else:
+        raise NotImplementedError
 
 
 def get_latent_variable(variable_args):
