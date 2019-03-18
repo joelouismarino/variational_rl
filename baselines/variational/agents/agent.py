@@ -40,13 +40,15 @@ class Agent(nn.Module):
 
         # stores the variables during an episode
         self.episode = {'observation': [], 'reward': [], 'done': [],
-                        'state': [], 'action': []}
-        # stores the objectives during an episode
+                        'state': [], 'action': [], 'log_prob': []}
+        # stores the objectives during training
         self.objectives = {'optimality': [], 'state': [], 'action': []}
-        # stores inference improvement
+        # stores inference improvement during training
         self.inference_improvement = {'state': [], 'action': []}
-        # stores the log probabilities during an episode
+        # stores the log probabilities during training
         self.log_probs = {'action': []}
+        # stores the importance weights during training
+        self.importance_weights = {'action': []}
         # store the values during training
         self.values = []
 
@@ -58,8 +60,8 @@ class Agent(nn.Module):
         self.obs_reconstruction = None
         self.obs_prediction = None
 
-    def act(self, observation, reward=None, done=False, action=None, valid=None):
-        observation, reward, action, done, valid = self._change_device(observation, reward, action, done, valid)
+    def act(self, observation, reward=None, done=False, action=None, valid=None, log_prob=None):
+        observation, reward, action, done, valid, log_prob = self._change_device(observation, reward, action, done, valid, log_prob)
         self.step_state(observation=observation, reward=reward, done=done, valid=valid)
         self.state_inference(observation=observation, reward=reward, done=done, valid=valid)
         self.step_action(observation=observation, reward=reward, done=done, valid=valid, action=action)
@@ -69,7 +71,7 @@ class Agent(nn.Module):
             if self.value_model is not None:
                 value = self.estimate_value(observation=observation, reward=reward, done=done, valid=valid)
                 self._prev_value = value
-            self._collect_objectives_and_log_probs(observation, reward, done, action, value, valid)
+            self._collect_objectives_and_log_probs(observation, reward, done, action, value, valid, log_prob)
             self._prev_action = action
             self.valid.append(valid)
         else:
@@ -147,7 +149,8 @@ class Agent(nn.Module):
 
         results = {}
         valid = torch.stack(self.valid)
-        n_valid_steps = valid.sum(dim=0).sub(1)
+        # n_valid_steps = valid.sum(dim=0).sub(1)
+        n_valid_steps = valid.sum(dim=0)
 
         # average objectives over time and batch (for reporting)
         for objective_name, objective in self.objectives.items():
@@ -168,17 +171,18 @@ class Agent(nn.Module):
         free_energy = torch.zeros(n_steps, self.batch_size, 1).to(self.device)
         for objective_name, objective in self.objectives.items():
             free_energy = free_energy + torch.stack(objective)
-        free_energy = free_energy * 0.01
+        # free_energy = free_energy * 0.01
         # calculate the REINFORCE terms
         rewards = (-torch.stack(self.objectives['optimality']) + 1.) * valid
         if self.value_model is not None:
             # calculate TD errors
+            discount = 0.99
             values = torch.stack(self.values)
-            deltas = rewards[1:] + values[1:] * valid[1:] - values[:-1]
+            deltas = rewards[1:] + discount * values[1:] * valid[1:] - values[:-1]
             advantages = deltas.detach()
             # use generalized advantage estimator
             for i in range(advantages.shape[0]-1, 0, -1):
-                advantages[i-1] = advantages[i-1] + self.gae_lambda * advantages[i] * valid[i]
+                advantages[i-1] = advantages[i-1] + discount * self.gae_lambda * advantages[i] * valid[i]
             # calculate value loss
             returns = advantages + values[:-1].detach()
             value_loss = 0.5 * (values[:-1] - returns).pow(2)
@@ -194,11 +198,18 @@ class Agent(nn.Module):
             advantages = (returns - returns_mean) / (returns_std + 1e-6)
         # add the REINFORCE terms to the total objective
         log_probs = torch.stack(self.log_probs['action'])
-        reinforce_terms = - log_probs[:-1] * advantages
+        importance_weights = torch.stack(self.importance_weights['action']).detach()
+        reinforce_terms = - importance_weights[:-1] * log_probs[:-1] * advantages
+        # reinforce_terms = - log_probs[:-1] * advantages
         free_energy[:-1] = free_energy[:-1] + reinforce_terms
+
+        results['importance_weights'] = importance_weights.sum(dim=0).div(n_valid_steps).mean(dim=0).detach().cpu().item()
+        results['policy_gradients'] = reinforce_terms.sum(dim=0).div(n_valid_steps-1).mean(dim=0).detach().cpu().item()
+        results['advantages'] = advantages.sum(dim=0).div(n_valid_steps-1).mean(dim=0).detach().cpu().item()
 
         # time average, batch average, and backprop
         free_energy = free_energy.sum(dim=0).div(n_valid_steps)
+        # free_energy = free_energy.mean(dim=0)
         free_energy = free_energy.mean(dim=0)
         free_energy.sum().backward()
 
@@ -215,7 +226,7 @@ class Agent(nn.Module):
 
         return results
 
-    def _collect_objectives_and_log_probs(self, observation, reward, done, action, value, valid):
+    def _collect_objectives_and_log_probs(self, observation, reward, done, action, value, valid, log_prob):
         if self.done_likelihood_model is not None:
             done_log_likelihood = self.done_variable.cond_log_likelihood(done).sum(dim=1, keepdim=True)
             self.objectives['done'].append(-done_log_likelihood * valid)
@@ -236,17 +247,24 @@ class Agent(nn.Module):
         self.objectives['state'].append(state_kl * (1 - done) * valid)
 
         action_kl = self.action_variable.kl_divergence().view(-1, 1)
+        action_kl = torch.clamp(action_kl, min=self.kl_min['action'])
         self.objectives['action'].append(action_kl * valid)
 
         action_ind = self._convert_action(action)
         action_log_prob = self.action_variable.approx_post_dist.log_prob(action_ind).view(-1, 1)
         self.log_probs['action'].append(action_log_prob * valid)
 
+        importance_weight = torch.exp(action_log_prob) / torch.exp(log_prob)
+        self.importance_weights['action'].append(importance_weight)
+
     def _collect_episode(self, observation, reward, done):
         if not done:
             self.episode['observation'].append(observation)
             self.episode['action'].append(self.action_variable.sample())
             self.episode['state'].append(self.state_variable.sample())
+            action_ind = self._convert_action(self.action_variable.sample())
+            action_log_prob = self.action_variable.approx_post_dist.log_prob(action_ind).view(-1, 1)
+            self.episode['log_prob'].append(action_log_prob)
             if self.obs_reconstruction is not None:
                 self.episode['reconstruction'].append(self.obs_reconstruction)
             if self.obs_prediction is not None:
@@ -255,9 +273,11 @@ class Agent(nn.Module):
             obs = self.episode['observation'][0]
             action = self.episode['action'][0]
             state = self.episode['state'][0]
+            log_prob = self.episode['log_prob'][0]
             self.episode['observation'].append(obs.new(obs.shape).zero_())
             self.episode['action'].append(action.new(action.shape).zero_())
             self.episode['state'].append(state.new(state.shape).zero_())
+            self.episode['log_prob'].append(log_prob.new(log_prob.shape).zero_())
             if self.obs_reconstruction is not None:
                 self.episode['reconstruction'].append(obs.new(obs.shape).zero_())
             if self.obs_prediction is not None:
@@ -271,7 +291,7 @@ class Agent(nn.Module):
             action = one_hot_to_index(action)
         return action
 
-    def _change_device(self, observation, reward, action, done, valid):
+    def _change_device(self, observation, reward, action, done, valid, log_prob):
         if observation is None:
             observation = torch.zeros(self.episode['observation'][0].shape)
         if observation.device != self.device:
@@ -291,7 +311,9 @@ class Agent(nn.Module):
             valid = torch.ones(done.shape[0], 1)
         if valid.device != self.device:
             valid = valid.to(self.device)
-        return observation, reward, action, done, valid
+        if log_prob is not None:
+            log_prob = log_prob.to(self.device)
+        return observation, reward, action, done, valid, log_prob
 
     def get_episode(self):
         """
@@ -299,7 +321,7 @@ class Agent(nn.Module):
         """
         episode = {}
         for k, v in self.episode.items():
-            episode[k] = torch.cat(v, dim=0).cpu()
+            episode[k] = torch.cat(v, dim=0).detach().cpu()
         return episode
 
     def reset(self, batch_size=1):
@@ -327,7 +349,7 @@ class Agent(nn.Module):
 
         # reset the episode, objectives, and log probs
         self.episode = {'observation': [], 'reward': [], 'done': [],
-                        'state': [], 'action': []}
+                        'state': [], 'action': [], 'log_prob': []}
         if self.obs_likelihood_model is not None:
             self.episode['reconstruction'] = []
             self.episode['prediction'] = []
@@ -344,6 +366,7 @@ class Agent(nn.Module):
 
         self.inference_improvement = {'state': [], 'action': []}
         self.log_probs = {'action': []}
+        self.importance_weights = {'action': []}
         self.values = []
 
         self._prev_action = None

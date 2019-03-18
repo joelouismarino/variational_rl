@@ -119,8 +119,8 @@ class LatentVariable(nn.Module):
                 sampling_dist = self.prior_dist
                 sampling_dist_type = self.prior_dist_type
             if sampling_dist.has_rsample:
-                # sample = sampling_dist.rsample()
-                sample = sampling_dist.loc
+                sample = sampling_dist.rsample()
+                # sample = sampling_dist.loc
                 if self.norm_samples:
                     sample = self.layer_norm(sample)
             else:

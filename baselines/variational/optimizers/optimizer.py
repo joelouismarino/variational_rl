@@ -13,7 +13,8 @@ class Optimizer(object):
         self.parameters = model.parameters()
         if type(lr) == float:
             lr = {k: lr for k in self.parameters}
-        self.opt = {k: optim.Adam(v, lr=lr[k]) for k, v in self.parameters.items()}
+        self.opt = {k: optim.RMSprop(v, lr=lr[k], alpha=0.99, eps=1e-5) for k, v in self.parameters.items()}
+        # self.opt = {k: optim.Adam(v, lr=lr[k]) for k, v in self.parameters.items()}
         self.update_inf_online = update_inf_online
         self.clip_grad = clip_grad
         self.norm_grad = norm_grad
@@ -34,15 +35,17 @@ class Optimizer(object):
                 self.opt['state_inference_model'].zero_grad()
 
     def apply(self):
+        grads = []
         for model_name, params in self.parameters.items():
             if self.update_inf_online and model_name == 'state_inference_model':
                 continue
-            grads = [param.grad for param in params]
-            if self.clip_grad is not None:
-                clip_gradients(grads, self.clip_grad)
-            if self.norm_grad is not None:
-                norm_gradients(grads, self.norm_grad)
-            self.opt[model_name].step()
+            grads += [param.grad for param in params]
+        if self.clip_grad is not None:
+            clip_gradients(grads, self.clip_grad)
+        if self.norm_grad is not None:
+            norm_gradients(grads, self.norm_grad)
+        for _, opt in self.opt.items():
+            opt.step()
 
     def zero_grad(self):
         for _, opt in self.opt.items():

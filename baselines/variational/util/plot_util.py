@@ -14,7 +14,8 @@ class Plotter:
         self.env_id = exp_args['log_str']
         self.vis = Visdom(env=self.env_id)
         self.metric_plot_names = ['optimality', 'state', 'action', 'value']
-        self.episode_plot_names = ['length', 'env_return']
+        self.metric_plot_names += ['importance_weights', 'policy_gradients', 'advantages']
+        self.episode_plot_names = ['length', 'env_return', 'total_steps']
         self.grad_plot_names = []
         # self.metric_plot_names = ['free_energy', 'reward_cll', 'obs_cll', 'done_cll',
         #                           'optimality_cll', 'state_kl', 'action_kl',
@@ -44,6 +45,7 @@ class Plotter:
         # self.smooth_reward_len = 1
         self._step = 1
         self._episode = 1
+        self._total_episode_steps = 0
 
     def _init_windows(self, window_names):
         self.window_id = {}
@@ -79,6 +81,7 @@ class Plotter:
 
     def plot_episode(self, episode):
         n_steps = episode['observation'].shape[0] - 1
+        self._total_episode_steps += n_steps
         time_step = random.randint(0, n_steps-1)
         self.plot_image(episode['observation'][time_step], 'Observation')
         if 'prediction' in episode:
@@ -90,6 +93,8 @@ class Plotter:
                           opts=self._get_opts('length'), name='Episode')
         self._plot_metric(self._episode, episode['reward'].sum().item(), 'env_return',
                           opts=self._get_opts('env_return'), name='Episode')
+        self._plot_metric(self._episode, self._total_episode_steps, 'total_steps',
+                          opts=self._get_opts('total_steps'), name='Episode')
         self._episode += 1
 
     # def plot(self, episode_log):
@@ -294,6 +299,18 @@ class Plotter:
             ylabel = 'Squared TD Error'
             title = 'Value Loss'
             xtype = 'line'
+        elif win_name == 'importance_weights':
+            ylabel = 'Ave. Importance Weight'
+            title = 'Importance Weights'
+            xtype = 'line'
+        elif win_name == 'policy_gradients':
+            ylabel = 'Ave. Policy Gradient Loss'
+            title = 'Policy Gradient Loss'
+            xtype = 'line'
+        elif win_name == 'advantages':
+            ylabel = 'Ave. Estimated Advantage'
+            title = 'Estimated Advantages'
+            xtype = 'line'
         elif win_name == 'state_improvement':
             ylabel = 'Improvement (nats)'
             title = 'State Inf. Improvement'
@@ -306,6 +323,11 @@ class Plotter:
         elif win_name == 'env_return':
             ylabel = 'Return'
             title = 'Environment Return'
+            xlabel = 'Episode'
+            xtype = 'line'
+        elif win_name == 'total_steps':
+            ylabel = 'Total Steps'
+            title = 'Total Steps'
             xlabel = 'Episode'
             xtype = 'line'
         elif win_name == 'grads':
