@@ -33,7 +33,7 @@ def learn(env, seed, total_timesteps, log_dir, batch_size=16, n_updates=10,
           'reward_likelihood_model': base_lr,
           'done_likelihood_model': base_lr,
           'value_model': base_lr}
-    optimizer = Optimizer(agent, lr=lr, update_inf_online=False, norm_grad=0.5)
+    optimizer = Optimizer(agent, lr=lr, norm_grad=0.5)
 
     # logging and plotting
     exp_args = {'env': env.spec.id, 'seed': seed,

@@ -176,7 +176,7 @@ class GenerativeAgent(Agent):
                     done = False
                     # roll out the model
                     while not done:
-
+                        import ipdb; ipdb.set_trace()
                         # step the state
                         self.step_state(planning=True)
                         # generate observation, reward, and done

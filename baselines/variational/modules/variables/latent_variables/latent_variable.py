@@ -117,7 +117,7 @@ class LatentVariable(nn.Module):
 
     def sample(self, planning=False):
         # sample the latent variable
-        if self._sample is None:
+        if self._sample is None and not planning or self._planning_sample is None and planning:
             if planning:
                 sampling_dist = self.planning_prior_dist
                 sampling_dist_type = self.prior_dist_type
@@ -178,7 +178,7 @@ class LatentVariable(nn.Module):
                 self.planning_prior_dist = new_dist
                 self._planning_sample = None
             else:
-                self.prior_dist = self.prior_dist_type(**parameters)
+                self.prior_dist = new_dist
                 self.reinitialized = False
                 self._sample = None
 
