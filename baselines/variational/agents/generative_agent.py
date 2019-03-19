@@ -152,60 +152,100 @@ class GenerativeAgent(Agent):
             self.inference_mode()
             # infer the approx. posterior on the action
             self.action_variable.init_approx_post()
-            state = self.state_variable.sample()
-            if self._prev_action is not None:
-                action = self._prev_action
+            if self.n_inf_iter['action'] == 0:
+                # direct action inference (i.e. amortized policy network)
+                state = self.state_variable.sample()
+                if self._prev_action is not None:
+                    action = self._prev_action
+                else:
+                    action = self.action_variable.sample()
+                inf_input = self.action_inference_model(state, action)
+                self.action_variable.infer(inf_input)
             else:
-                action = self.action_variable.sample()
-            inf_input = self.action_inference_model(state, action)
-            # inf_input = self.action_inference_model(torch.cat((state, action), dim=1))
-            self.action_variable.infer(inf_input)
+                # planning action inference (unroll the model)
+
+                # initialize the planning distributions
+                self.state_variable.init_planning()
+                self.action_variable.init_planning()
+
+                objective = 0.
+
+                # inference iterations
+                for inf_iter in range(self.n_inf_iter['action']):
+
+                    done = False
+                    # roll out the model
+                    while not done:
+
+                        # step the state
+                        self.step_state(planning=True)
+                        # generate observation, reward, and done
+                        self.generate_observation(planning=True)
+                        self.generate_reward(planning=True)
+                        self.generate_done(planning=True)
+                        # step the action
+                        self.step_action(planning=True)
+
+                        # evaluate the objective
+                        # TODO: evaluate new terms
+                        objective = objective + new_terms
+
+                        # TODO: need to use previous done variables as well
+                        done = (1. - self.done_variable.sample(planning=True)).sum().item()
+
+                    # backprop objective OR use policy gradients
+                    objective.backward()
+                    # update the approximate posterior
+                    inf_input = self.action_variable.params_and_grads()
+                    self.action_variable.infer(inf_input)
+
             # clear_gradients(self.generative_parameters())
             self.generative_mode()
 
-    def step_state(self, **kwargs):
+
+    def step_state(self, planning=False, **kwargs):
         # calculate the prior on the state variable
         if self.state_prior_model is not None:
             if not self.state_variable.reinitialized:
-                state = self.state_variable.sample()
+                state = self.state_variable.sample(planning=planning)
                 if self._prev_action is not None:
                     action = self._prev_action
                 else:
-                    action = self.action_variable.sample()
+                    action = self.action_variable.sample(planning=planning)
                 prior_input = self.state_prior_model(state, action)
-                self.state_variable.step(prior_input)
+                self.state_variable.step(prior_input, planning=planning)
 
-    def step_action(self, action=None, **kwargs):
+    def step_action(self, action=None, planning=False, **kwargs):
         # calculate the prior on the action variable
         if self.action_prior_model is not None:
             if not self.action_variable.reinitialized:
-                state = self.state_variable.sample()
+                state = self.state_variable.sample(planning=planning)
                 if self._prev_action is not None:
                     action = self._prev_action
                 else:
-                    action = self.action_variable.sample()
+                    action = self.action_variable.sample(planning=planning)
                 prior_input = self.action_prior_model(state, action)
-                self.action_variable.step(prior_input)
+                self.action_variable.step(prior_input, planning=planning)
 
-    def generate_observation(self):
+    def generate_observation(self, planning=False):
         # generate the conditional likelihood for the observation
-        state = self.state_variable.sample()
+        state = self.state_variable.sample(planning=planning)
         likelihood_input = self.obs_likelihood_model(state)
-        self.observation_variable.generate(likelihood_input)
+        self.observation_variable.generate(likelihood_input, planning=planning)
 
-    def generate_reward(self):
+    def generate_reward(self, planning=False):
         # generate the conditional likelihood for the reward
-        state = self.state_variable.sample()
+        state = self.state_variable.sample(planning=planning)
         likelihood_input = self.reward_likelihood_model(state)
-        self.reward_variable.generate(likelihood_input)
+        self.reward_variable.generate(likelihood_input, planning=planning)
 
-    def generate_done(self):
+    def generate_done(self, planning=False):
         # generate the conditional likelihood for episode being done
-        state = self.state_variable.sample()
+        state = self.state_variable.sample(planning=planning)
         likelihood_input = self.done_likelihood_model(state)
-        self.done_variable.generate(likelihood_input)
+        self.done_variable.generate(likelihood_input, planning=planning)
 
-    def estimate_value(self, reward, done, **kwargs):
+    def estimate_value(self, reward, done, planning=False, **kwargs):
         # estimate the value of the current state
         state = self.state_variable.sample()
         value = self.value_variable(self.value_model(state)) * (1 - done)

@@ -5,12 +5,15 @@ from ...layers import FullyConnectedLayer
 
 class FullyConnectedLatentVariable(LatentVariable):
 
-    def __init__(self, prior_dist, approx_post_dist, n_variables, n_input, constant_prior=False, inference_type='direct'):
+    def __init__(self, prior_dist, approx_post_dist, n_variables, n_input,
+                 constant_prior=False, inference_type='direct', norm_samples=False):
         super(FullyConnectedLatentVariable, self).__init__(prior_dist,
                                                            approx_post_dist,
                                                            n_variables,
                                                            n_input,
-                                                           constant_prior)
+                                                           constant_prior,
+                                                           inference_type,
+                                                           norm_samples)
         # initialize the models
         if not constant_prior:
             for model_name in self.prior_models:

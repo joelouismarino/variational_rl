@@ -16,17 +16,20 @@ class LatentVariable(nn.Module):
         inference_type (str): direct or iterative
         norm_samples (bool): whether to normalize samples
     """
-    def __init__(self, prior_dist, approx_post_dist, n_variables, n_input, constant_prior=False, inference_type='direct', norm_samples=False):
+    def __init__(self, prior_dist, approx_post_dist, n_variables, n_input,
+                 constant_prior=False, inference_type='direct', norm_samples=False):
         super(LatentVariable, self).__init__()
         self.n_variables = n_variables
         self.constant_prior = constant_prior
         self.inference_type = inference_type
         self.norm_samples = norm_samples
+
         self.prior_dist_type = getattr(torch.distributions, prior_dist)
         self.approx_post_dist_type = None
         if approx_post_dist is not None:
             self.approx_post_dist_type = getattr(torch.distributions, approx_post_dist)
 
+        # prior
         if prior_dist == 'Categorical':
             prior_param_names = ['logits']
         else:
@@ -36,6 +39,7 @@ class LatentVariable(nn.Module):
             # learned prior
             self.prior_models = nn.ModuleDict({name: None for name in prior_param_names})
 
+        # approximate posterior
         if approx_post_dist is not None:
             # amortized approximate posterior
             if approx_post_dist == 'Categorical':
@@ -59,10 +63,12 @@ class LatentVariable(nn.Module):
         # TODO: we will need to reshape the initial parameters
         self.prior_dist = None
         self.approx_post_dist = None
+        self.planning_prior_dist = None
         self.reinitialized = True
         self.reset()
 
         self._sample = None
+        self._planning_sample = None
         self._detach_latent = True
         self.layer_norm = None
         if self.norm_samples:
@@ -109,15 +115,19 @@ class LatentVariable(nn.Module):
             self._sample = None
             self.reinitialized = False
 
-    def sample(self, input=None):
+    def sample(self, planning=False):
         # sample the latent variable
         if self._sample is None:
-            # sample from the approximate posterior if available
-            sampling_dist = self.approx_post_dist
-            sampling_dist_type = self.approx_post_dist_type
-            if sampling_dist is None:
-                sampling_dist = self.prior_dist
+            if planning:
+                sampling_dist = self.planning_prior_dist
                 sampling_dist_type = self.prior_dist_type
+            else:
+                # sample from the approximate posterior if available
+                sampling_dist = self.approx_post_dist
+                sampling_dist_type = self.approx_post_dist_type
+                if sampling_dist is None:
+                    sampling_dist = self.prior_dist
+                    sampling_dist_type = self.prior_dist_type
             if sampling_dist.has_rsample:
                 sample = sampling_dist.rsample()
                 # sample = sampling_dist.loc
@@ -131,13 +141,19 @@ class LatentVariable(nn.Module):
                 one_hot_sample = torch.zeros(sample.shape[0], self.n_variables).to(device)
                 one_hot_sample[:, sample] = 1.
                 sample = one_hot_sample
-            self._sample = sample
-        sample = self._sample
+            if planning:
+                self._planning_sample = sample
+            else:
+                self._sample = sample
+        if planning:
+            sample = self._planning_sample
+        else:
+            sample = self._sample
         if self._detach_latent:
             sample = sample.detach()
         return sample
 
-    def step(self, input):
+    def step(self, input, planning=False):
         if not self.constant_prior:
             # set the prior
             parameters = {}
@@ -157,9 +173,14 @@ class LatentVariable(nn.Module):
                 # set the parameter
                 parameters[param_name] = param
             # create a new distribution with the parameters
-            self.prior_dist = self.prior_dist_type(**parameters)
-            self.reinitialized = False
-            self._sample = None
+            new_dist = self.prior_dist_type(**parameters)
+            if planning:
+                self.planning_prior_dist = new_dist
+                self._planning_sample = None
+            else:
+                self.prior_dist = self.prior_dist_type(**parameters)
+                self.reinitialized = False
+                self._sample = None
 
     def init_approx_post(self):
         if self.approx_post_dist_type is not None:
@@ -172,6 +193,16 @@ class LatentVariable(nn.Module):
             self.approx_post_dist = self.approx_post_dist_type(**parameters)
             self._sample = None
 
+    def init_planning(self):
+        # TODO: allow for multiple samples?
+        # initialize the planning prior from the approximate posterior
+        # copies over a detached version of each parameter
+        parameters = {}
+        for parameter_name in self.initial_prior_params:
+            parameters[parameter_name] = getattr(self.approx_post_dist, parameter_name).detach().requires_grad_()
+        self.planning_prior_dist = self.prior_dist_type(**parameters)
+        self._planning_sample = None
+
     def reset(self, batch_size=1):
         # reset the prior and approximate posterior
         prior_params = {k: v.repeat(batch_size, 1) for k, v in self.initial_prior_params.items()}
@@ -179,6 +210,8 @@ class LatentVariable(nn.Module):
         self.init_approx_post()
         self.reinitialized = True
         # self.approx_post_dist = None
+        self.planning_prior_dist = None
+        self._planning_sample = None
         self._sample = None
 
     def kl_divergence(self, analytical=True):

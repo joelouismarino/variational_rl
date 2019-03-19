@@ -5,12 +5,19 @@ import torch.distributions.constraints as constraints
 
 
 class ObservedVariable(nn.Module):
+    """
+    A observed latent variable.
 
+    Args:
+        likelihood_dist (str): the name of the conditional likelihood distribution
+        integration_window (optional, float): window over which to integrate the likelihood
+    """
     def __init__(self, likelihood_dist, integration_window=1.):
         super(ObservedVariable, self).__init__()
         self.distribution_type = getattr(torch.distributions, likelihood_dist)
         self.integration_window = integration_window
         self.likelihood_dist = None
+        self.planning_likelihood_dist = None
         self.likelihood_log_scale = None
         if likelihood_dist in ['Bernoulli', 'Categorical']:
             # output the logits
@@ -23,7 +30,7 @@ class ObservedVariable(nn.Module):
             parameter_names.remove('scale')
         self.likelihood_models = nn.ModuleDict({name: None for name in parameter_names})
 
-    def generate(self, input):
+    def generate(self, input, planning=False):
         parameters = {}
         for parameter_name in self.likelihood_models:
             # calculate the value
@@ -45,14 +52,22 @@ class ObservedVariable(nn.Module):
             log_scale = torch.clamp(log_scale, -15, 5)
             parameters['scale'] = torch.exp(log_scale)
         # create a new distribution with the parameters
-        self.likelihood_dist = self.distribution_type(**parameters)
-
-    def sample(self):
-        assert self.likelihood_dist is not None
-        if self.distribution_type.has_rsample:
-            return self.likelihood_dist.rsample()
+        if planning:
+            self.planning_likelihood_dist = self.distribution_type(**parameters)
         else:
-            return self.likelihood_dist.sample()
+            self.likelihood_dist = self.distribution_type(**parameters)
+
+    def sample(self, planning=False):
+        if planning:
+            assert self.planning_likelihood_dist is not None
+            sampling_dist = self.planning_likelihood_dist
+        else:
+            assert self.likelihood_dist is not None
+            sampling_dist = self.likelihood_dist
+        if self.distribution_type.has_rsample:
+            return sampling_dist.rsample()
+        else:
+            return sampling_dist.sample()
 
     def cond_log_likelihood(self, observation):
         observation = self._change_device(observation)
@@ -88,6 +103,10 @@ class ObservedVariable(nn.Module):
 
     def reset(self):
         self.likelihood_dist = None
+        self.planning_likelihood_dist = None
 
-    def entropy(self):
-        return self.likelihood_dist.entropy()
+    def entropy(self, planning=False):
+        if planning:
+            return self.planning_likelihood_dist.entropy()
+        else:
+            return self.likelihood_dist.entropy()

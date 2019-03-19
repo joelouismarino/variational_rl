@@ -171,7 +171,7 @@ class Agent(nn.Module):
         free_energy = torch.zeros(n_steps, self.batch_size, 1).to(self.device)
         for objective_name, objective in self.objectives.items():
             free_energy = free_energy + torch.stack(objective)
-        # free_energy = free_energy * 0.01
+
         # calculate the REINFORCE terms
         rewards = (-torch.stack(self.objectives['optimality']) + 1.) * valid
         if self.value_model is not None:

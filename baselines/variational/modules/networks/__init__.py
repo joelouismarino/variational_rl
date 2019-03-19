@@ -30,5 +30,8 @@ def get_network(network_args):
     elif network_type == 'minigrid_conv':
         from .minigrid import MiniGridConv
         return MiniGridConv(**network_args)
+    elif network_type == 'minigrid_deconv':
+        from .minigrid import MiniGridDeconv
+        return MiniGridDeconv(**network_args)
     else:
         raise NotImplementedError

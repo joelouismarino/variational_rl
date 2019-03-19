@@ -8,10 +8,10 @@ def get_minigrid_config(env):
     """
     agent_args = {}
 
-    agent_args['agent_type'] = 'discriminative'
+    agent_args['agent_type'] = 'generative'
 
     agent_args['misc_args'] = {'optimality_scale': 1,
-                               'n_inf_iter': dict(state=1, action=1),
+                               'n_inf_iter': dict(state=1, action=0),
                                'kl_min': dict(state=0., action=0.75),
                                'gae_lambda': 0.95}
 
@@ -89,16 +89,18 @@ def get_minigrid_config(env):
                                              'prior_dist': 'Normal',
                                              'approx_post_dist': 'Normal',
                                              'n_variables': n_state_variables,
+                                             'norm_samples': True,
                                              'inference_type': 'iterative'}
 
-        agent_args['state_prior_args'] = {'type': 'recurrent',
+        agent_args['state_prior_args'] = {'type': 'fully_connected',
                                           'n_layers': 1,
                                           'n_input': n_state_variables + n_action_variables,
                                           'n_units': 512,
                                           'connectivity': 'sequential',
+                                          'non_linearity': 'tanh',
                                           'dropout': None}
 
-        hidden_state_size = agent_args['state_prior_args']['n_layers'] * agent_args['state_prior_args']['n_units']
+        # hidden_state_size = agent_args['state_prior_args']['n_layers'] * agent_args['state_prior_args']['n_units']
 
         agent_args['state_inference_args'] = {'type': 'fully_connected',
                                               'n_layers': 1,
@@ -122,42 +124,39 @@ def get_minigrid_config(env):
         agent_args['action_inference_args'] = {'type': 'fully_connected',
                                                'n_layers': 1,
                                                'n_input': n_state_variables + n_action_variables,
-                                               'n_units': 200,
+                                               'n_units': 64,
                                                'connectivity': 'sequential',
                                                'batch_norm': False,
-                                               'non_linearity': 'elu',
+                                               'non_linearity': 'tanh',
                                                'dropout': None}
 
         # observation
-        agent_args['observation_variable_args'] = {'type': 'fully_connected',
+        agent_args['observation_variable_args'] = {'type': 'transposed_conv',
                                                    'likelihood_dist': 'Normal',
                                                    'integration_window': 1./6,
-                                                   'n_variables': np.prod(env.observation_space.shape),
+                                                   'n_variables': env.observation_space.shape[1],
+                                                   'filter_size': 3,
+                                                   'stride': 1,
+                                                   'padding': 0,
                                                    'sigmoid_loc': True}
 
-        agent_args['obs_likelihood_args'] = {'type': 'fully_connected',
-                                             'n_layers': 1,
-                                             'n_input': n_state_variables,
-                                             'n_units': 200,
-                                             'connectivity': 'sequential',
-                                             'batch_norm': False,
-                                             'non_linearity': 'elu',
-                                             'dropout': None}
+        agent_args['obs_likelihood_args'] = {'type': 'minigrid_deconv',
+                                             'n_input': n_state_variables}
 
         # reward
         agent_args['reward_variable_args'] = {'type': 'fully_connected',
                                               'likelihood_dist': 'Normal',
-                                              'integration_window': 0.1, # TODO: set this in a principled way
+                                              'integration_window': None,
                                               'n_variables': 1,
                                               'sigmoid_loc': True}
 
         agent_args['reward_likelihood_args'] = {'type': 'fully_connected',
                                                 'n_layers': 1,
                                                 'n_input': n_state_variables,
-                                                'n_units': 200,
+                                                'n_units': 64,
                                                 'connectivity': 'sequential',
                                                 'batch_norm': False,
-                                                'non_linearity': 'elu',
+                                                'non_linearity': 'tanh',
                                                 'dropout': None}
 
         # done
@@ -168,18 +167,18 @@ def get_minigrid_config(env):
         agent_args['done_likelihood_args'] = {'type': 'fully_connected',
                                               'n_layers': 1,
                                               'n_input': n_state_variables,
-                                              'n_units': 100,
+                                              'n_units': 64,
                                               'connectivity': 'sequential',
                                               'batch_norm': False,
-                                              'non_linearity': 'elu',
+                                              'non_linearity': 'tanh',
                                               'dropout': None}
 
-        agent_args['value_args'] = {'type': 'fully_connected',
-                                    'n_layers': 2,
-                                    'n_input': n_state_variables,
-                                    'n_units': [64, 1],
-                                    'connectivity': 'sequential',
-                                    'non_linearity': 'tanh',
-                                    'dropout': None}
+        agent_args['value_model_args'] = {'type': 'fully_connected',
+                                          'n_layers': 1,
+                                          'n_input': n_state_variables,
+                                          'n_units': 64,
+                                          'connectivity': 'sequential',
+                                          'non_linearity': 'tanh',
+                                          'dropout': None}
 
     return agent_args
