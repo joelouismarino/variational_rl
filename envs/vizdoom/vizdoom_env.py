@@ -14,7 +14,7 @@ class VizDoomEnv(Env):
     '''
     metadata = {'render.modes': ['human', 'rgb_array']}
 
-    def __init__(self, cfg_name, repeat=10):
+    def __init__(self, cfg_name, repeat=1):
         super(VizDoomEnv, self).__init__()
         self.game = DoomGame()
         self.game.load_config('./envs/vizdoom/cfgs/' + cfg_name + '.cfg')
