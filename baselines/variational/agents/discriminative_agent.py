@@ -128,7 +128,7 @@ class DiscriminativeAgent(Agent):
             prior_input = self.action_prior_model(observation, reward, state, action)
             self.action_variable.step(prior_input)
 
-    def estimate_value(self, reward, done, **kwargs):
+    def estimate_value(self, done, **kwargs):
         # estimate the value of the current state
         state = self.state_variable.sample()
         value = self.value_variable(self.value_model(state)) * (1 - done)

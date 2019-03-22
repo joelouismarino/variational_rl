@@ -62,6 +62,8 @@ class GenerativeAgent(Agent):
                            'action': misc_args['n_inf_iter']['action']}
         self.kl_min = {'state': misc_args['kl_min']['state'],
                        'action': misc_args['kl_min']['action']}
+        self.n_planning_samples = misc_args['n_planning_samples']
+        self.n_state_samples = misc_args['n_state_samples']
 
         # mode (either 'train' or 'eval')
         self._mode = 'train'
@@ -147,7 +149,7 @@ class GenerativeAgent(Agent):
             self.generate_reward()
             self.generate_done()
 
-    def action_inference(self, action=None, **kwargs):
+    def action_inference(self, done, action=None, **kwargs):
         if self.action_inference_model is not None:
             self.inference_mode()
             # infer the approx. posterior on the action
@@ -163,20 +165,37 @@ class GenerativeAgent(Agent):
                 self.action_variable.infer(inf_input)
             else:
                 # planning action inference (unroll the model)
-
+                # import ipdb; ipdb.set_trace()
                 # initialize the planning distributions
-                self.state_variable.init_planning()
-                self.action_variable.init_planning()
+                self.state_variable.init_planning(self.n_planning_samples)
+                self.action_variable.init_planning(self.n_planning_samples)
 
-                objective = 0.
+                # estimate the current value
+                current_done = done.repeat(self.n_planning_samples, 1)
+                current_value = self.estimate_value(done=current_done, planning=True).detach()
+                current_value = current_value.view(-1, self.n_planning_samples, 1)
 
                 # inference iterations
                 for inf_iter in range(self.n_inf_iter['action']):
 
-                    done = False
+                    # initialize the planning distributions
+                    self.state_variable.init_planning(self.n_planning_samples)
+                    self.action_variable.init_planning(self.n_planning_samples)
+
+                    # sample and evaluate log probs of initial actions
+                    action = self.action_variable.sample(planning=True)
+                    action_ind = self._convert_action(action)
+                    action_log_prob = self.action_variable.approx_post_dist.log_prob(action_ind).view(-1, self.n_planning_samples, 1)
+
+                    estimated_return = 0.
+
+                    total_flag = True
+                    cumulative_flag = None
+                    rollout_iter = 0
                     # roll out the model
-                    while not done:
-                        import ipdb; ipdb.set_trace()
+                    while total_flag:
+                        print('Rollout Iteration: ' + str(rollout_iter))
+                        rollout_iter += 1
                         # step the state
                         self.step_state(planning=True)
                         # generate observation, reward, and done
@@ -187,14 +206,26 @@ class GenerativeAgent(Agent):
                         self.step_action(planning=True)
 
                         # evaluate the objective
-                        # TODO: evaluate new terms
-                        objective = objective + new_terms
+                        reward = self.reward_variable.sample(planning=True)
+                        # optimality_log_likelihood = self.optimality_scale * (reward - 1.)
+                        optimality_log_likelihood = reward
+                        # TODO: evaluate other term
 
-                        # TODO: need to use previous done variables as well
-                        done = (1. - self.done_variable.sample(planning=True)).sum().item()
+                        done = self.done_variable.sample(planning=True).view(-1, self.n_planning_samples, 1)
+                        if cumulative_flag is None:
+                            cumulative_flag = 1 - done
+                        cumulative_flag = cumulative_flag * (1 - done)
+                        total_flag = cumulative_flag.sum().sign().item()
+
+                        new_terms = cumulative_flag * optimality_log_likelihood.view(-1, self.n_planning_samples, 1)
+                        estimated_return = estimated_return + new_terms
+
+                    # estimate policy gradients
+                    advantages = estimated_return - current_value
+                    objective = - action_log_prob * advantages.detach()
 
                     # backprop objective OR use policy gradients
-                    objective.backward()
+                    objective.mean(dim=1).sum().backward(retain_graph=True)
                     # update the approximate posterior
                     inf_input = self.action_variable.params_and_grads()
                     self.action_variable.infer(inf_input)
@@ -208,7 +239,7 @@ class GenerativeAgent(Agent):
         if self.state_prior_model is not None:
             if not self.state_variable.reinitialized:
                 state = self.state_variable.sample(planning=planning)
-                if self._prev_action is not None:
+                if self._prev_action is not None and not planning:
                     action = self._prev_action
                 else:
                     action = self.action_variable.sample(planning=planning)
@@ -220,7 +251,7 @@ class GenerativeAgent(Agent):
         if self.action_prior_model is not None:
             if not self.action_variable.reinitialized:
                 state = self.state_variable.sample(planning=planning)
-                if self._prev_action is not None:
+                if self._prev_action is not None and not planning:
                     action = self._prev_action
                 else:
                     action = self.action_variable.sample(planning=planning)
@@ -245,9 +276,10 @@ class GenerativeAgent(Agent):
         likelihood_input = self.done_likelihood_model(state)
         self.done_variable.generate(likelihood_input, planning=planning)
 
-    def estimate_value(self, reward, done, planning=False, **kwargs):
+    def estimate_value(self, done, planning=False, **kwargs):
         # estimate the value of the current state
-        state = self.state_variable.sample()
+        state = self.state_variable.sample(planning=planning)
         value = self.value_variable(self.value_model(state)) * (1 - done)
-        self.values.append(value)
+        if not planning:
+            self.values.append(value)
         return value

@@ -115,9 +115,9 @@ class LatentVariable(nn.Module):
             self._sample = None
             self.reinitialized = False
 
-    def sample(self, planning=False):
+    def sample(self, n_samples=1, planning=False):
         # sample the latent variable
-        if self._sample is None and not planning or self._planning_sample is None and planning:
+        if (self._sample is None and not planning) or (self._planning_sample is None and planning):
             if planning:
                 sampling_dist = self.planning_prior_dist
                 sampling_dist_type = self.prior_dist_type
@@ -129,17 +129,24 @@ class LatentVariable(nn.Module):
                     sampling_dist = self.prior_dist
                     sampling_dist_type = self.prior_dist_type
             if sampling_dist.has_rsample:
-                # sample = sampling_dist.rsample()
-                sample = sampling_dist.loc
+                batch_size = sampling_dist.loc.shape[0]
+                sample = sampling_dist.rsample([n_samples])
+                # sample = sampling_dist.loc
+                sample = sample.view(batch_size * n_samples, -1)
                 if self.norm_samples:
                     sample = self.layer_norm(sample)
+
             else:
-                sample = sampling_dist.sample()
+                batch_size = sampling_dist.logits.shape[0]
+                sample = sampling_dist.sample([n_samples])
+                sample = sample.view(batch_size * n_samples, 1)
+            # TODO: this will only work for fully-connected variables
+
             if sampling_dist_type == getattr(torch.distributions, 'Categorical'):
                 # convert to one-hot encoding
                 device = self.initial_prior_params['logits'].device
                 one_hot_sample = torch.zeros(sample.shape[0], self.n_variables).to(device)
-                one_hot_sample[:, sample] = 1.
+                one_hot_sample.scatter_(1, sample, 1.)
                 sample = one_hot_sample
             if planning:
                 self._planning_sample = sample
@@ -193,13 +200,14 @@ class LatentVariable(nn.Module):
             self.approx_post_dist = self.approx_post_dist_type(**parameters)
             self._sample = None
 
-    def init_planning(self):
+    def init_planning(self, n_planning_samples=1):
         # TODO: allow for multiple samples?
         # initialize the planning prior from the approximate posterior
         # copies over a detached version of each parameter
         parameters = {}
         for parameter_name in self.initial_prior_params:
-            parameters[parameter_name] = getattr(self.approx_post_dist, parameter_name).detach().requires_grad_()
+            parameter = getattr(self.approx_post_dist, parameter_name).requires_grad_()
+            parameters[parameter_name] = parameter.repeat(n_planning_samples, 1)
         self.planning_prior_dist = self.prior_dist_type(**parameters)
         self._planning_sample = None
 

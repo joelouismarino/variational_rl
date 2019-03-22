@@ -13,7 +13,9 @@ def get_minigrid_config(env):
     agent_args['misc_args'] = {'optimality_scale': 1,
                                'n_inf_iter': dict(state=1, action=1),
                                'kl_min': dict(state=0., action=0.75),
-                               'gae_lambda': 0.95}
+                               'gae_lambda': 0.95,
+                               'n_planning_samples': 10,
+                               'n_state_samples': 5}
 
     observation_size = np.prod(env.observation_space.shape)
     action_space = env.action_space
