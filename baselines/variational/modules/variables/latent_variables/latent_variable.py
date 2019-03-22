@@ -103,8 +103,7 @@ class LatentVariable(nn.Module):
                     param = torch.clamp(param, self._log_var_limits[0], self._log_var_limits[1])
                     param = torch.exp(param)
                 elif constraint == constraints.simplex:
-                    # between 0 and 1
-                    param = param_update # HACKY
+                    # between 0 and 1 for probabilities
                     param = nn.Softmax()(param)
 
                 # set the parameter
@@ -112,6 +111,9 @@ class LatentVariable(nn.Module):
 
             # create a new distribution with the parameters
             self.approx_post_dist = self.approx_post_dist_type(**parameters)
+            # retain the gradient for further inference
+            for param_name in self.approx_post_models:
+                getattr(self.approx_post_dist, param_name).retain_grad()
             self._sample = None
             self.reinitialized = False
 

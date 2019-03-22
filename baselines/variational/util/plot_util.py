@@ -39,6 +39,9 @@ class Plotter:
             self.metric_plot_names += ['observation', 'reward', 'done', 'state_improvement']
             # additional images for reconstruction and prediction
             self.img_names += ['recon', 'pred']
+            if exp_args['agent_args']['misc_args']['n_inf_iter']['action'] > 0:
+                # additional plots for planning inference
+                self.metric_plot_names += ['rollout_length', 'action_improvement']
         windows = self.metric_plot_names + self.episode_plot_names + self.img_names + self.grad_names
         self._init_windows(windows)
         self.plot_config(exp_args)
@@ -286,19 +289,15 @@ class Plotter:
         elif win_name == 'reward':
             ylabel = 'Reward Cond. Log Likelihood (nats)'
             title = 'Reward Cond. Log Likelihood'
-            xtype = 'line'
         elif win_name == 'optimality':
             ylabel = 'Optimality Cond. Log Likelihood (nats)'
             title = 'Optimality Cond. Log Likelihood'
-            xtype = 'line'
         elif win_name == 'done':
             ylabel = 'Done Cond. Log Likelihood (nats)'
             title = 'Done Cond. Log Likelihood'
-            xtype = 'line'
         elif win_name == 'value':
             ylabel = 'Squared TD Error'
             title = 'Value Loss'
-            xtype = 'line'
         elif win_name == 'importance_weights':
             ylabel = 'Ave. Importance Weight'
             title = 'Importance Weights'
@@ -306,7 +305,6 @@ class Plotter:
         elif win_name == 'policy_gradients':
             ylabel = 'Ave. Policy Gradient Loss'
             title = 'Policy Gradient Loss'
-            xtype = 'line'
         elif win_name == 'advantages':
             ylabel = 'Ave. Estimated Advantage'
             title = 'Estimated Advantages'
@@ -314,6 +312,14 @@ class Plotter:
         elif win_name == 'state_improvement':
             ylabel = 'Improvement (nats)'
             title = 'State Inf. Improvement'
+            xtype = 'line'
+        elif win_name == 'rollout_length':
+            ylabel = 'Max. Rollout Length'
+            title = 'Planning Rollout Length'
+            xtype = 'line'
+        elif win_name == 'action_improvement':
+            ylabel = 'Improvement (nats)'
+            title = 'Action Inf. Improvement'
             xtype = 'line'
         elif win_name == 'length':
             ylabel = 'Number of Steps'

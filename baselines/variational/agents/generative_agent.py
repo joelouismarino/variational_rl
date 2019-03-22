@@ -77,6 +77,8 @@ class GenerativeAgent(Agent):
                            'done': [], 'state': [], 'action': [], 'value': []}
         # stores inference improvement
         self.inference_improvement = {'state': [], 'action': []}
+        # stores planning rollout lengths during training
+        self.rollout_lengths = []
         # stores the log probabilities during an episode
         self.log_probs = {'action': []}
         # store the values during training
@@ -86,6 +88,7 @@ class GenerativeAgent(Agent):
         self._prev_action = None
         self.batch_size = 1
         self.gae_lambda = misc_args['gae_lambda']
+        self.max_rollout_length = misc_args['max_rollout_length']
 
         self.obs_reconstruction = None
         self.obs_prediction = None
@@ -149,7 +152,7 @@ class GenerativeAgent(Agent):
             self.generate_reward()
             self.generate_done()
 
-    def action_inference(self, done, action=None, **kwargs):
+    def action_inference(self, done, valid, action=None, **kwargs):
         if self.action_inference_model is not None:
             self.inference_mode()
             # infer the approx. posterior on the action
@@ -165,7 +168,10 @@ class GenerativeAgent(Agent):
                 self.action_variable.infer(inf_input)
             else:
                 # planning action inference (unroll the model)
-                # import ipdb; ipdb.set_trace()
+                # keep track of rollout length and estimated return
+                rollout_lengths = []
+                estimated_returns = []
+
                 # initialize the planning distributions
                 self.state_variable.init_planning(self.n_planning_samples)
                 self.action_variable.init_planning(self.n_planning_samples)
@@ -176,7 +182,7 @@ class GenerativeAgent(Agent):
                 current_value = current_value.view(-1, self.n_planning_samples, 1)
 
                 # inference iterations
-                for inf_iter in range(self.n_inf_iter['action']):
+                for inf_iter in range(self.n_inf_iter['action'] + 1):
 
                     # initialize the planning distributions
                     self.state_variable.init_planning(self.n_planning_samples)
@@ -195,7 +201,7 @@ class GenerativeAgent(Agent):
                     cumulative_flag = None
                     rollout_iter = 0
                     # roll out the model
-                    while total_flag:
+                    while total_flag and rollout_iter < self.max_rollout_length:
                         print('Rollout Iteration: ' + str(rollout_iter))
                         rollout_iter += 1
                         # step the state
@@ -213,12 +219,14 @@ class GenerativeAgent(Agent):
                         optimality_log_likelihood = reward
                         # TODO: evaluate other term
 
+                        # evaluate done variables to determine whether all rollouts are completed
                         done = self.done_variable.sample(planning=True).view(-1, self.n_planning_samples, 1)
                         if cumulative_flag is None:
                             cumulative_flag = 1 - done
                         cumulative_flag = cumulative_flag * (1 - done)
                         total_flag = cumulative_flag.sum().sign().item()
 
+                        # add new terms to the total estimate
                         new_terms = cumulative_flag * optimality_log_likelihood.view(-1, self.n_planning_samples, 1)
                         estimated_return = estimated_return + new_terms
 
@@ -228,14 +236,33 @@ class GenerativeAgent(Agent):
 
                     # backprop objective OR use policy gradients
                     objective.mean(dim=1).sum().backward(retain_graph=True)
-                    # update the approximate posterior
-                    params, grads = self.action_variable.params_and_grads()
-                    inf_input = self.action_inference_model(params, grads)
-                    self.action_variable.infer(inf_input)
+                    
+                    if inf_iter < self.n_inf_iter['action']:
+                        # update the approximate posterior using the inference model
+                        params, grads = self.action_variable.params_and_grads()
+                        inf_input = self.action_inference_model(params, grads)
+                        self.action_variable.infer(inf_input)
+
+                    # store the length of the planning rollout
+                    if self._mode == 'train':
+                        rollout_lengths.append(rollout_iter)
+
+                    if self._mode == 'train':
+                        estimated_returns.append(estimated_return.detach().mean(dim=1))
+
+                # save the maximum rollout length, averaged over inference iterations
+                if self._mode == 'train':
+                    ave_rollout_length = sum(rollout_lengths) / len(rollout_lengths)
+                    self.rollout_lengths.append(ave_rollout_length)
+
+                if self._mode == 'train':
+                    # TODO: need to only collect inference improvement for valid steps
+                    estimated_returns = torch.stack(estimated_returns)
+                    inference_improvement = estimated_returns[0] - estimated_returns[-1]
+                    self.inference_improvement['action'].append(inference_improvement)
 
             # clear_gradients(self.generative_parameters())
             self.generative_mode()
-
 
     def step_state(self, planning=False, **kwargs):
         # calculate the prior on the state variable

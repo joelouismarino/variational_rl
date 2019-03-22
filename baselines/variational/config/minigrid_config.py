@@ -15,7 +15,8 @@ def get_minigrid_config(env):
                                'kl_min': dict(state=0., action=0.75),
                                'gae_lambda': 0.95,
                                'n_planning_samples': 10,
-                               'n_state_samples': 5}
+                               'n_state_samples': 5,
+                               'max_rollout_length': 100}
 
     observation_size = np.prod(env.observation_space.shape)
     action_space = env.action_space

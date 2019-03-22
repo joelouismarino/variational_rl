@@ -45,6 +45,8 @@ class Agent(nn.Module):
         self.objectives = {'optimality': [], 'state': [], 'action': []}
         # stores inference improvement during training
         self.inference_improvement = {'state': [], 'action': []}
+        # stores planning rollout lengths during training
+        self.rollout_lengths = []
         # stores the log probabilities during training
         self.log_probs = {'action': []}
         # stores the importance weights during training
@@ -56,6 +58,7 @@ class Agent(nn.Module):
         self._prev_action = None
         self.batch_size = 1
         self.gae_lambda = 0.
+        self.max_rollout_length = 1
 
         self.obs_reconstruction = None
         self.obs_prediction = None
@@ -166,6 +169,10 @@ class Agent(nn.Module):
                 imp = torch.stack(improvement).sum(dim=0).div(n_valid_steps).mean(dim=0)
                 results[name + '_improvement'] = imp.detach().cpu().item()
 
+        # report the average planning rollout lengths
+        if len(self.rollout_lengths) > 0:
+            results['rollout_length'] = sum(self.rollout_lengths) / len(self.rollout_lengths)
+
         # sum the objectives (for training)
         n_steps = len(self.objectives['optimality'])
         free_energy = torch.zeros(n_steps, self.batch_size, 1).to(self.device)
@@ -201,7 +208,7 @@ class Agent(nn.Module):
         importance_weights = torch.stack(self.importance_weights['action']).detach()
         reinforce_terms = - importance_weights[:-1] * log_probs[:-1] * advantages
         # reinforce_terms = - log_probs[:-1] * advantages
-        free_energy[:-1] = free_energy[:-1] + reinforce_terms
+        # free_energy[:-1] = free_energy[:-1] + reinforce_terms
 
         results['importance_weights'] = importance_weights.sum(dim=0).div(n_valid_steps).mean(dim=0).detach().cpu().item()
         results['policy_gradients'] = reinforce_terms.sum(dim=0).div(n_valid_steps-1).mean(dim=0).detach().cpu().item()
@@ -366,6 +373,7 @@ class Agent(nn.Module):
 
         self.inference_improvement = {'state': [], 'action': []}
         self.log_probs = {'action': []}
+        self.rollout_lenghts = []
         self.importance_weights = {'action': []}
         self.values = []
 
