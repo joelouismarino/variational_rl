@@ -113,24 +113,46 @@ def get_minigrid_config(env):
                                               'non_linearity': 'elu',
                                               'dropout': None}
 
-        # action
-        agent_args['action_variable_args'] = {'type': 'fully_connected',
-                                              'prior_dist': action_prior_dist,
-                                              'approx_post_dist': action_approx_post_dist,
-                                              'n_variables': n_action_variables,
-                                              'constant_prior': True,
-                                              'inference_type': 'direct'}
+        if agent_args['misc_args']['n_inf_iter']['action'] >= 1:
+            # planning action inference
+            # action
+            agent_args['action_variable_args'] = {'type': 'fully_connected',
+                                                  'prior_dist': action_prior_dist,
+                                                  'approx_post_dist': action_approx_post_dist,
+                                                  'n_variables': n_action_variables,
+                                                  'constant_prior': True,
+                                                  'inference_type': 'iterative'}
 
-        agent_args['action_prior_args'] = None
+            agent_args['action_prior_args'] = None
 
-        agent_args['action_inference_args'] = {'type': 'fully_connected',
-                                               'n_layers': 1,
-                                               'n_input': n_state_variables + n_action_variables,
-                                               'n_units': 64,
-                                               'connectivity': 'sequential',
-                                               'batch_norm': False,
-                                               'non_linearity': 'tanh',
-                                               'dropout': None}
+            agent_args['action_inference_args'] = {'type': 'fully_connected',
+                                                   'n_layers': 1,
+                                                   'n_input': 2 * n_action_variables,
+                                                   'n_units': 64,
+                                                   'connectivity': 'sequential',
+                                                   'batch_norm': False,
+                                                   'non_linearity': 'elu',
+                                                   'dropout': None}
+        else:
+            # model-free action inference
+            # action
+            agent_args['action_variable_args'] = {'type': 'fully_connected',
+                                                  'prior_dist': action_prior_dist,
+                                                  'approx_post_dist': action_approx_post_dist,
+                                                  'n_variables': n_action_variables,
+                                                  'constant_prior': True,
+                                                  'inference_type': 'direct'}
+
+            agent_args['action_prior_args'] = None
+
+            agent_args['action_inference_args'] = {'type': 'fully_connected',
+                                                   'n_layers': 1,
+                                                   'n_input': n_state_variables + n_action_variables,
+                                                   'n_units': 64,
+                                                   'connectivity': 'sequential',
+                                                   'batch_norm': False,
+                                                   'non_linearity': 'tanh',
+                                                   'dropout': None}
 
         # observation
         agent_args['observation_variable_args'] = {'type': 'transposed_conv',

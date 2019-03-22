@@ -9,7 +9,7 @@ class ActionInference(Model):
         super(ActionInference, self).__init__()
         self.network = get_network(network_args)
 
-    def forward(self, state, action):
+    def forward(self, params, grads):
         # combine inputs
-        inputs = torch.cat([state, action], dim=1)
+        inputs = torch.cat([params, grads], dim=1)
         return self.network(inputs)

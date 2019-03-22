@@ -185,7 +185,9 @@ class GenerativeAgent(Agent):
                     # sample and evaluate log probs of initial actions
                     action = self.action_variable.sample(planning=True)
                     action_ind = self._convert_action(action)
-                    action_log_prob = self.action_variable.approx_post_dist.log_prob(action_ind).view(-1, self.n_planning_samples, 1)
+                    original_batch_shape = self.action_variable.approx_post_dist.batch_shape[0]
+                    expanded_action_dist = self.action_variable.approx_post_dist.expand([self.n_planning_samples, original_batch_shape])
+                    action_log_prob = expanded_action_dist.log_prob(action_ind.view(self.n_planning_samples, -1)).view(-1, self.n_planning_samples, 1)
 
                     estimated_return = 0.
 
