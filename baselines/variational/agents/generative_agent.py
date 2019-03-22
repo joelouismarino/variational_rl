@@ -227,7 +227,8 @@ class GenerativeAgent(Agent):
                     # backprop objective OR use policy gradients
                     objective.mean(dim=1).sum().backward(retain_graph=True)
                     # update the approximate posterior
-                    inf_input = self.action_variable.params_and_grads()
+                    params, grads = self.action_variable.params_and_grads()
+                    inf_input = self.action_inference_model(params, grads)
                     self.action_variable.infer(inf_input)
 
             # clear_gradients(self.generative_parameters())

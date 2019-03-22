@@ -198,6 +198,8 @@ class LatentVariable(nn.Module):
             for parameter_name in self.initial_prior_params:
                 parameters[parameter_name] = getattr(self.prior_dist, parameter_name).detach().requires_grad_()
             self.approx_post_dist = self.approx_post_dist_type(**parameters)
+            if self.approx_post_dist_type == getattr(torch.distributions, 'Categorical'):
+                self.approx_post_dist.logits = self.prior_dist.logits.detach().requires_grad_()
             self._sample = None
 
     def init_planning(self, n_planning_samples=1):
