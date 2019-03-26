@@ -34,6 +34,7 @@ class Plotter:
         #                               'done_likelihood_model_grad']
         self.img_names = ['obs']
         self.grad_names = ['grads', 'grad_norms']
+        self.hist_names = ['actions']
         if exp_args['agent_args']['agent_type'] == 'generative':
             # additional plots for likelihoods and inference improvement
             self.metric_plot_names += ['observation', 'reward', 'done', 'state_improvement']
@@ -42,7 +43,7 @@ class Plotter:
             if exp_args['agent_args']['misc_args']['n_inf_iter']['action'] > 0:
                 # additional plots for planning inference
                 self.metric_plot_names += ['rollout_length', 'action_improvement']
-        windows = self.metric_plot_names + self.episode_plot_names + self.img_names + self.grad_names
+        windows = self.metric_plot_names + self.episode_plot_names + self.img_names + self.grad_names + self.hist_names
         self._init_windows(windows)
         self.plot_config(exp_args)
         # self.smooth_reward_len = 1
@@ -52,8 +53,11 @@ class Plotter:
 
     def _init_windows(self, window_names):
         self.window_id = {}
+        self.data = {}
         for w in window_names:
             self.window_id[w] = None
+            self.data[w] = []
+
 
     def plot_config(self, args):
         agent_args = args.pop('agent_args')
@@ -98,6 +102,8 @@ class Plotter:
                           opts=self._get_opts('env_return'), name='Episode')
         self._plot_metric(self._episode, self._total_episode_steps, 'total_steps',
                           opts=self._get_opts('total_steps'), name='Episode')
+        action_idxs = np.argmax(episode['action'], axis=1)
+        self._plot_hist(action_idxs, win_name = 'actions', opts = self._get_opts('actions'))
         self._episode += 1
 
     # def plot(self, episode_log):
@@ -121,11 +127,25 @@ class Plotter:
     #     self._episode += 1
     #     self.vis.save([self.env_id])
 
-    def _plot_metric(self, step, metric, win_name, opts=None, name='Train Step'):
+    def _plot_metric(self, step, metric, win_name, opts=None, name='Train Step', plot_avg_trace = True, avg_window = 50):
         if self.window_id[win_name] is not None:
             self.vis.line(X=[step], Y=[metric], update='append', name=name, win=self.window_id[win_name])
         else:
             self.window_id[win_name] = self.vis.line(X=[step], Y=[metric], name=name, opts=opts)
+        if plot_avg_trace:
+            self.data[win_name].append(metric)
+            if len(self.data[win_name]) > avg_window:
+                avg = np.average(self.data[win_name][-avg_window:])
+                x = step - avg_window / 2
+                self.vis.line(X=[x], Y=[avg], update='append', name='Moving Average', win=self.window_id[win_name])
+
+
+
+    def _plot_hist(self, data, win_name, opts = None):
+        if self.window_id[win_name] is not None:
+            self.vis.histogram(X=data, win=self.window_id[win_name], opts = opts)
+        else:
+            self.window_id[win_name] = self.vis.histogram(X=data, opts = opts)
 
     # def _plot_dist(self, dist_param, param_name):
     #     steps = list(range(self._step, self._step + len(dist_param)))
@@ -344,6 +364,14 @@ class Plotter:
             ylabel = 'Gradient Norm'
             title = 'Gradient Norms'
             xtype = 'line'
+        elif win_name == 'actions':
+            ylabel = 'Count'
+            title = 'Actions'
+            xlabel = 'Action'
+            xtype = 'line'
+            width = 300
+            height = 320
+            showlegend = False
 
         opts = dict(xlabel=xlabel, ylabel=ylabel, title=title, width=width,
                     height=height, xtype=xtype, showlegend=showlegend)
