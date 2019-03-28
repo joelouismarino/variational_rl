@@ -55,6 +55,7 @@ def learn(env, seed, total_timesteps, log_dir, batch_size=64, n_updates=10,
         timestep += episode_length
         n_episodes += 1
         plotter.plot_episode(episode)
+        logger.log_episode(episode)
         # logger.log_episode(episode)
         buffer.append(episode)
 

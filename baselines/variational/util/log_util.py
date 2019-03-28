@@ -3,6 +3,7 @@ import pickle
 import numpy as np
 import os
 import torch
+import random
 
 # log_items = ['free_energy', 'state_kl', 'action_kl', 'obs_cll', 'done_cll',
 #              'reward_cll', 'optimality_cll', 'state_inf_imp', 'state_approx_post_mean',
@@ -14,7 +15,7 @@ import torch
 # log_items = ['free_energy', 'state_kl', 'action_kl', 'obs_cll', 'done_cll',
 #              'reward_cll', 'optimality_cll', 'state_inf_imp']
 
-log_items = ['observation', 'reward', 'done', 'optimality', 'state', 'action', 'state_improvement']
+log_items = ['optimality', 'state', 'action', 'state_inf_imp']
 
 class Logger:
     """
@@ -40,8 +41,15 @@ class Logger:
         self._train_step = 0
         # self._episode = 0
         self._ckpt_interval = ckpt_interval
+        self._init_eval_stats()
         # self._saved_episode = {'reconstruction': [], 'prediction': [],
         #                        'observation': []}
+
+    def _init_eval_stats(self):
+        stats = ['cumulative return', 'observations', 'predictions', 'reconstruction']
+        self.eval_statistics = {}
+        for stat in stats:
+            self.eval_statistics[stat] = []
 
     def _update_metric(self, file_name, value):
         # appends a new value to the metric list
@@ -63,8 +71,19 @@ class Logger:
         #     self.checkpoint(model)
 
     def log_episode(self, episode):
-        # log an episode
-        pass
+        # log cumulative returns
+        cum_rewards = np.cumsum(episode['reward'])
+        self.eval_statistics['cumulative return'].extend(cum_rewards)
+        # pick observations to log
+        frame_samples = random.sample(range(0, len(episode['observation'])), 2) # select 2 random frames
+        self.eval_statistics['observations'].extend(episode['observation'][frame_samples])
+        if 'prediction' in episode:
+            self.eval_statistics['predictions'].extend(episode['prediction'][frame_samples])
+        if 'reconstruction' in episode:
+            self.eval_statistics['reconstructions'].append(episode['reconstruction'][frame_samples])
+        # save
+        file_name = os.path.join(self.log_path, 'metrics', 'eval_statistics.p')
+        pickle.dump(self.eval_statistics, open(file_name, 'wb'))
 
     def checkpoint(self, model):
         # checkpoint the model
