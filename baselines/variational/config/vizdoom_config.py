@@ -10,9 +10,15 @@ def get_vizdoom_config(env):
     agent_args['agent_type'] = 'discriminative'
 
     agent_args['misc_args'] = {'optimality_scale': 1,
-                               'n_inf_iter': dict(state=1, action=1),
-                               'kl_min': dict(state=0., action=0.75),
+                               'n_inf_iter': dict(state=1, action=0),
+                               'kl_min': dict(state=0.1, action=0.2),
                                'gae_lambda': 0.95}
+
+    if agent_args['misc_args']['n_inf_iter']['action'] > 0:
+        # planning configuration
+        agent_args['misc_args']['n_planning_samples'] = 50
+        agent_args['misc_args']['n_state_samples'] = 5
+        agent_args['misc_args']['max_rollout_length'] = 100
 
     action_space = env.action_space
     if type(action_space) == spaces.Discrete:
@@ -33,14 +39,15 @@ def get_vizdoom_config(env):
 
     if agent_args['agent_type'] == 'discriminative':
         # state
-        n_state_variables = 100
+        n_state_variables = 128
         agent_args['state_variable_args'] = {'type': 'fully_connected',
-                                             'prior_dist': 'Normal',
+                                             'prior_dist': 'Delta', #'Normal',
                                              'approx_post_dist': None,
                                              'n_variables': n_state_variables}
 
-        agent_args['state_prior_args'] = {'type': 'vizdoom_skip_encoder',
-                                          'non_linearity': 'relu'}
+        agent_args['state_prior_args'] = {'type': 'vizdoom_conv_discriminator',
+                                          'non_linearity': 'relu',
+                                          'batch_norm': True}
 
         agent_args['state_inference_args'] = None
 
@@ -60,7 +67,7 @@ def get_vizdoom_config(env):
                                                'n_units': 64,
                                                'connectivity': 'sequential',
                                                'batch_norm': False,
-                                               'non_linearity': 'tanh',
+                                               'non_linearity': 'relu',
                                                'dropout': None}
 
         # value

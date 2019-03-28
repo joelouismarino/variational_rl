@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.distributions.constraints as constraints
+from ....misc.delta import Delta
 
 
 class LatentVariable(nn.Module):
@@ -24,10 +25,16 @@ class LatentVariable(nn.Module):
         self.inference_type = inference_type
         self.norm_samples = norm_samples
 
-        self.prior_dist_type = getattr(torch.distributions, prior_dist)
+        if prior_dist == 'Delta':
+            self.prior_dist_type = Delta
+        else:
+            self.prior_dist_type = getattr(torch.distributions, prior_dist)
         self.approx_post_dist_type = None
         if approx_post_dist is not None:
-            self.approx_post_dist_type = getattr(torch.distributions, approx_post_dist)
+            if approx_post_dist == 'Delta':
+                self.approx_post_dist_type = Delta
+            else:
+                self.approx_post_dist_type = getattr(torch.distributions, approx_post_dist)
 
         # prior
         if prior_dist == 'Categorical':
@@ -73,7 +80,7 @@ class LatentVariable(nn.Module):
         self.layer_norm = None
         if self.norm_samples:
             self.layer_norm = nn.LayerNorm(self.n_variables)
-        self._log_var_limits = [-5, 5]
+        self._log_var_limits = [-15, 0]
 
     def infer(self, input):
         if self.approx_post_dist_type is not None:
@@ -133,7 +140,6 @@ class LatentVariable(nn.Module):
             if sampling_dist.has_rsample:
                 batch_size = sampling_dist.loc.shape[0]
                 sample = sampling_dist.rsample([n_samples])
-                # sample = sampling_dist.loc
                 sample = sample.view(batch_size * n_samples, -1)
                 if self.norm_samples:
                     sample = self.layer_norm(sample)
@@ -195,9 +201,13 @@ class LatentVariable(nn.Module):
         if self.approx_post_dist_type is not None:
             # initialize the approximate posterior from the prior
             # copies over a detached version of each parameter
-            assert self.prior_dist_type == self.approx_post_dist_type, 'Only currently support same type.'
+            if self.approx_post_dist_type == Delta:
+                params = ['loc']
+            else:
+                assert self.prior_dist_type == self.approx_post_dist_type, 'Only currently support same type.'
+                params = self.initial_prior_params
             parameters = {}
-            for parameter_name in self.initial_prior_params:
+            for parameter_name in params:
                 parameters[parameter_name] = getattr(self.prior_dist, parameter_name).detach().requires_grad_()
             self.approx_post_dist = self.approx_post_dist_type(**parameters)
             if self.approx_post_dist_type == getattr(torch.distributions, 'Categorical'):
@@ -228,6 +238,8 @@ class LatentVariable(nn.Module):
 
     def kl_divergence(self, analytical=True):
         if self.approx_post_dist_type is not None:
+            if self.approx_post_dist_type == Delta:
+                analytical = False
             if analytical:
                 return torch.distributions.kl_divergence(self.approx_post_dist, self.prior_dist)
             else:

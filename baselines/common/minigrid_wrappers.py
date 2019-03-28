@@ -18,10 +18,19 @@ class ScaledFloatFrame(gym.ObservationWrapper):
         # with smaller replay buffers only.
         return np.array(observation).astype(np.float32) / 5.
 
+class SignRewardEnv(gym.RewardWrapper):
+    """
+    Takes the sign of the reward to [0, 1].
+    """
+    def __init__(self, env):
+        gym.RewardWrapper.__init__(self, env)
+
+    def reward(self, reward):
+        return float(np.sign(reward))
 
 def wrap_minigrid(env, frame_stack=False, frame_width=-1, frame_height=-1,
                   grayscale=True, scale=False, to_tensor=False, transpose=False,
-                  add_batch_dim=False, rescale_rewards=False):
+                  add_batch_dim=False, rescale_rewards=False, sign_rewards=False):
 
     env = gym_minigrid.wrappers.ImgObsWrapper(env)
     if frame_width != -1 or frame_height != -1:
@@ -34,6 +43,8 @@ def wrap_minigrid(env, frame_stack=False, frame_width=-1, frame_height=-1,
         env = ScaledFloatFrame(env)
     if rescale_rewards:
         env = RescaleRewardEnv(env)
+    if sign_rewards:
+        env = SignRewardEnv(env)
     if frame_stack:
         env = FrameStack(env, 1)
     if to_tensor:

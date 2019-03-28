@@ -113,8 +113,8 @@ def build_env(args):
         elif alg == 'trpo_mpi':
             env = make_env(env_id, env_type, seed=seed)
         elif alg == 'variational':
-            env = make_env(env_id, env_type, seed=seed, wrapper_kwargs={'frame_width': 64,
-                                                                        'frame_height': 64,
+            env = make_env(env_id, env_type, seed=seed, wrapper_kwargs={'frame_width': 45,
+                                                                        'frame_height': 30,
                                                                         'grayscale': False,
                                                                         'scale': True,
                                                                         'to_tensor': True,
@@ -131,7 +131,8 @@ def build_env(args):
             env = make_env(env_id, env_type, seed=seed, wrapper_kwargs={'scale': True,
                                                                         'to_tensor': True,
                                                                         'transpose': True,
-                                                                        'add_batch_dim': True})
+                                                                        'add_batch_dim': True,
+                                                                        'sign_rewards': True})
     else:
        config = tf.ConfigProto(allow_soft_placement=True,
                                intra_op_parallelism_threads=1,

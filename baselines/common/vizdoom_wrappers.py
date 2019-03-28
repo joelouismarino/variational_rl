@@ -88,7 +88,8 @@ class RescaleRewardEnv(gym.RewardWrapper):
 
     def reward(self, reward):
         range = 1. * (self.reward_range[1] - self.reward_range[0])
-        return (reward - self.reward_range[0]) / range
+        return reward / range
+        # return (reward - self.reward_range[0]) / range
 
 
 def wrap_deepmind_vizdoom(env, episode_life=False, clip_rewards=False, frame_stack=False, scale=False,

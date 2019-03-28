@@ -11,12 +11,15 @@ def get_minigrid_config(env):
     agent_args['agent_type'] = 'generative'
 
     agent_args['misc_args'] = {'optimality_scale': 1,
-                               'n_inf_iter': dict(state=1, action=1),
-                               'kl_min': dict(state=0., action=0.75),
-                               'gae_lambda': 0.95,
-                               'n_planning_samples': 10,
-                               'n_state_samples': 5,
-                               'max_rollout_length': 100}
+                               'n_inf_iter': dict(state=1, action=0),
+                               'kl_min': dict(state=0.1, action=0.75),
+                               'gae_lambda': 0.95}
+
+    if agent_args['misc_args']['n_inf_iter']['action'] > 0:
+        # planning configuration
+        agent_args['misc_args']['n_planning_samples'] = 50
+        agent_args['misc_args']['n_state_samples'] = 5
+        agent_args['misc_args']['max_rollout_length'] = 100
 
     observation_size = np.prod(env.observation_space.shape)
     action_space = env.action_space
@@ -42,7 +45,7 @@ def get_minigrid_config(env):
         # state
         n_state_variables = 100
         agent_args['state_variable_args'] = {'type': 'fully_connected',
-                                             'prior_dist': 'Normal',
+                                             'prior_dist': 'Delta', #'Normal',
                                              'approx_post_dist': None,
                                              'n_variables': n_state_variables}
 
@@ -87,7 +90,7 @@ def get_minigrid_config(env):
 
     if agent_args['agent_type'] == 'generative':
         # state
-        n_state_variables = 100
+        n_state_variables = 200
         agent_args['state_variable_args'] = {'type': 'fully_connected',
                                              'prior_dist': 'Normal',
                                              'approx_post_dist': 'Normal',

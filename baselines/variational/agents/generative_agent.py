@@ -62,8 +62,10 @@ class GenerativeAgent(Agent):
                            'action': misc_args['n_inf_iter']['action']}
         self.kl_min = {'state': misc_args['kl_min']['state'],
                        'action': misc_args['kl_min']['action']}
-        self.n_planning_samples = misc_args['n_planning_samples']
-        self.n_state_samples = misc_args['n_state_samples']
+        if self.n_inf_iter['action'] > 0:
+            self.n_planning_samples = misc_args['n_planning_samples']
+            self.n_state_samples = misc_args['n_state_samples']
+            self.max_rollout_length = misc_args['max_rollout_length']
 
         # mode (either 'train' or 'eval')
         self._mode = 'train'
@@ -83,12 +85,13 @@ class GenerativeAgent(Agent):
         self.log_probs = {'action': []}
         # store the values during training
         self.values = []
+        # store the reward predictions during training
+        self.reward_predictions = []
 
         self.valid = []
         self._prev_action = None
         self.batch_size = 1
         self.gae_lambda = misc_args['gae_lambda']
-        self.max_rollout_length = misc_args['max_rollout_length']
 
         self.obs_reconstruction = None
         self.obs_prediction = None
@@ -114,6 +117,10 @@ class GenerativeAgent(Agent):
                     if len(self.obs_prediction.shape) != len(observation.shape):
                         self.obs_prediction = self.obs_prediction.view(observation.shape)
                     initial_free_energy = state_inf_free_energy
+
+                    # save the reward prediction
+                    if self._mode == 'train':
+                        self.reward_predictions.append(self.reward_variable.likelihood_dist.loc)
 
                 clamped_state_kl = torch.clamp(self.state_variable.kl_divergence(), min=self.kl_min['state']).sum(dim=1, keepdim=True)
                 state_inf_free_energy = valid * (clamped_state_kl - (1 - done) * obs_log_likelihood - reward_log_likelihood - done_log_likelihood)
@@ -236,7 +243,7 @@ class GenerativeAgent(Agent):
 
                     # backprop objective OR use policy gradients
                     objective.mean(dim=1).sum().backward(retain_graph=True)
-                    
+
                     if inf_iter < self.n_inf_iter['action']:
                         # update the approximate posterior using the inference model
                         params, grads = self.action_variable.params_and_grads()
@@ -261,7 +268,7 @@ class GenerativeAgent(Agent):
                     inference_improvement = estimated_returns[0] - estimated_returns[-1]
                     self.inference_improvement['action'].append(inference_improvement)
 
-            # clear_gradients(self.generative_parameters())
+            clear_gradients(self.generative_parameters())
             self.generative_mode()
 
     def step_state(self, planning=False, **kwargs):

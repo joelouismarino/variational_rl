@@ -43,6 +43,8 @@ class Agent(nn.Module):
                         'state': [], 'action': [], 'log_prob': []}
         # stores the objectives during training
         self.objectives = {'optimality': [], 'state': [], 'action': []}
+        # stores the metrics during training
+        self.metrics = {'optimality': [], 'state': [], 'action': []}
         # stores inference improvement during training
         self.inference_improvement = {'state': [], 'action': []}
         # stores planning rollout lengths during training
@@ -53,6 +55,8 @@ class Agent(nn.Module):
         self.importance_weights = {'action': []}
         # store the values during training
         self.values = []
+        # store the reward predictions during training
+        self.reward_predictions = []
 
         self.valid = []
         self._prev_action = None
@@ -156,7 +160,7 @@ class Agent(nn.Module):
         n_valid_steps = valid.sum(dim=0)
 
         # average objectives over time and batch (for reporting)
-        for objective_name, objective in self.objectives.items():
+        for objective_name, objective in self.metrics.items():
             obj = torch.stack(objective).sum(dim=0).div(n_valid_steps).mean(dim=0)
             if objective_name in ['observation', 'reward', 'optimality', 'done']:
                 # negate for plotting in log scale
@@ -180,12 +184,33 @@ class Agent(nn.Module):
             free_energy = free_energy + torch.stack(objective)
 
         # calculate the REINFORCE terms
-        rewards = (-torch.stack(self.objectives['optimality']) + 1.) * valid
         if self.value_model is not None:
+            # use a bootstrapped estimate as a baseline
             # calculate TD errors
             discount = 0.99
             values = torch.stack(self.values)
-            deltas = rewards[1:] + discount * values[1:] * valid[1:] - values[:-1]
+            # add up the future terms in the objective
+            # can we use the reward prediction (from the reward model) as a baseline?
+            # optimality_predictions = - self.optimality_scale * (torch.stack(self.reward_predictions) - 1.)
+            optimality = -(-torch.stack(self.objectives['optimality']) + 0.9) * valid
+            # optimality = torch.stack(self.objectives['optimality']) * valid
+            future_terms = optimality[1:]
+            # TODO: should only include these if the action distribution is not reparameterizable
+            if self.action_prior_model is not None:
+                # action_kl = torch.stack(self.objectives['action']) * valid
+                # future_terms = future_terms + action_kl[1:]
+                pass
+            if self.state_prior_model is not None:
+                # state_kl = torch.clamp(torch.stack(self.objectives['state']) * valid, max=30)
+                # future_terms = future_terms + state_kl[1:]
+                pass
+            if self.obs_likelihood_model is not None:
+                # TODO: include information gain terms from observation, reward, and done
+                # info_gain = torch.stack(self.objectives['info_gain']) * valid
+                # future_terms = future_terms + info_gain[1:]
+                pass
+
+            deltas = future_terms + discount * values[1:] * valid[1:] - values[:-1]
             advantages = deltas.detach()
             # use generalized advantage estimator
             for i in range(advantages.shape[0]-1, 0, -1):
@@ -198,6 +223,7 @@ class Agent(nn.Module):
         else:
             # TODO: this is hacky and doesn't work
             # use Monte Carlo baseline
+            rewards = (-torch.stack(self.objectives['optimality']) + 1.) * valid
             returns = torch.flip(torch.cumsum(torch.flip(rewards.detach(), dims=[0]), dim=0), dims=[0])
             # normalize the future sums
             returns_mean = returns[1:].sum(dim=0, keepdim=True).div(n_valid_steps)
@@ -206,9 +232,9 @@ class Agent(nn.Module):
         # add the REINFORCE terms to the total objective
         log_probs = torch.stack(self.log_probs['action'])
         importance_weights = torch.stack(self.importance_weights['action']).detach()
-        reinforce_terms = - importance_weights[:-1] * log_probs[:-1] * advantages
+        reinforce_terms = importance_weights[:-1] * log_probs[:-1] * advantages
         # reinforce_terms = - log_probs[:-1] * advantages
-        # free_energy[:-1] = free_energy[:-1] + reinforce_terms
+        free_energy[:-1] = free_energy[:-1] + reinforce_terms
 
         results['importance_weights'] = importance_weights.sum(dim=0).div(n_valid_steps).mean(dim=0).detach().cpu().item()
         results['policy_gradients'] = reinforce_terms.sum(dim=0).div(n_valid_steps-1).mean(dim=0).detach().cpu().item()
@@ -224,38 +250,47 @@ class Agent(nn.Module):
         grads_dict = {}
         grad_norm_dict = {}
         for model_name, params in self.parameters().items():
-            grads = [param.grad for param in params if param.grad is not None]
-            grads = torch.cat([grad.view(-1) for grad in grads], dim=0)
-            grads_dict[model_name] = grads.abs().mean().cpu().numpy().item()
-            grad_norm_dict[model_name] = grads.norm().cpu().numpy().item()
+            grads = [param.grad.view(-1) for param in params if param.grad is not None]
+            if len(grads) > 0:
+                grads = torch.cat(grads, dim=0)
+                grads_dict[model_name] = grads.abs().mean().cpu().numpy().item()
+                grad_norm_dict[model_name] = grads.norm().cpu().numpy().item()
         results['grads'] = grads_dict
         results['grad_norms'] = grad_norm_dict
 
         return results
 
     def _collect_objectives_and_log_probs(self, observation, reward, done, action, value, valid, log_prob):
+        # TODO: replace these first three likelihoods with information gain using some approximation
         if self.done_likelihood_model is not None:
             done_log_likelihood = self.done_variable.cond_log_likelihood(done).sum(dim=1, keepdim=True)
+            self.metrics['done'].append(-done_log_likelihood * valid)
             self.objectives['done'].append(-done_log_likelihood * valid)
 
         if self.reward_likelihood_model is not None:
             reward_log_likelihood = self.reward_variable.cond_log_likelihood(reward).sum(dim=1, keepdim=True)
+            self.metrics['reward'].append(-reward_log_likelihood * valid)
             self.objectives['reward'].append(-reward_log_likelihood * valid)
 
         if self.obs_likelihood_model is not None:
             observation_log_likelihood = self.observation_variable.cond_log_likelihood(observation).sum(dim=1, keepdim=True)
+            self.metrics['observation'].append(-observation_log_likelihood * (1 - done) * valid)
             self.objectives['observation'].append(-observation_log_likelihood * (1 - done) * valid)
 
         optimality_log_likelihood = self.optimality_scale * (reward - 1.)
+        self.metrics['optimality'].append(-optimality_log_likelihood * valid)
         self.objectives['optimality'].append(-optimality_log_likelihood * valid)
 
         state_kl = self.state_variable.kl_divergence()
-        state_kl = torch.clamp(state_kl, min=self.kl_min['state']).sum(dim=1, keepdim=True)
-        self.objectives['state'].append(state_kl * (1 - done) * valid)
+        clamped_state_kl = torch.clamp(state_kl, min=self.kl_min['state']).sum(dim=1, keepdim=True)
+        state_kl = state_kl.sum(dim=1, keepdim=True)
+        self.metrics['state'].append(state_kl * (1 - done) * valid)
+        self.objectives['state'].append(clamped_state_kl * (1 - done) * valid)
 
         action_kl = self.action_variable.kl_divergence().view(-1, 1)
-        action_kl = torch.clamp(action_kl, min=self.kl_min['action'])
-        self.objectives['action'].append(action_kl * valid)
+        clamped_action_kl = torch.clamp(action_kl, min=self.kl_min['action'])
+        self.metrics['action'].append(action_kl * valid)
+        self.objectives['action'].append(clamped_action_kl * valid)
 
         action_ind = self._convert_action(action)
         action_log_prob = self.action_variable.approx_post_dist.log_prob(action_ind).view(-1, 1)
@@ -362,12 +397,16 @@ class Agent(nn.Module):
             self.episode['prediction'] = []
 
         self.objectives = {'optimality': [], 'state': [], 'action': []}
+        self.metrics = {'optimality': [], 'state': [], 'action': []}
         if self.observation_variable is not None:
             self.objectives['observation'] = []
+            self.metrics['observation'] = []
         if self.reward_variable is not None:
             self.objectives['reward'] = []
+            self.metrics['reward'] = []
         if self.done_variable is not None:
             self.objectives['done'] = []
+            self.metrics['done'] = []
         # if self.value_model is not None:
         #     self.objectives['value'] = []
 
@@ -376,6 +415,7 @@ class Agent(nn.Module):
         self.rollout_lenghts = []
         self.importance_weights = {'action': []}
         self.values = []
+        self.reward_predictions = []
 
         self._prev_action = None
         self.valid = []

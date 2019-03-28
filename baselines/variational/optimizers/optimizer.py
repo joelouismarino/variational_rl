@@ -34,11 +34,25 @@ class Optimizer(object):
                 self.opt['state_inference_model'].step()
                 self.opt['state_inference_model'].zero_grad()
 
+            # if self.model.action_inference_model is not None:
+            #     params = self.parameters['action_inference_model']
+            #     grads = [param.grad for param in params]
+            #     divide_gradients_by_value(grads, self.model.batch_size)
+            #     divide_gradients_by_value(grads, self.model.n_inf_iter['action'])
+            #     if self.clip_grad is not None:
+            #         clip_gradients(grads, self.clip_grad)
+            #     if self.norm_grad is not None:
+            #         norm_gradients(grads, self.norm_grad)
+            #     self.opt['action_inference_model'].step()
+            #     self.opt['action_inference_model'].zero_grad()
+
     def apply(self):
         grads = []
         for model_name, params in self.parameters.items():
             if self.update_inf_online and model_name == 'state_inference_model':
                 continue
+            # if self.update_inf_online and model_name == 'action_inference_model':
+            #     continue
             grads += [param.grad for param in params]
         if self.clip_grad is not None:
             clip_gradients(grads, self.clip_grad)
