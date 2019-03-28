@@ -46,7 +46,7 @@ class Logger:
         #                        'observation': []}
 
     def _init_eval_stats(self):
-        stats = ['cumulative return', 'observations', 'predictions', 'reconstruction']
+        stats = ['rewards', 'observations', 'predictions', 'reconstruction']
         self.eval_statistics = {}
         for stat in stats:
             self.eval_statistics[stat] = []
@@ -71,9 +71,8 @@ class Logger:
         #     self.checkpoint(model)
 
     def log_episode(self, episode):
-        # log cumulative returns
-        cum_rewards = np.cumsum(episode['reward'])
-        self.eval_statistics['cumulative return'].extend(cum_rewards)
+        # log rewards
+        self.eval_statistics['rewards'].extend(episode['reward'])
         # pick observations to log
         frame_samples = random.sample(range(0, len(episode['observation'])), 2) # select 2 random frames
         self.eval_statistics['observations'].extend(episode['observation'][frame_samples])
