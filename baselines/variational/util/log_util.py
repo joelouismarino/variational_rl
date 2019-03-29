@@ -15,7 +15,7 @@ import random
 # log_items = ['free_energy', 'state_kl', 'action_kl', 'obs_cll', 'done_cll',
 #              'reward_cll', 'optimality_cll', 'state_inf_imp']
 
-log_items = ['optimality', 'state', 'action', 'state_inf_imp']
+log_items = ['optimality', 'state', 'action', 'state improvement']
 
 class Logger:
     """
@@ -38,6 +38,7 @@ class Logger:
         # os.makedirs(os.path.join(self.log_path, 'episodes'))
         # self.episode_log = {}
         # self._init_episode_log()
+        self.save_exp_config(exp_args)
         self._train_step = 0
         # self._episode = 0
         self._ckpt_interval = ckpt_interval
@@ -46,10 +47,26 @@ class Logger:
         #                        'observation': []}
 
     def _init_eval_stats(self):
-        stats = ['rewards', 'observations', 'predictions', 'reconstruction']
+        stats = ['rewards', 'observations', 'predictions', 'reconstructions', 'episode length']
         self.eval_statistics = {}
         for stat in stats:
             self.eval_statistics[stat] = []
+
+    def save_exp_config(self, args):
+        agent_args = args['agent_args']
+        exp_config_str = 'EXPERIMENT CONFIG\n'
+        for arg_name, arg in args.items():
+            arg_str = arg_name + ':'
+            arg_str += str(arg) + '\n'
+            exp_config_str += arg_str
+        agent_config_str = '\nAGENT CONFIG\n'
+        for arg_name, arg in agent_args.items():
+            arg_str = arg_name + ':'
+            arg_str += str(arg) + '\n'
+            agent_config_str += arg_str
+        # save to text file
+        with open(f"{self.log_path}/config.txt", "w") as text_file:
+            text_file.write(exp_config_str + agent_config_str)
 
     def _update_metric(self, file_name, value):
         # appends a new value to the metric list
@@ -62,6 +79,7 @@ class Logger:
 
     def log_train_step(self, results):
         # log a training step
+        import ipdb; ipdb.set_trace()
         for metric_name in log_items:
             if metric_name in results.keys():
                 metric = results[metric_name]
@@ -80,6 +98,7 @@ class Logger:
             self.eval_statistics['predictions'].extend(episode['prediction'][frame_samples])
         if 'reconstruction' in episode:
             self.eval_statistics['reconstructions'].append(episode['reconstruction'][frame_samples])
+        self.eval_statistics['episode length'].append(len(episode['reward']))
         # save
         file_name = os.path.join(self.log_path, 'metrics', 'eval_statistics.p')
         pickle.dump(self.eval_statistics, open(file_name, 'wb'))
