@@ -8,8 +8,8 @@ from .util.print_util import print_step_metrics, print_episode_metrics
 from .util.train_util import collect_episode, train
 
 
-def learn(env, seed, total_timesteps, log_dir, batch_size=64, n_updates=10,
-          n_initial_batches=1, train_seq_len=8, lr=1e-4, device=None, **kwargs):
+def learn(env, seed, total_timesteps, log_dir, batch_size=16, n_updates=50,
+          n_initial_batches=1, train_seq_len=50, lr=7e-4, device=None, **kwargs):
 
     # torch.manual_seed(seed)
 

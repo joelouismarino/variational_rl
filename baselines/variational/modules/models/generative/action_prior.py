@@ -11,5 +11,6 @@ class ActionPrior(Model):
 
     def forward(self, state, action):
         # combine inputs
-        inputs = torch.cat([state, action], dim=1)
-        return self.network(inputs)
+        # inputs = torch.cat([state, action], dim=1)
+        # return self.network(inputs)
+        return self.network(state)

@@ -46,7 +46,7 @@ class Logger:
         #                        'observation': []}
 
     def _init_eval_stats(self):
-        stats = ['rewards', 'observations', 'predictions', 'reconstruction']
+        stats = ['rewards', 'observations', 'predictions', 'reconstructions']
         self.eval_statistics = {}
         for stat in stats:
             self.eval_statistics[stat] = []

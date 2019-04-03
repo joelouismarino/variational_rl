@@ -192,7 +192,7 @@ class Agent(nn.Module):
             # add up the future terms in the objective
             # can we use the reward prediction (from the reward model) as a baseline?
             # optimality_predictions = - self.optimality_scale * (torch.stack(self.reward_predictions) - 1.)
-            optimality = -(-torch.stack(self.objectives['optimality']) + 0.9) * valid
+            optimality = -(-torch.stack(self.objectives['optimality']) + 1.) * valid
             # optimality = torch.stack(self.objectives['optimality']) * valid
             future_terms = optimality[1:]
             # TODO: should only include these if the action distribution is not reparameterizable

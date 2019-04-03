@@ -242,7 +242,8 @@ class GenerativeAgent(Agent):
                     objective = - action_log_prob * advantages.detach()
 
                     # backprop objective OR use policy gradients
-                    objective.mean(dim=1).sum().backward(retain_graph=True)
+                    if inf_iter < self.n_inf_iter['action']:
+                        objective.mean(dim=1).sum().backward(retain_graph=True)
 
                     if inf_iter < self.n_inf_iter['action']:
                         # update the approximate posterior using the inference model
