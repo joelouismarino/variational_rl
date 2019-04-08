@@ -31,11 +31,15 @@ def get_agent_args(env):
         raise NotImplementedError
         # from .box2d_config impot get_box2d_config
         # return get_box2d_config(env)
-    # classic control environments
+    # Control environments
     elif env_name in ['Acrobat-v1', 'CartPole-v1', 'MountainCar-v0',
                       'MountainCarContinuous-v0', 'Pendulum-v0']:
-        raise NotImplementedError
-        # from .classic_control_config import get_classic_control_config
-        # return get_classic_control_config(env)
+        from .classic_control_config import get_classic_control_config
+        return get_classic_control_config(env)
+    elif env_name in ['Ant-v2', 'HalfCheetah-v2', 'Hopper-v2', 'Humanoid-v2',
+                      'HumanoidStandup-v2', 'InvertedDoublePendulum-v2', 'InvertedPendulum-v2',
+                      'Reacher-v2', 'Swimmer-v2', 'Walker2d-v2']:
+        from .mujoco_config import get_mujoco_config
+        return get_mujoco_config(env)
     else:
         raise NotImplementedError

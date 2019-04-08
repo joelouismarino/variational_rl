@@ -2,7 +2,7 @@ import gym.spaces as spaces
 import numpy as np
 
 
-def get_minigrid_config(env):
+def get_classic_control_config(env):
     """
     Get the model configuration arguments for MiniGrid environments.
     """
@@ -22,7 +22,7 @@ def get_minigrid_config(env):
         agent_args['misc_args']['max_rollout_length'] = 100
 
     observation_size = np.prod(env.observation_space.shape)
-    action_space = env.action_space
+    action_space = env.action_spac
     if type(action_space) == spaces.Discrete:
         # discrete control
         # TODO: used reparameterized categorical?

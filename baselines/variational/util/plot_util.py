@@ -90,11 +90,12 @@ class Plotter:
         n_steps = episode['observation'].shape[0] - 1
         self._total_episode_steps += n_steps
         time_step = random.randint(0, n_steps-1)
-        self.plot_image(episode['observation'][time_step], 'Observation')
-        if 'prediction' in episode:
-            self.plot_image(episode['prediction'][time_step], 'Prediction')
-        if 'reconstruction' in episode:
-            self.plot_image(episode['reconstruction'][time_step], 'Reconstruction')
+        if len(episode['observation'][time_step].size()) == 3:
+            self.plot_image(episode['observation'][time_step], 'Observation')
+            if 'prediction' in episode:
+                self.plot_image(episode['prediction'][time_step], 'Prediction')
+            if 'reconstruction' in episode:
+                self.plot_image(episode['reconstruction'][time_step], 'Reconstruction')
 
         self._plot_metric(self._episode, n_steps, 'length',
                           opts=self._get_opts('length'), name='Episode')
