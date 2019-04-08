@@ -15,14 +15,17 @@ class LatentVariable(nn.Module):
         n_input (list): the size of the inputs to the prior and approximate posterior respectively
         constant_prior (bool): whether to set the prior as a constant
         inference_type (str): direct or iterative
+        const_scale (bool): whether to use a constant (learnable) approx. post. variance
         norm_samples (bool): whether to normalize samples
     """
     def __init__(self, prior_dist, approx_post_dist, n_variables, n_input,
-                 constant_prior=False, inference_type='direct', norm_samples=False):
+                 constant_prior=False, inference_type='direct',
+                 const_scale=False, norm_samples=False):
         super(LatentVariable, self).__init__()
         self.n_variables = n_variables
         self.constant_prior = constant_prior
         self.inference_type = inference_type
+        self.const_scale = const_scale
         self.norm_samples = norm_samples
 
         if prior_dist == 'Delta':
@@ -43,7 +46,7 @@ class LatentVariable(nn.Module):
             prior_param_names = self.prior_dist_type.arg_constraints.keys()
         self.prior_models = None
         if not self.constant_prior:
-            # learned prior
+            # learned, conditional prior
             self.prior_models = nn.ModuleDict({name: None for name in prior_param_names})
 
         # approximate posterior
@@ -53,6 +56,12 @@ class LatentVariable(nn.Module):
                 approx_post_param_names = ['logits']
             else:
                 approx_post_param_names = self.approx_post_dist_type.arg_constraints.keys()
+            self.approx_post_log_scale = None
+            if self.const_scale:
+                # use a constant variance
+                if 'scale' in approx_post_param_names:
+                    self.approx_post_log_scale = nn.Parameter(torch.ones(1, n_variables))
+                    approx_post_param_names = ['loc']
             self.approx_post_models = nn.ModuleDict({name: None for name in approx_post_param_names})
             if self.inference_type != 'direct':
                 self.approx_post_gates = nn.ModuleDict({name: None for name in approx_post_param_names})
@@ -75,6 +84,7 @@ class LatentVariable(nn.Module):
         self.reset()
 
         self._sample = None
+        self._n_samples = None
         self._planning_sample = None
         self._detach_latent = True
         self.layer_norm = None
@@ -116,6 +126,12 @@ class LatentVariable(nn.Module):
                 # set the parameter
                 parameters[param_name] = param
 
+            if self.const_scale:
+                log_scale = self.approx_post_log_scale.repeat(input.shape[0], 1)
+                log_scale = torch.clamp(log_scale, self._log_var_limits[0], self._log_var_limits[1])
+                scale = torch.exp(log_scale)
+                parameters['scale'] = scale
+
             # create a new distribution with the parameters
             self.approx_post_dist = self.approx_post_dist_type(**parameters)
             # retain the gradient for further inference
@@ -126,6 +142,7 @@ class LatentVariable(nn.Module):
 
     def sample(self, n_samples=1, planning=False):
         # sample the latent variable
+        # TODO: handle re-sampling if we don't have enough samples already
         if (self._sample is None and not planning) or (self._planning_sample is None and planning):
             if planning:
                 sampling_dist = self.planning_prior_dist
@@ -148,6 +165,7 @@ class LatentVariable(nn.Module):
                 batch_size = sampling_dist.logits.shape[0]
                 sample = sampling_dist.sample([n_samples])
                 sample = sample.view(batch_size * n_samples, 1)
+            self._n_samples = n_samples
             # TODO: this will only work for fully-connected variables
 
             if sampling_dist_type == getattr(torch.distributions, 'Categorical'):
@@ -166,6 +184,9 @@ class LatentVariable(nn.Module):
             sample = self._sample
         if self._detach_latent:
             sample = sample.detach()
+        if n_samples < self._n_samples:
+            sample = sample.view(self._n_samples, -1, self.n_variables)
+            sample = sample[:n_samples].view(-1, self.n_variables)
         return sample
 
     def step(self, input, planning=False):
@@ -252,6 +273,15 @@ class LatentVariable(nn.Module):
         else:
             return self._sample.new_zeros(self._sample.shape)
 
+    def log_importance_weights(self):
+        # calculate importance weights for multiple samples
+        sample = self._sample.view(self._n_samples, -1, self.n_variables)
+        # expand the distributions to handle evaluating multiple samples
+        expanded_prior = self.prior_dist.expand(torch.Size([self._n_samples]) + self.prior_dist.batch_shape)
+        expanded_approx_post = self.approx_post_dist.expand(torch.Size([self._n_samples]) + self.approx_post_dist.batch_shape)
+        # calculate the importance weight
+        return (expanded_prior.log_prob(sample) - expanded_approx_post.log_prob(sample)).sum(dim=2, keepdim=True)
+
     def params_and_grads(self, concat=False, normalize=True, norm_type='layer'):
         # get current gradients and parameters
         params = [getattr(self.approx_post_dist, param).detach() for param in self.approx_post_models]
@@ -281,6 +311,8 @@ class LatentVariable(nn.Module):
         params = nn.ParameterList()
         for model_name in self.approx_post_models:
             params.extend(list(self.approx_post_models[model_name].parameters()))
+        if self.const_scale:
+            params.append(self.approx_post_log_scale)
         return params
 
     def generative_parameters(self):

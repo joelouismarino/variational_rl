@@ -38,6 +38,9 @@ class Plotter:
         if exp_args['agent_args']['agent_type'] == 'generative':
             # additional plots for likelihoods and inference improvement
             self.metric_plot_names += ['observation', 'reward', 'done', 'state_improvement']
+            self.metric_plot_names += ['observation_cll', 'observation_mll']
+            self.metric_plot_names += ['reward_cll', 'reward_mll']
+            self.metric_plot_names += ['done_cll', 'done_mll']
             # additional images for reconstruction and prediction
             self.img_names += ['recon', 'pred']
             if exp_args['agent_args']['misc_args']['n_inf_iter']['action'] > 0:
@@ -57,7 +60,6 @@ class Plotter:
         for w in window_names:
             self.window_id[w] = None
             self.data[w] = []
-
 
     def plot_config(self, args):
         agent_args = args.pop('agent_args')
@@ -304,17 +306,35 @@ class Plotter:
             ylabel = 'Action KL (nats)'
             title = 'Action KL'
         elif win_name == 'observation':
+            ylabel = 'Obs. Info Gain (nats)'
+            title = 'Obs. Info Gain'
+        elif win_name == 'observation_cll':
             ylabel = 'Obs. Cond. Log Likelihood (nats)'
             title = 'Obs. Cond. Log Likelihood'
+        elif win_name == 'observation_mll':
+            ylabel = 'Obs. Marginal Log Likelihood (nats)'
+            title = 'Obs. Marginal Log Likelihood'
         elif win_name == 'reward':
+            ylabel = 'Reward Info Gain (nats)'
+            title = 'Reward Info Gain'
+        elif win_name == 'reward_cll':
             ylabel = 'Reward Cond. Log Likelihood (nats)'
             title = 'Reward Cond. Log Likelihood'
+        elif win_name == 'reward_mll':
+            ylabel = 'Reward Marginal Log Likelihood (nats)'
+            title = 'Reward Marginal Log Likelihood'
         elif win_name == 'optimality':
             ylabel = 'Optimality Cond. Log Likelihood (nats)'
             title = 'Optimality Cond. Log Likelihood'
         elif win_name == 'done':
+            ylabel = 'Done Info Gain (nats)'
+            title = 'Done Info Gain'
+        elif win_name == 'done_cll':
             ylabel = 'Done Cond. Log Likelihood (nats)'
             title = 'Done Cond. Log Likelihood'
+        elif win_name == 'done_mll':
+            ylabel = 'Done Marginal Log Likelihood (nats)'
+            title = 'Done Marginal Log Likelihood'
         elif win_name == 'value':
             ylabel = 'Squared TD Error'
             title = 'Value Loss'

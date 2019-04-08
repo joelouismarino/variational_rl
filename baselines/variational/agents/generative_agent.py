@@ -58,13 +58,13 @@ class GenerativeAgent(Agent):
 
         # miscellaneous
         self.optimality_scale = misc_args['optimality_scale']
+        self.n_state_samples = misc_args['n_state_samples']
         self.n_inf_iter = {'state': misc_args['n_inf_iter']['state'],
                            'action': misc_args['n_inf_iter']['action']}
         self.kl_min = {'state': misc_args['kl_min']['state'],
                        'action': misc_args['kl_min']['action']}
         if self.n_inf_iter['action'] > 0:
             self.n_planning_samples = misc_args['n_planning_samples']
-            self.n_state_samples = misc_args['n_state_samples']
             self.max_rollout_length = misc_args['max_rollout_length']
 
         # mode (either 'train' or 'eval')
@@ -106,9 +106,12 @@ class GenerativeAgent(Agent):
                 self.generate_observation()
                 self.generate_reward()
                 self.generate_done()
-                obs_log_likelihood = self.observation_variable.cond_log_likelihood(observation).sum(dim=1, keepdim=True)
-                reward_log_likelihood = self.reward_variable.cond_log_likelihood(reward).sum(dim=1, keepdim=True)
-                done_log_likelihood = self.done_variable.cond_log_likelihood(done).sum(dim=1, keepdim=True)
+                obs_log_likelihood = self.observation_variable.cond_log_likelihood(observation)
+                obs_log_likelihood = obs_log_likelihood.view(self.n_state_samples, -1, 1).mean(dim=0)
+                reward_log_likelihood = self.reward_variable.cond_log_likelihood(reward)
+                reward_log_likelihood = reward_log_likelihood.view(self.n_state_samples, -1, 1).mean(dim=0)
+                done_log_likelihood = self.done_variable.cond_log_likelihood(done)
+                done_log_likelihood = done_log_likelihood.view(self.n_state_samples, -1, 1).mean(dim=0)
                 state_kl = self.state_variable.kl_divergence().sum(dim=1, keepdim=True)
                 state_inf_free_energy = state_kl - (1 - done) * obs_log_likelihood - reward_log_likelihood - done_log_likelihood
                 state_inf_free_energy = valid * state_inf_free_energy
@@ -117,6 +120,11 @@ class GenerativeAgent(Agent):
                     if len(self.obs_prediction.shape) != len(observation.shape):
                         self.obs_prediction = self.obs_prediction.view(observation.shape)
                     initial_free_energy = state_inf_free_energy
+
+                    #save the predictions for marginal likelihood estimation
+                    self.observation_variable.save_prediction()
+                    self.reward_variable.save_prediction()
+                    self.done_variable.save_prediction()
 
                     # save the reward prediction
                     if self._mode == 'train':
@@ -133,9 +141,12 @@ class GenerativeAgent(Agent):
             self.generate_observation()
             self.generate_reward()
             self.generate_done()
-            obs_log_likelihood = self.observation_variable.cond_log_likelihood(observation).sum(dim=1, keepdim=True)
-            reward_log_likelihood = self.reward_variable.cond_log_likelihood(reward).sum(dim=1, keepdim=True)
-            done_log_likelihood = self.done_variable.cond_log_likelihood(done).sum(dim=1, keepdim=True)
+            obs_log_likelihood = self.observation_variable.cond_log_likelihood(observation)
+            obs_log_likelihood = obs_log_likelihood.view(self.n_state_samples, -1, 1).mean(dim=0)
+            reward_log_likelihood = self.reward_variable.cond_log_likelihood(reward)
+            reward_log_likelihood = reward_log_likelihood.view(self.n_state_samples, -1, 1).mean(dim=0)
+            done_log_likelihood = self.done_variable.cond_log_likelihood(done)
+            done_log_likelihood = done_log_likelihood.view(self.n_state_samples, -1, 1).mean(dim=0)
             state_kl = self.state_variable.kl_divergence().sum(dim=1, keepdim=True)
             state_inf_free_energy = state_kl - (1 - done) * obs_log_likelihood - reward_log_likelihood - done_log_likelihood
             state_inf_free_energy = valid * state_inf_free_energy
@@ -298,19 +309,19 @@ class GenerativeAgent(Agent):
 
     def generate_observation(self, planning=False):
         # generate the conditional likelihood for the observation
-        state = self.state_variable.sample(planning=planning)
+        state = self.state_variable.sample(n_samples=self.n_state_samples, planning=planning)
         likelihood_input = self.obs_likelihood_model(state)
         self.observation_variable.generate(likelihood_input, planning=planning)
 
     def generate_reward(self, planning=False):
         # generate the conditional likelihood for the reward
-        state = self.state_variable.sample(planning=planning)
+        state = self.state_variable.sample(n_samples=self.n_state_samples, planning=planning)
         likelihood_input = self.reward_likelihood_model(state)
         self.reward_variable.generate(likelihood_input, planning=planning)
 
     def generate_done(self, planning=False):
         # generate the conditional likelihood for episode being done
-        state = self.state_variable.sample(planning=planning)
+        state = self.state_variable.sample(n_samples=self.n_state_samples, planning=planning)
         likelihood_input = self.done_likelihood_model(state)
         self.done_variable.generate(likelihood_input, planning=planning)
 

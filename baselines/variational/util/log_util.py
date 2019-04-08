@@ -47,11 +47,7 @@ class Logger:
         #                        'observation': []}
 
     def _init_eval_stats(self):
-<<<<<<< HEAD
-        stats = ['rewards', 'observations', 'predictions', 'reconstructions']
-=======
         stats = ['rewards', 'observations', 'predictions', 'reconstructions', 'episode length']
->>>>>>> 1a1e099bbee22db29cac1088ffba701857b9ca9e
         self.eval_statistics = {}
         for stat in stats:
             self.eval_statistics[stat] = []

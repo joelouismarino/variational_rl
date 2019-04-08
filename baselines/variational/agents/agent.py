@@ -63,6 +63,7 @@ class Agent(nn.Module):
         self.batch_size = 1
         self.gae_lambda = 0.
         self.max_rollout_length = 1
+        self.alpha = 1.
 
         self.obs_reconstruction = None
         self.obs_prediction = None
@@ -74,6 +75,7 @@ class Agent(nn.Module):
         self.step_action(observation=observation, reward=reward, done=done, valid=valid, action=action)
         self.action_inference(observation=observation, reward=reward, done=done, valid=valid, action=action)
         if self._mode == 'train':
+            # import ipdb; ipdb.set_trace()
             value = None
             if self.value_model is not None:
                 value = self.estimate_value(observation=observation, reward=reward, done=done, valid=valid)
@@ -148,12 +150,8 @@ class Agent(nn.Module):
         kl_divergence = valid * (state_kl_divergence + action_kl_divergence)
         return kl_divergence
 
-    def value_loss(self):
-        pass
-
     def evaluate(self):
         # evaluate the objective, averaged over the batch, backprop
-
         results = {}
         valid = torch.stack(self.valid)
         # n_valid_steps = valid.sum(dim=0).sub(1)
@@ -162,7 +160,9 @@ class Agent(nn.Module):
         # average objectives over time and batch (for reporting)
         for objective_name, objective in self.metrics.items():
             obj = torch.stack(objective).sum(dim=0).div(n_valid_steps).mean(dim=0)
-            if objective_name in ['observation', 'reward', 'optimality', 'done']:
+            if objective_name in ['observation', 'reward', 'optimality', 'done',
+                                  'observation_cll', 'observation_mll', 'reward_cll',
+                                  'reward_mll', 'done_cll', 'done_mll']:
                 # negate for plotting in log scale
                 obj = obj * -1
             results[objective_name] = obj.detach().cpu().item()
@@ -261,21 +261,47 @@ class Agent(nn.Module):
         return results
 
     def _collect_objectives_and_log_probs(self, observation, reward, done, action, value, valid, log_prob):
-        # TODO: replace these first three likelihoods with information gain using some approximation
         if self.done_likelihood_model is not None:
-            done_log_likelihood = self.done_variable.cond_log_likelihood(done).sum(dim=1, keepdim=True)
-            self.metrics['done'].append(-done_log_likelihood * valid)
-            self.objectives['done'].append(-done_log_likelihood * valid)
+            log_importance_weights = self.state_variable.log_importance_weights().detach()
+            # mll = self.done_variable.marginal_log_likelihood(done, log_importance_weights)
+            # self.metrics['done'].append(-mll * valid)
+            # self.objectives['done'].append(-mll * valid)
+            done_info_gain = self.done_variable.info_gain(done, log_importance_weights, alpha=self.alpha)
+            self.metrics['done'].append(-done_info_gain * valid)
+            self.objectives['done'].append(-done_info_gain * valid)
+            done_cll = self.done_variable.cond_log_likelihood(done).view(self.n_state_samples, -1, 1).mean(dim=0)
+            self.metrics['done_cll'].append(-done_cll * valid)
+            # self.objectives['done'].append(-done_log_likelihood * valid)
+            done_mll = self.done_variable.marginal_log_likelihood(done, log_importance_weights)
+            self.metrics['done_mll'].append(-done_mll * valid)
 
         if self.reward_likelihood_model is not None:
-            reward_log_likelihood = self.reward_variable.cond_log_likelihood(reward).sum(dim=1, keepdim=True)
-            self.metrics['reward'].append(-reward_log_likelihood * valid)
-            self.objectives['reward'].append(-reward_log_likelihood * valid)
+            log_importance_weights = self.state_variable.log_importance_weights().detach()
+            # mll = self.reward_variable.marginal_log_likelihood(reward, log_importance_weights)
+            # self.metrics['reward'].append(-mll * valid)
+            # self.objectives['reward'].append(-mll * valid)
+            reward_info_gain = self.reward_variable.info_gain(reward, log_importance_weights, alpha=self.alpha)
+            self.metrics['reward'].append(-reward_info_gain * valid)
+            self.objectives['reward'].append(-reward_info_gain * valid)
+            reward_cll = self.reward_variable.cond_log_likelihood(reward).view(self.n_state_samples, -1, 1).mean(dim=0)
+            self.metrics['reward_cll'].append(-reward_cll * valid)
+            # self.objectives['reward'].append(-reward_log_likelihood * valid)
+            reward_mll = self.reward_variable.marginal_log_likelihood(reward, log_importance_weights)
+            self.metrics['reward_mll'].append(-reward_mll * (1 - done) * valid)
 
         if self.obs_likelihood_model is not None:
-            observation_log_likelihood = self.observation_variable.cond_log_likelihood(observation).sum(dim=1, keepdim=True)
-            self.metrics['observation'].append(-observation_log_likelihood * (1 - done) * valid)
-            self.objectives['observation'].append(-observation_log_likelihood * (1 - done) * valid)
+            log_importance_weights = self.state_variable.log_importance_weights().detach()
+            # mll = self.observation_variable.marginal_log_likelihood(observation, log_importance_weights)
+            # self.metrics['observation'].append(-mll * valid)
+            # self.objectives['observation'].append(-mll * valid)
+            observation_info_gain = self.observation_variable.info_gain(observation, log_importance_weights, alpha=self.alpha)
+            self.metrics['observation'].append(-observation_info_gain * (1 - done) * valid)
+            self.objectives['observation'].append(-observation_info_gain * (1 - done) * valid)
+            observation_cll = self.observation_variable.cond_log_likelihood(observation).view(self.n_state_samples, -1, 1).mean(dim=0)
+            # self.metrics['observation'].append(-observation_log_likelihood * (1 - done) * valid)
+            self.metrics['observation_cll'].append(-observation_cll * (1 - done) * valid)
+            observation_mll = self.observation_variable.marginal_log_likelihood(observation, log_importance_weights)
+            self.metrics['observation_mll'].append(-observation_mll * (1 - done) * valid)
 
         optimality_log_likelihood = self.optimality_scale * (reward - 1.)
         self.metrics['optimality'].append(-optimality_log_likelihood * valid)
@@ -326,6 +352,9 @@ class Agent(nn.Module):
                 self.episode['prediction'].append(obs.new(obs.shape).zero_())
         self.episode['reward'].append(reward)
         self.episode['done'].append(done)
+
+        self.alpha += 0.001
+        self.alpha = min(self.alpha, 1.)
 
     def _convert_action(self, action):
         # converts categorical action from one-hot encoding to the action index
@@ -401,12 +430,18 @@ class Agent(nn.Module):
         if self.observation_variable is not None:
             self.objectives['observation'] = []
             self.metrics['observation'] = []
+            self.metrics['observation_cll'] = []
+            self.metrics['observation_mll'] = []
         if self.reward_variable is not None:
             self.objectives['reward'] = []
             self.metrics['reward'] = []
+            self.metrics['reward_cll'] = []
+            self.metrics['reward_mll'] = []
         if self.done_variable is not None:
             self.objectives['done'] = []
             self.metrics['done'] = []
+            self.metrics['done_cll'] = []
+            self.metrics['done_mll'] = []
         # if self.value_model is not None:
         #     self.objectives['value'] = []
 
