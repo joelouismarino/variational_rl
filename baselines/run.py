@@ -120,7 +120,7 @@ def build_env(args):
                                                                         'to_tensor': True,
                                                                         'transpose': True,
                                                                         'add_batch_dim': True,
-                                                                        'rescale_rewards': True})
+                                                                        'rescale_rewards': False})
         else:
             frame_stack_size = 4
             env = make_vec_env(env_id, env_type, nenv, seed, gamestate=args.gamestate, reward_scale=args.reward_scale)
@@ -133,16 +133,19 @@ def build_env(args):
                                                                         'transpose': True,
                                                                         'add_batch_dim': True,
                                                                         'sign_rewards': True})
+    elif env_type == 'mujoco' and alg == 'variational':
+        env = make_env(env_id, env_type, wrapper_kwargs={'to_tensor': True,
+                                                        'add_batch_dim': True,
+                                                        'sign_rewards': True})
     else:
-       config = tf.ConfigProto(allow_soft_placement=True,
+        config = tf.ConfigProto(allow_soft_placement=True,
                                intra_op_parallelism_threads=1,
                                inter_op_parallelism_threads=1)
-       config.gpu_options.allow_growth = True
-       get_session(config=config)
+        config.gpu_options.allow_growth = True
+        get_session(config=config)
 
-       env = make_vec_env(env_id, env_type, args.num_env or 1, seed, reward_scale=args.reward_scale)
-
-       if env_type == 'mujoco':
+        env = make_vec_env(env_id, env_type, args.num_env or 1, seed, reward_scale=args.reward_scale)
+        if env_type == 'mujoco':
            env = VecNormalize(env)
 
     return env

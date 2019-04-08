@@ -19,6 +19,7 @@ from baselines.common.vec_env.dummy_vec_env import DummyVecEnv
 from baselines.common import retro_wrappers
 from baselines.common.vizdoom_wrappers import make_vizdoom, wrap_deepmind_vizdoom
 from baselines.common.minigrid_wrappers import make_minigrid, wrap_minigrid
+from baselines.common.mujoco_wrappers import wrap_mujoco
 
 def make_vec_env(env_id, env_type, num_env, seed, wrapper_kwargs=None, start_index=0, reward_scale=1.0, gamestate=None):
     """
@@ -73,12 +74,13 @@ def make_env(env_id, env_type, subrank=0, seed=None, reward_scale=1.0, gamestate
         env = wrap_deepmind_vizdoom(env, **wrapper_kwargs)
     elif env_type == 'minigrid':
         env = wrap_minigrid(env, **wrapper_kwargs)
+    elif env_type == 'mujoco':
+        env = wrap_mujoco(env, **wrapper_kwargs)
 
     if reward_scale != 1:
         env = retro_wrappers.RewardScaler(env, reward_scale)
 
     return env
-
 
 def make_mujoco_env(env_id, seed, reward_scale=1.0):
     """
