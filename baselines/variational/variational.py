@@ -50,13 +50,12 @@ def learn(env, seed, total_timesteps, log_dir, batch_size=16, n_updates=50,
     while timestep < total_timesteps:
 
         # collect an episode
-        print('Collecting Episode: ' + str(n_episodes + 1))
+        print(logger.log_str + ' -- Collecting Episode: ' + str(n_episodes + 1))
         episode, episode_length = collect_episode(env, agent)
         timestep += episode_length
         n_episodes += 1
         plotter.plot_episode(episode)
         logger.log_episode(episode)
-        # logger.log_episode(episode)
         buffer.append(episode)
 
         # train on samples from buffer
@@ -67,6 +66,6 @@ def learn(env, seed, total_timesteps, log_dir, batch_size=16, n_updates=50,
                 batch = buffer.sample()
                 results = train(agent, batch, optimizer)
                 logger.log_train_step(results)
-                plotter.plot_train_step(results)
+                plotter.plot_train_step(results, plot=(update==n_updates-1))
 
     return agent
