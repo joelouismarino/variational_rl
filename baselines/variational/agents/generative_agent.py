@@ -63,6 +63,8 @@ class GenerativeAgent(Agent):
                            'action': misc_args['n_inf_iter']['action']}
         self.kl_min = {'state': misc_args['kl_min']['state'],
                        'action': misc_args['kl_min']['action']}
+        self.kl_min_anneal_rate = {'state': misc_args['kl_min_anneal_rate']['state'],
+                                   'action': misc_args['kl_min_anneal_rate']['action']}
         if self.n_inf_iter['action'] > 0:
             self.n_planning_samples = misc_args['n_planning_samples']
             self.max_rollout_length = misc_args['max_rollout_length']
@@ -162,6 +164,11 @@ class GenerativeAgent(Agent):
             (state_inf_free_energy.sum()).backward(retain_graph=True)
             clear_gradients(self.generative_parameters())
             self.generative_mode()
+
+            self.generate_observation()
+            self.generate_reward()
+            self.generate_done()
+            
             self.obs_reconstruction = self.observation_variable.likelihood_dist.loc.detach()
             if len(self.obs_reconstruction.shape) != len(observation.shape):
                 self.obs_reconstruction = self.obs_reconstruction.view(observation.shape)

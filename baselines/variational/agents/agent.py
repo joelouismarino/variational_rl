@@ -34,6 +34,7 @@ class Agent(nn.Module):
         # miscellaneous
         self.optimality_scale = 1.
         self.kl_min = {'state': 0, 'action': 0}
+        self.kl_min_anneal_rate = {'state': 1., 'action': 1.}
 
         # mode (either 'train' or 'eval')
         self._mode = 'train'
@@ -63,7 +64,7 @@ class Agent(nn.Module):
         self.batch_size = 1
         self.gae_lambda = 0.
         self.max_rollout_length = 1
-        self.alpha = 1.
+        self.alpha = 0.01
 
         self.obs_reconstruction = None
         self.obs_prediction = None
@@ -75,7 +76,6 @@ class Agent(nn.Module):
         self.step_action(observation=observation, reward=reward, done=done, valid=valid, action=action)
         self.action_inference(observation=observation, reward=reward, done=done, valid=valid, action=action)
         if self._mode == 'train':
-            # import ipdb; ipdb.set_trace()
             value = None
             if self.value_model is not None:
                 value = self.estimate_value(observation=observation, reward=reward, done=done, valid=valid)
@@ -258,6 +258,8 @@ class Agent(nn.Module):
         results['grads'] = grads_dict
         results['grad_norms'] = grad_norm_dict
 
+        results['kl_min'] = self.kl_min
+
         return results
 
     def _collect_objectives_and_log_probs(self, observation, reward, done, action, value, valid, log_prob):
@@ -353,8 +355,12 @@ class Agent(nn.Module):
         self.episode['reward'].append(reward)
         self.episode['done'].append(done)
 
-        self.alpha += 0.001
-        self.alpha = min(self.alpha, 1.)
+        if done:
+            self.alpha *= 1.01
+            self.alpha = min(self.alpha, 1.)
+
+            self.kl_min['state'] *= self.kl_min_anneal_rate['state']
+            self.kl_min['action'] *= self.kl_min_anneal_rate['action']
 
     def _convert_action(self, action):
         # converts categorical action from one-hot encoding to the action index
