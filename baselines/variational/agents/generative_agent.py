@@ -118,7 +118,9 @@ class GenerativeAgent(Agent):
                 state_inf_free_energy = state_kl - (1 - done) * obs_log_likelihood - reward_log_likelihood - done_log_likelihood
                 state_inf_free_energy = valid * state_inf_free_energy
                 if inf_iter == 0:
+                    # get the first sample from the observation prediction
                     self.obs_prediction = self.observation_variable.likelihood_dist.loc.detach()
+                    self.obs_prediction = self.obs_prediction.view(torch.Size([self.n_state_samples, -1]) + self.obs_prediction.shape[1:])[0]
                     if len(self.obs_prediction.shape) != len(observation.shape):
                         self.obs_prediction = self.obs_prediction.view(observation.shape)
                     initial_free_energy = state_inf_free_energy
@@ -168,8 +170,10 @@ class GenerativeAgent(Agent):
             self.generate_observation()
             self.generate_reward()
             self.generate_done()
-            
+
+            # get the first sample from the observation reconstruction
             self.obs_reconstruction = self.observation_variable.likelihood_dist.loc.detach()
+            self.obs_reconstruction = self.obs_reconstruction.view(torch.Size([self.n_state_samples, -1]) + self.obs_reconstruction.shape[1:])[0]
             if len(self.obs_reconstruction.shape) != len(observation.shape):
                 self.obs_reconstruction = self.obs_reconstruction.view(observation.shape)
         else:

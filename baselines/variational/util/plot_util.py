@@ -77,8 +77,6 @@ class Plotter:
                     self._train_results[result_name] = result
                 elif result_name in ['grads', 'grad_norms', 'kl_min']:
                     self._train_results[result_name] = {k:v for k, v in results[result_name].items()}
-                    # for key in results[result_name]:
-                    #     self._train_results[result_name][key] = result[key]
             else:
                 if result_name in self.metric_plot_names:
                     self._train_results[result_name] += result
