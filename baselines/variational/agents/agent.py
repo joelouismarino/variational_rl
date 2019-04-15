@@ -5,6 +5,7 @@ from abc import abstractmethod
 from ..modules.networks import get_network
 from ..modules.variables import get_variable
 from ..misc import clear_gradients, one_hot_to_index
+import numpy as np
 
 
 class Agent(nn.Module):
@@ -315,13 +316,21 @@ class Agent(nn.Module):
         self.metrics['state'].append(state_kl * (1 - done) * valid)
         self.objectives['state'].append(clamped_state_kl * (1 - done) * valid)
 
-        action_kl = self.action_variable.kl_divergence().view(-1, 1)
+        action_kl = self.action_variable.kl_divergence()
+        if self.action_variable.approx_post_dist_type == getattr(torch.distributions, 'Categorical'):
+            action_kl = action_kl.view(-1, 1)
+        else:
+            action_kl = action_kl.sum(dim=1, keepdim = True)
         clamped_action_kl = torch.clamp(action_kl, min=self.kl_min['action'])
         self.metrics['action'].append(action_kl * valid)
         self.objectives['action'].append(clamped_action_kl * valid)
 
-        action_ind = self._convert_action(action)
-        action_log_prob = self.action_variable.approx_post_dist.log_prob(action_ind).view(-1, 1)
+        action = self._convert_action(action)
+        action_log_prob = self.action_variable.approx_post_dist.log_prob(action)
+        if self.action_variable.approx_post_dist_type == getattr(torch.distributions, 'Categorical'):
+            action_log_prob = action_log_prob.view(-1, 1)
+        else:
+            action_log_prob = action_log_prob.sum(dim=1, keepdim = True)
         self.log_probs['action'].append(action_log_prob * valid)
 
         importance_weight = torch.exp(action_log_prob) / torch.exp(log_prob)
@@ -366,15 +375,21 @@ class Agent(nn.Module):
         # converts categorical action from one-hot encoding to the action index
         if self.action_variable.approx_post_dist_type == getattr(torch.distributions, 'Categorical'):
             action = one_hot_to_index(action)
+        else:
+            action = action.detach()
         return action
 
     def _change_device(self, observation, reward, action, done, valid, log_prob):
         if observation is None:
             observation = torch.zeros(self.episode['observation'][0].shape)
+        elif type(observation) == np.ndarray:
+            observation = torch.from_numpy(observation.astype('float32')).view(1, -1) # hack
         if observation.device != self.device:
             observation = observation.to(self.device)
         if type(reward) in [float, int]:
             reward = torch.tensor(reward).to(torch.float32).view(1, 1)
+        elif type(reward) == np.ndarray:
+            reward = torch.from_numpy(reward.astype('float32')).view(1, 1) # hack
         if reward.device != self.device:
             reward = reward.to(self.device)
         if action is not None:
@@ -382,6 +397,8 @@ class Agent(nn.Module):
                 action = action.to(self.device)
         if type(done) == bool:
             done = torch.tensor(done).to(torch.float32).view(1, 1)
+        elif type(done) == np.ndarray:
+            done = torch.from_numpy(done.astype('float32')).view(1, 1) # hack
         if done.device != self.device:
             done = done.to(self.device)
         if valid is None:

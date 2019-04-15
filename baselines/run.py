@@ -133,10 +133,12 @@ def build_env(args):
                                                                         'transpose': True,
                                                                         'add_batch_dim': True,
                                                                         'sign_rewards': True})
-    elif env_type == 'mujoco' and alg == 'variational':
-        env = make_env(env_id, env_type, wrapper_kwargs={'to_tensor': True,
-                                                        'add_batch_dim': True,
-                                                        'sign_rewards': True})
+    # elif env_type == 'mujoco' and alg == 'variational':
+    #     env = make_env(env_id, env_type, wrapper_kwargs={'to_tensor': True,
+    #                                                     'add_batch_dim': True,
+    #                                                     'sign_rewards': True})
+    #     # normalize
+    #     env = VecNormalize(env)
     else:
         config = tf.ConfigProto(allow_soft_placement=True,
                                intra_op_parallelism_threads=1,

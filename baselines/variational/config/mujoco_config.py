@@ -11,8 +11,8 @@ def get_mujoco_config(env):
     agent_args['agent_type'] = 'discriminative'
 
     agent_args['misc_args'] = {'optimality_scale': 1,
-                               'n_inf_iter': dict(state=1, action=1),
-                               'kl_min': dict(state=0.1, action=0.75),
+                               'n_inf_iter': dict(state=1, action=0),
+                               'kl_min': dict(state=0.1, action=0),
                                'gae_lambda': 0.95}
 
     if agent_args['misc_args']['n_inf_iter']['action'] > 0:
@@ -52,7 +52,7 @@ def get_mujoco_config(env):
         agent_args['state_prior_args'] = {'type': 'fully_connected',
                                           'n_layers': 2,
                                           'n_input': observation_size,
-                                          'n_units': 512,
+                                          'n_units': 64,
                                           'connectivity': 'sequential',
                                           'non_linearity': 'elu',
                                           'dropout': None}
@@ -72,7 +72,7 @@ def get_mujoco_config(env):
         agent_args['action_prior_args'] = None
 
         agent_args['action_inference_args'] = {'type': 'fully_connected',
-                                               'n_layers': 1,
+                                               'n_layers': 2,
                                                'n_input': n_state_variables,
                                                'n_units': 64,
                                                'connectivity': 'sequential',
@@ -90,7 +90,7 @@ def get_mujoco_config(env):
 
     if agent_args['agent_type'] == 'generative':
         # state
-        n_state_variables = 200
+        n_state_variables = 100
         agent_args['state_variable_args'] = {'type': 'fully_connected',
                                              'prior_dist': 'Normal',
                                              'approx_post_dist': 'Normal',
@@ -101,7 +101,7 @@ def get_mujoco_config(env):
         agent_args['state_prior_args'] = {'type': 'fully_connected',
                                           'n_layers': 1,
                                           'n_input': n_state_variables + n_action_variables,
-                                          'n_units': 512,
+                                          'n_units': 64,
                                           'connectivity': 'sequential',
                                           'non_linearity': 'tanh',
                                           'dropout': None}
@@ -109,9 +109,9 @@ def get_mujoco_config(env):
         # hidden_state_size = agent_args['state_prior_args']['n_layers'] * agent_args['state_prior_args']['n_units']
 
         agent_args['state_inference_args'] = {'type': 'fully_connected',
-                                              'n_layers': 1,
+                                              'n_layers': 2,
                                               'n_input': 4 * n_state_variables,
-                                              'n_units': 1024,
+                                              'n_units': 64,
                                               'connectivity': 'highway',
                                               'batch_norm': False,
                                               'non_linearity': 'elu',
@@ -138,11 +138,11 @@ def get_mujoco_config(env):
 
             agent_args['action_inference_args'] = {'type': 'fully_connected',
                                                    'n_layers': 1,
-                                                   'n_input': 2 * n_action_variables,
+                                                   'n_input': 4 * n_action_variables,
                                                    'n_units': 64,
                                                    'connectivity': 'sequential',
                                                    'batch_norm': False,
-                                                   'non_linearity': 'elu',
+                                                   'non_linearity': 'tanh',
                                                    'dropout': None}
         else:
             # model-free action inference
@@ -157,26 +157,22 @@ def get_mujoco_config(env):
             agent_args['action_prior_args'] = None
 
             agent_args['action_inference_args'] = {'type': 'fully_connected',
-                                                   'n_layers': 1,
-                                                   'n_input': n_state_variables + n_action_variables,
+                                                   'n_layers': 2,
+                                                   'n_input': n_state_variables,
                                                    'n_units': 64,
                                                    'connectivity': 'sequential',
                                                    'batch_norm': False,
                                                    'non_linearity': 'tanh',
                                                    'dropout': None}
 
-        # observation
-        import ipdb; ipdb.set_trace()
-        agent_args['observation_variable_args'] = {'type': 'transposed_conv',
-                                                   'likelihood_dist': 'Normal',
-                                                   'integration_window': 1./6,
-                                                   'n_variables': env.observation_space.shape[0],
-                                                   'filter_size': 3,
-                                                   'stride': 1,
-                                                   'padding': 0,
-                                                   'sigmoid_loc': True}
+        agent_args['observation_variable_args'] = {'type': 'fully_connected',
+                                              'likelihood_dist': 'Normal',
+                                              'n_variables': env.observation_space.shape[1],
+                                              }
 
-        agent_args['obs_likelihood_args'] = {'type': 'minigrid_deconv',
+        agent_args['obs_likelihood_args'] = {'type': 'fully_connected',
+                                             'n_layers': 2,
+                                             'n_units': 64,
                                              'n_input': n_state_variables}
 
         # reward

@@ -13,7 +13,10 @@ def get_agent_args(env):
     Return:
         dictionary containing agent configuration arguments
     """
-    env_name = env.spec.id
+    if hasattr(env, 'spec'):
+        env_name = env.spec.id
+    else:
+        env_name = env.venv.envs[0].spec.id
     # VizDoom environments
     if env_name in ['VizDoom-v0']:
         from .vizdoom_config import get_vizdoom_config
