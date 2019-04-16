@@ -36,7 +36,11 @@ def learn(env, seed, total_timesteps, log_dir, batch_size=16, n_updates=50,
     optimizer = Optimizer(agent, lr=lr, norm_grad=0.5)
 
     # logging and plotting
-    exp_args = {'env': env.spec.id, 'seed': seed,
+    if hasattr(env, 'spec'):
+        env_name = env.spec.id
+    else:
+        env_name = env.venv.envs[0].spec.id
+    exp_args = {'env': env_name, 'seed': seed,
                 'total_timesteps': total_timesteps, 'batch_size': batch_size,
                 'n_updates': n_updates, 'n_initial_batches': n_initial_batches,
                 'lr': lr, 'device': device, 'agent_args': agent_args}

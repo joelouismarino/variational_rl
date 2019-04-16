@@ -12,6 +12,14 @@ class Plotter:
     """
     def __init__(self, exp_args):
         self.env_id = exp_args['log_str']
+        continuous_control = ['Ant-v2', 'HalfCheetah-v2', 'Hopper-v2', 'Humanoid-v2',
+                      'HumanoidStandup-v2', 'InvertedDoublePendulum-v2', 'InvertedPendulum-v2',
+                      'Reacher-v2', 'Swimmer-v2', 'Walker2d-v2', 'Acrobat-v1', 'CartPole-v1', 'MountainCar-v0',
+                      'MountainCarContinuous-v0', 'Pendulum-v0']
+        if exp_args['env'] in continuous_control:
+            self.actiontype = 'continuous'
+        else:
+            self.actiontype = 'discrete'
         self.vis = Visdom(env=self.env_id)
         self.metric_plot_names = ['optimality', 'state', 'action', 'value']
         self.metric_plot_names += ['importance_weights', 'policy_gradients', 'advantages']
@@ -116,6 +124,9 @@ class Plotter:
                 self.plot_image(episode['prediction'][time_step], 'Prediction')
             if 'reconstruction' in episode:
                 self.plot_image(episode['reconstruction'][time_step], 'Reconstruction')
+        else:
+            # plot mujoco states
+            self.plot_states_mujoco(episode, time_step, nb_states = len(episode['observation'][time_step]))
 
         self._plot_metric(self._episode, n_steps, 'length',
                           opts=self._get_opts('length'), name='Episode')
@@ -123,8 +134,11 @@ class Plotter:
                           opts=self._get_opts('env_return'), name='Episode')
         self._plot_metric(self._episode, self._total_episode_steps, 'total_steps',
                           opts=self._get_opts('total_steps'), name='Episode')
-        action_idxs = np.argmax(episode['action'], axis=1)
-        self._plot_hist(action_idxs, win_name = 'actions', opts = self._get_opts('actions'))
+        if self.actiontype == 'discrete':
+            action_idxs = np.argmax(episode['action'], axis=1)
+            self._plot_hist(action_idxs, win_name = 'actions', opts = self._get_opts('actions'))
+        else:
+            self._plot_hist(episode['action'], win_name = 'actions', opts = self._get_opts('actions'))
         self._episode += 1
 
     def _plot_metric(self, step, metric, win_name, opts=None, name='Train Step', plot_avg_trace = True, avg_window = 50):
@@ -141,11 +155,22 @@ class Plotter:
                 self.vis.line(X=[x], Y=[avg], update='append', name='Moving Average', win=self.window_id[win_name])
 
     def _plot_hist(self, data, win_name, opts = None):
-        # plots histograms
-        if self.window_id[win_name] is not None:
-            self.vis.histogram(X=data, win=self.window_id[win_name], opts = opts)
+        if len(data.shape) == 1:
+            if self.window_id[win_name] is not None:
+                self.vis.histogram(X=data, win=self.window_id[win_name], opts = opts)
+            else:
+                self.window_id[win_name] = self.vis.histogram(X=data, opts = opts)
         else:
-            self.window_id[win_name] = self.vis.histogram(X=data, opts = opts)
+            # plot multiple histograms, one for each action variable
+            for action_nb in range(data.shape[1]):
+                actions = data[:,action_nb]
+                sub_win_name = f"{win_name} {action_nb}"
+                opts['title'] = f"Action Variable ({action_nb+1})"
+                opts['xlabel'] = ''
+                if sub_win_name in self.window_id:
+                    self.vis.histogram(X=actions, win=self.window_id[sub_win_name], opts = opts)
+                else:
+                    self.window_id[sub_win_name] = self.vis.histogram(X=actions, opts = opts)
 
     def _plot_grads(self, grads, window_name):
         # plots gradient absolute values and norms
@@ -172,6 +197,25 @@ class Plotter:
                 else:
                     opts = self._get_opts(window_name)
                     self.window_id[window_name] = self.vis.line(X=[self._step], Y=[kl_min[variable_name]], name=variable_name, opts=opts)
+
+    def plot_states_mujoco(self, episode, timestep, nb_states, window_name = 'mujoco states'):
+        if 'prediction' in episode:
+            trace_types = ['observation', 'prediction', 'reconstruction']
+        else:
+            trace_types = ['observation']
+        x = np.arange(1, nb_states+1)
+        if window_name in self.window_id:
+            for trace_type in trace_types:
+                self.vis.line(X = x, Y = episode[trace_type][timestep], update = 'replace', name = trace_type, win = self.window_id[window_name])
+        else:
+            for trace_type in trace_types:
+                if window_name in self.window_id:
+                    self.vis.line(X = x, Y = episode[trace_type][timestep], update = 'replace', name = trace_type, win = self.window_id[window_name])
+                else:
+                    opts = self._get_opts(window_name)
+                    opts['markers'] = True
+                    opts['dash'] = ['dash']
+                    self.window_id[window_name] = self.vis.line(X = x, Y=episode[trace_type][timestep], name=trace_type, opts=opts)
 
     def plot_image(self, img, title, size=(200,200)):
         # plots an image
@@ -303,9 +347,14 @@ class Plotter:
             title = 'Actions'
             xlabel = 'Action'
             xtype = 'line'
-            width = 300
+            width = 270
             height = 320
             showlegend = False
+        elif win_name == 'mujoco states':
+            ylabel = 'State Variable Value'
+            xlabel = 'State'
+            title = 'Mujoco States'
+            xtype = 'line'
 
         opts = dict(xlabel=xlabel, ylabel=ylabel, title=title, width=width,
                     height=height, xtype=xtype, showlegend=showlegend)
