@@ -97,11 +97,13 @@ class ObservedVariable(nn.Module):
                 # convert image to fully-connected
                 batch_size = observation.shape[0]
                 observation = observation.contiguous().view(batch_size, -1)
-            if type(observation) != tuple:
-                # convert to tuple for integration
-                observation = (observation - self.integration_window/2, observation + self.integration_window/2)
-
-            cll = torch.log(d.cdf(observation[1]) - d.cdf(observation[0]) + 1e-6)
+            if self.integration_window is not None:
+                if type(observation) != tuple:
+                    # convert to tuple for integration
+                    observation = (observation - self.integration_window/2, observation + self.integration_window/2)
+                cll = torch.log(d.cdf(observation[1]) - d.cdf(observation[0]) + 1e-6)
+            else:
+                cll = d.log_prob(observation)
             if len(cll.shape) > 2:
                 # if image, sum over height and width
                 cll = cll.sum(dim=(2,3))

@@ -25,7 +25,7 @@ class Plotter:
         else:
             self.action_type = 'discrete'
         self.vis = Visdom(env=self.env_id)
-        self.metric_plot_names = ['optimality', 'state', 'action', 'value']
+        self.metric_plot_names = ['optimality_cll', 'state_kl', 'action_kl', 'value']
         self.metric_plot_names += ['importance_weights', 'policy_gradients', 'advantages']
         self.episode_plot_names = ['length', 'env_return', 'total_steps']
         self.misc_plot_names = ['kl_min']
@@ -34,7 +34,7 @@ class Plotter:
         self.hist_names = ['actions']
         if exp_args['agent_args']['agent_type'] == 'generative':
             # additional plots for likelihoods and inference improvement
-            self.metric_plot_names += ['observation', 'reward', 'done', 'state_improvement']
+            self.metric_plot_names += ['observation_info_gain', 'reward_info_gain', 'done_info_gain', 'state_improvement']
             self.metric_plot_names += ['observation_cll', 'observation_mll']
             self.metric_plot_names += ['reward_cll', 'reward_mll']
             self.metric_plot_names += ['done_cll', 'done_mll']
@@ -126,9 +126,9 @@ class Plotter:
         if len(episode['observation'][time_step].size()) == 3:
             self.plot_image(episode['observation'][time_step], 'Observation')
             if 'distributions' in episode:
-                if 'observation' in episode['distributions']
-                self.plot_image(episode['distributions']['observation']['pred']['loc'][time_step], 'Prediction')
-                self.plot_image(episode['distributions']['observation']['recon']['loc'][time_step], 'Reconstruction')
+                if 'observation' in episode['distributions']:
+                    self.plot_image(episode['distributions']['observation']['pred']['loc'][time_step], 'Prediction')
+                    self.plot_image(episode['distributions']['observation']['recon']['loc'][time_step], 'Reconstruction')
         else:
             # plot mujoco states
             self.plot_states_mujoco(episode, time_step, n_states=len(episode['observation'][time_step]))
@@ -209,7 +209,7 @@ class Plotter:
 
     def plot_states_mujoco(self, episode, timestep, n_states, window_name='mujoco states'):
         if 'distributions' in episode:
-            if 'observation' in episode['distributions']
+            if 'observation' in episode['distributions']:
                 trace_types = ['observation', 'prediction', 'reconstruction']
             else:
                 trace_types = ['observation']
@@ -265,13 +265,13 @@ class Plotter:
         title = ''
         xtype = 'log'
         showlegend = True
-        if win_name == 'state':
+        if win_name == 'state_kl':
             ylabel = 'State KL (nats)'
             title = 'State KL'
-        elif win_name == 'action':
+        elif win_name == 'action_kl':
             ylabel = 'Action KL (nats)'
             title = 'Action KL'
-        elif win_name == 'observation':
+        elif win_name == 'observation_info_gain':
             ylabel = 'Obs. Info Gain (nats)'
             title = 'Obs. Info Gain'
         elif win_name == 'observation_cll':
@@ -280,7 +280,7 @@ class Plotter:
         elif win_name == 'observation_mll':
             ylabel = 'Obs. Marginal Log Likelihood (nats)'
             title = 'Obs. Marginal Log Likelihood'
-        elif win_name == 'reward':
+        elif win_name == 'reward_info_gain':
             ylabel = 'Reward Info Gain (nats)'
             title = 'Reward Info Gain'
         elif win_name == 'reward_cll':
@@ -289,10 +289,10 @@ class Plotter:
         elif win_name == 'reward_mll':
             ylabel = 'Reward Marginal Log Likelihood (nats)'
             title = 'Reward Marginal Log Likelihood'
-        elif win_name == 'optimality':
+        elif win_name == 'optimality_cll':
             ylabel = 'Optimality Cond. Log Likelihood (nats)'
             title = 'Optimality Cond. Log Likelihood'
-        elif win_name == 'done':
+        elif win_name == 'done_info_gain':
             ylabel = 'Done Info Gain (nats)'
             title = 'Done Info Gain'
         elif win_name == 'done_cll':

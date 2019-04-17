@@ -16,7 +16,7 @@ class ScaledFloatFrame(gym.ObservationWrapper):
     def observation(self, observation):
         # careful! This undoes the memory optimization, use
         # with smaller replay buffers only.
-        return np.array(observation).astype(np.float32) / 5.
+        return np.array(observation).astype(np.float32) / 6.
 
 class SignRewardEnv(gym.RewardWrapper):
     """

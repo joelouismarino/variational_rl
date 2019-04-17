@@ -170,7 +170,7 @@ def get_minigrid_config(env):
         # observation
         agent_args['observation_variable_args'] = {'type': 'transposed_conv',
                                                    'likelihood_dist': 'Normal',
-                                                   'integration_window': 1./6,
+                                                   'integration_window': 1./7,
                                                    'n_variables': env.observation_space.shape[1],
                                                    'filter_size': 3,
                                                    'stride': 1,
