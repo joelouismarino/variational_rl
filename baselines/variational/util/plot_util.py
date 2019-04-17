@@ -1,7 +1,14 @@
 from visdom import Visdom
 import random
 import numpy as np
+import os
+from .dashboard import plot_dashboard
 
+continuous_control = ['Ant-v2', 'HalfCheetah-v2', 'Hopper-v2', 'Humanoid-v2',
+                      'HumanoidStandup-v2', 'InvertedDoublePendulum-v2',
+                      'InvertedPendulum-v2', 'Reacher-v2', 'Swimmer-v2',
+                      'Walker2d-v2', 'Acrobat-v1', 'CartPole-v1', 'MountainCar-v0',
+                      'MountainCarContinuous-v0', 'Pendulum-v0']
 
 class Plotter:
     """
@@ -10,16 +17,13 @@ class Plotter:
     Args:
         exp_args (str): arguments for the experiment
     """
-    def __init__(self, exp_args):
+    def __init__(self, log_dir, exp_args):
+        self.log_dir = log_dir
         self.env_id = exp_args['log_str']
-        continuous_control = ['Ant-v2', 'HalfCheetah-v2', 'Hopper-v2', 'Humanoid-v2',
-                      'HumanoidStandup-v2', 'InvertedDoublePendulum-v2', 'InvertedPendulum-v2',
-                      'Reacher-v2', 'Swimmer-v2', 'Walker2d-v2', 'Acrobat-v1', 'CartPole-v1', 'MountainCar-v0',
-                      'MountainCarContinuous-v0', 'Pendulum-v0']
         if exp_args['env'] in continuous_control:
-            self.actiontype = 'continuous'
+            self.action_type = 'continuous'
         else:
-            self.actiontype = 'discrete'
+            self.action_type = 'discrete'
         self.vis = Visdom(env=self.env_id)
         self.metric_plot_names = ['optimality', 'state', 'action', 'value']
         self.metric_plot_names += ['importance_weights', 'policy_gradients', 'advantages']
@@ -46,6 +50,7 @@ class Plotter:
         self._step = 1
         self._episode = 1
         self._total_episode_steps = 0
+        self._dashboard_interval = 20
         # maintain training metrics between plotting
         self._train_results = {}
         self._n_train_steps = 0
@@ -120,13 +125,13 @@ class Plotter:
         time_step = random.randint(0, n_steps-1)
         if len(episode['observation'][time_step].size()) == 3:
             self.plot_image(episode['observation'][time_step], 'Observation')
-            if 'prediction' in episode:
-                self.plot_image(episode['prediction'][time_step], 'Prediction')
-            if 'reconstruction' in episode:
-                self.plot_image(episode['reconstruction'][time_step], 'Reconstruction')
+            if 'distributions' in episode:
+                if 'observation' in episode['distributions']
+                self.plot_image(episode['distributions']['observation']['pred']['loc'][time_step], 'Prediction')
+                self.plot_image(episode['distributions']['observation']['recon']['loc'][time_step], 'Reconstruction')
         else:
             # plot mujoco states
-            self.plot_states_mujoco(episode, time_step, nb_states = len(episode['observation'][time_step]))
+            self.plot_states_mujoco(episode, time_step, n_states=len(episode['observation'][time_step]))
 
         self._plot_metric(self._episode, n_steps, 'length',
                           opts=self._get_opts('length'), name='Episode')
@@ -134,14 +139,18 @@ class Plotter:
                           opts=self._get_opts('env_return'), name='Episode')
         self._plot_metric(self._episode, self._total_episode_steps, 'total_steps',
                           opts=self._get_opts('total_steps'), name='Episode')
-        if self.actiontype == 'discrete':
+        if self.action_type == 'discrete':
             action_idxs = np.argmax(episode['action'], axis=1)
             self._plot_hist(action_idxs, win_name = 'actions', opts = self._get_opts('actions'))
         else:
             self._plot_hist(episode['action'], win_name = 'actions', opts = self._get_opts('actions'))
+        if self._episode % self._dashboard_interval == 1:
+            path = os.path.join(self.log_dir, self.env_id, 'vis', str(self._episode))
+            os.makedirs(path)
+            plot_dashboard(episode, path)
         self._episode += 1
 
-    def _plot_metric(self, step, metric, win_name, opts=None, name='Train Step', plot_avg_trace = True, avg_window = 50):
+    def _plot_metric(self, step, metric, win_name, opts=None, name='Train Step', plot_avg_trace=True, avg_window=50):
         # plots metrics, such as losses
         if self.window_id[win_name] is not None:
             self.vis.line(X=[step], Y=[metric], update='append', name=name, win=self.window_id[win_name])
@@ -154,7 +163,7 @@ class Plotter:
                 x = step - avg_window / 2
                 self.vis.line(X=[x], Y=[avg], update='append', name='Moving Average', win=self.window_id[win_name])
 
-    def _plot_hist(self, data, win_name, opts = None):
+    def _plot_hist(self, data, win_name, opts=None):
         if len(data.shape) == 1:
             if self.window_id[win_name] is not None:
                 self.vis.histogram(X=data, win=self.window_id[win_name], opts = opts)
@@ -198,24 +207,27 @@ class Plotter:
                     opts = self._get_opts(window_name)
                     self.window_id[window_name] = self.vis.line(X=[self._step], Y=[kl_min[variable_name]], name=variable_name, opts=opts)
 
-    def plot_states_mujoco(self, episode, timestep, nb_states, window_name = 'mujoco states'):
-        if 'prediction' in episode:
-            trace_types = ['observation', 'prediction', 'reconstruction']
+    def plot_states_mujoco(self, episode, timestep, n_states, window_name='mujoco states'):
+        if 'distributions' in episode:
+            if 'observation' in episode['distributions']
+                trace_types = ['observation', 'prediction', 'reconstruction']
+            else:
+                trace_types = ['observation']
         else:
             trace_types = ['observation']
-        x = np.arange(1, nb_states+1)
+        x = np.arange(1, n_states+1)
         if window_name in self.window_id:
             for trace_type in trace_types:
-                self.vis.line(X = x, Y = episode[trace_type][timestep], update = 'replace', name = trace_type, win = self.window_id[window_name])
+                self.vis.line(X=x, Y=episode[trace_type][timestep], update='replace', name=trace_type, win=self.window_id[window_name])
         else:
             for trace_type in trace_types:
                 if window_name in self.window_id:
-                    self.vis.line(X = x, Y = episode[trace_type][timestep], update = 'replace', name = trace_type, win = self.window_id[window_name])
+                    self.vis.line(X=x, Y=episode[trace_type][timestep], update='replace', name=trace_type, win=self.window_id[window_name])
                 else:
                     opts = self._get_opts(window_name)
                     opts['markers'] = True
                     opts['dash'] = ['dash']
-                    self.window_id[window_name] = self.vis.line(X = x, Y=episode[trace_type][timestep], name=trace_type, opts=opts)
+                    self.window_id[window_name] = self.vis.line(X=x, Y=episode[trace_type][timestep], name=trace_type, opts=opts)
 
     def plot_image(self, img, title, size=(200,200)):
         # plots an image

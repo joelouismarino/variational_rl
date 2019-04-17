@@ -12,14 +12,14 @@ class ObservedVariable(nn.Module):
         likelihood_dist (str): the name of the conditional likelihood distribution
         integration_window (optional, float): window over which to integrate the likelihood
     """
-    def __init__(self, likelihood_dist, integration_window=1.):
+    def __init__(self, likelihood_dist, integration_window=0.1):
         super(ObservedVariable, self).__init__()
         self.distribution_type = getattr(torch.distributions, likelihood_dist)
         self.integration_window = integration_window
         self.likelihood_dist = None
         self.likelihood_dist_pred = None
         self.planning_likelihood_dist = None
-        self.likelihood_log_scale = None
+        self.likelihood_params = None
         if likelihood_dist in ['Bernoulli', 'Categorical']:
             # output the logits
             parameter_names = ['logits']
@@ -27,9 +27,10 @@ class ObservedVariable(nn.Module):
             parameter_names = list(self.distribution_type.arg_constraints.keys())
         if 'scale' in parameter_names:
             # global log scale
-            self.likelihood_log_scale = nn.Parameter(torch.zeros(1), requires_grad=True)
+            self.likelihood_params = nn.ParameterDict({'log_scale': nn.Parameter(torch.zeros(1), requires_grad=True)})
             parameter_names.remove('scale')
         self.likelihood_models = nn.ModuleDict({name: None for name in parameter_names})
+        self._log_scale_limits = [-15, 0]
 
     def generate(self, input, planning=False):
         parameters = {}
@@ -47,10 +48,10 @@ class ObservedVariable(nn.Module):
                 parameter_value = nn.Softmax()(parameter_value)
             # set the parameter
             parameters[parameter_name] = parameter_value
-        if self.likelihood_log_scale is not None:
+        if self.likelihood_params is not None:
             output_shape = parameters['loc'].shape
-            log_scale = self.likelihood_log_scale.repeat(output_shape)
-            log_scale = torch.clamp(log_scale, -15, 5)
+            log_scale = self.likelihood_params['log_scale'].repeat(output_shape)
+            log_scale = torch.clamp(log_scale, self._log_scale_limits[0], self._log_scale_limits[1])
             parameters['scale'] = torch.exp(log_scale)
         # create a new distribution with the parameters
         if planning:
@@ -145,7 +146,7 @@ class ObservedVariable(nn.Module):
         n_samples = log_importance_weights.shape[0]
         cll = self.cond_log_likelihood(observation).view(n_samples, -1, 1)
         mll = self.marginal_log_likelihood(observation, log_importance_weights)
-        ig = cll - alpha * mll.repeat(n_samples, 1).view(n_samples, -1, 1)
+        ig = cll - alpha * mll.repeat(n_samples, 1).view(n_samples, -1, 1).detach()
         return ig.mean(dim=0)
         # ig = cll.mean(dim=0) - mll
         # return ig

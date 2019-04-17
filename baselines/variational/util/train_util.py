@@ -27,7 +27,6 @@ def train(agent, data, optimizer):
     """
     optimizer.zero_grad()
     n_steps, batch_size = data['observation'].shape[:2]
-    # total_steps, batch_size = data['observation'].shape[:2]
     agent.reset(batch_size); agent.train()
 
     observation = data['observation']
@@ -37,10 +36,6 @@ def train(agent, data, optimizer):
     action = data['action']
     log_prob = data['log_prob']
 
-    # n_steps = 8
-    # start_step = np.random.randint(0, total_steps-n_steps-1)
-
-    # for step in range(start_step, start_step + n_steps):
     for step in range(n_steps):
         agent.act(observation[step], reward[step], done[step], action[step], valid[step], log_prob[step])
         optimizer.step()

@@ -35,6 +35,7 @@ class Logger:
         self.log_path = os.path.join(self.log_dir, self.log_str)
         os.makedirs(self.log_path)
         os.makedirs(os.path.join(self.log_path, 'metrics'))
+        os.makedirs(os.path.join(self.log_path, 'vis'))
         # os.makedirs(os.path.join(self.log_path, 'episodes'))
         # self.episode_log = {}
         # self._init_episode_log()

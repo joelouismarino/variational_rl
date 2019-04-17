@@ -51,10 +51,16 @@ class DataBuffer(object):
         Removes excess episodes if capacity has been reached. Appends a new
         episode to the buffer.
         """
-        if 'reconstruction' in episode:
-            del episode['reconstruction']
-        if 'prediction' in episode:
-            del episode['prediction']
+        keys_to_remove = []
+        for k, v in episode.items():
+            if type(v) == dict:
+                keys_to_remove.append(k)
+        for k in keys_to_remove:
+            del episode[k]
+        if 'value' in episode:
+            del episode['value']
+        if 'advantage' in episode:
+            del episode['advantage']
         if len(self.buffer) >= self.capacity:
             self.buffer = self.buffer[-self.capacity+1:-1]
         self.buffer.append(episode)

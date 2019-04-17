@@ -46,7 +46,7 @@ def learn(env, seed, total_timesteps, log_dir, batch_size=16, n_updates=50,
                 'lr': lr, 'device': device, 'agent_args': agent_args}
     logger = Logger(log_dir, exp_args)
     exp_args['log_str'] = logger.log_str
-    plotter = Plotter(exp_args)
+    plotter = Plotter(log_dir, exp_args)
 
     # collect episodes and train
     timestep = 0
