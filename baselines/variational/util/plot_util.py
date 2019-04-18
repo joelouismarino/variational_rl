@@ -15,9 +15,11 @@ class Plotter:
     A plotter class to handle plotting logs to visdom.
 
     Args:
+        log_dir (str): path to the log directory
         exp_args (str): arguments for the experiment
+        dashboard (bool): whether or not to plot the dashboard
     """
-    def __init__(self, log_dir, exp_args):
+    def __init__(self, log_dir, exp_args, dashboard=False):
         self.log_dir = log_dir
         self.env_id = exp_args['log_str']
         if exp_args['env'] in continuous_control:
@@ -50,6 +52,7 @@ class Plotter:
         self._step = 1
         self._episode = 1
         self._total_episode_steps = 0
+        self._plt_dashboard = dashboard
         self._dashboard_interval = 20
         # maintain training metrics between plotting
         self._train_results = {}
@@ -144,7 +147,7 @@ class Plotter:
             self._plot_hist(action_idxs, win_name = 'actions', opts = self._get_opts('actions'))
         else:
             self._plot_hist(episode['action'], win_name = 'actions', opts = self._get_opts('actions'))
-        if self._episode % self._dashboard_interval == 1:
+        if self._plt_dashboard and self._episode % self._dashboard_interval == 1:
             path = os.path.join(self.log_dir, self.env_id, 'vis', str(self._episode))
             os.makedirs(path)
             plot_dashboard(episode, path)

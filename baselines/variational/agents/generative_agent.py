@@ -118,21 +118,11 @@ class GenerativeAgent(Agent):
                 state_inf_free_energy = state_kl - (1 - done) * obs_log_likelihood - reward_log_likelihood - done_log_likelihood
                 state_inf_free_energy = valid * state_inf_free_energy
                 if inf_iter == 0:
-                    # get the first sample from the observation prediction
-                    self.obs_prediction = self.observation_variable.likelihood_dist.loc.detach()
-                    self.obs_prediction = self.obs_prediction.view(torch.Size([self.n_state_samples, -1]) + self.obs_prediction.shape[1:])[0]
-                    if len(self.obs_prediction.shape) != len(observation.shape):
-                        self.obs_prediction = self.obs_prediction.view(observation.shape)
                     initial_free_energy = state_inf_free_energy
-
                     #save the predictions for marginal likelihood estimation
                     self.observation_variable.save_prediction()
                     self.reward_variable.save_prediction()
                     self.done_variable.save_prediction()
-
-                    # save the reward prediction
-                    if self._mode == 'train':
-                        self.reward_predictions.append(self.reward_variable.likelihood_dist.loc)
 
                 clamped_state_kl = torch.clamp(self.state_variable.kl_divergence(), min=self.kl_min['state']).sum(dim=1, keepdim=True)
                 state_inf_free_energy = valid * (clamped_state_kl - (1 - done) * obs_log_likelihood - reward_log_likelihood - done_log_likelihood)
@@ -167,19 +157,9 @@ class GenerativeAgent(Agent):
             clear_gradients(self.generative_parameters())
             self.generative_mode()
 
-            self.generate_observation()
-            self.generate_reward()
-            self.generate_done()
-
-            # get the first sample from the observation reconstruction
-            self.obs_reconstruction = self.observation_variable.likelihood_dist.loc.detach()
-            self.obs_reconstruction = self.obs_reconstruction.view(torch.Size([self.n_state_samples, -1]) + self.obs_reconstruction.shape[1:])[0]
-            if len(self.obs_reconstruction.shape) != len(observation.shape):
-                self.obs_reconstruction = self.obs_reconstruction.view(observation.shape)
-        else:
-            self.generate_observation()
-            self.generate_reward()
-            self.generate_done()
+        self.generate_observation()
+        self.generate_reward()
+        self.generate_done()
 
     def action_inference(self, done, valid, action=None, **kwargs):
         if self.action_inference_model is not None:

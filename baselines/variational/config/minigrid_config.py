@@ -11,7 +11,7 @@ def get_minigrid_config(env):
     agent_args['agent_type'] = 'generative'
 
     agent_args['misc_args'] = {'optimality_scale': 1,
-                               'n_state_samples': 5,
+                               'n_state_samples': 1,
                                'n_inf_iter': dict(state=1, action=0),
                                'kl_min': dict(state=0.1, action=0.75),
                                'kl_min_anneal_rate': dict(state=0.99, action=1.),
