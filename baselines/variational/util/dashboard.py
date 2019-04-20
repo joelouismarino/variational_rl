@@ -91,8 +91,16 @@ def plot_dashboard(results, dir):
         # plot the done conditional likelihood distribution
         plt.subplot(8, 3, 6)
         done = results['done'][step].item()
-        done_cll_pred_prob = results['distributions']['done']['pred']['probs'][step].item()
-        done_cll_recon_prob = results['distributions']['done']['recon']['probs'][step].item()
+        done_cll_pred_prob = results['distributions']['done']['pred']['probs'][step].numpy()
+        done_cll_recon_prob = results['distributions']['done']['recon']['probs'][step].numpy()
+        if done_cll_pred_prob.shape[0] == 2:
+            # categorical
+            done_cll_pred_prob = done_cll_pred_prob[1]
+            done_cll_recon_prob = done_cll_recon_prob[1]
+        else:
+            # bernoulli
+            done_cll_pred_prob = done_cll_pred_prob[0]
+            done_cll_recon_prob = done_cll_recon_prob[0]
         plt.bar([-0.125, 0.875], [1. - done_cll_pred_prob, done_cll_pred_prob], 0.25, label='Prediction')
         plt.bar([0.125, 1.125], [1. - done_cll_recon_prob, done_cll_recon_prob], 0.25, label='Reconstruction')
         point = plt.plot([done], [0], 'gD', label='Done')[0]
@@ -217,6 +225,16 @@ def plot_dashboard(results, dir):
                  results['metrics']['reward']['cll'].max().item() + 0.5)
         plt.xlim(0, n_steps)
         plt.title('Reward Cond. Log-Likelihood')
+
+        # plot the Monte Carlo return over time
+        plt.subplot(8, 3, 19)
+        if len(results['return']) > 0:
+            returns = results['return'][:step+1].numpy()
+            plt.plot(returns)
+            plt.ylim(results['return'].min().item() - 0.5,
+                     results['return'].max().item() + 0.5)
+            plt.xlim(0, n_steps)
+        plt.title('Discounted Return')
 
         # plot the done info gain over time
         plt.subplot(8, 3, 20)

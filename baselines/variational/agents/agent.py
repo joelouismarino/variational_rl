@@ -69,6 +69,7 @@ class Agent(nn.Module):
         self.gae_lambda = 0.
         self.max_rollout_length = 1
         self.alpha = 0.01
+        self.reward_discount = 0.99
 
         self.obs_reconstruction = None
         self.obs_prediction = None
@@ -81,10 +82,9 @@ class Agent(nn.Module):
         self.action_inference(observation=observation, reward=reward, done=done, valid=valid, action=action)
         value = self.estimate_value(observation=observation, reward=reward, done=done, valid=valid)
         self._collect_objectives_and_log_probs(observation, reward, done, action, value, valid, log_prob)
-
+        self.valid.append(valid)
         if self._mode == 'train':
             self._prev_action = action
-            self.valid.append(valid)
         else:
             self._collect_episode(observation, reward, done)
             if observation is not None:
@@ -124,33 +124,76 @@ class Agent(nn.Module):
         # estimate the value of the current state
         pass
 
-    def free_energy(self, observation, reward, done, valid):
-        observation, reward, done = self._change_device(observation, reward, done)
-        cond_log_likelihood = self.cond_log_likelihood(observation, reward, done)
-        kl_divergence = self.kl_divergence()
-        free_energy = kl_divergence - cond_log_likelihood
-        return free_energy
+    def estimate_advantages(self):
+        # estimate bootstrapped advantages
+        valid = torch.stack(self.valid)
+        values = torch.stack(self.values)
+        # add up the future terms in the objective
+        # can we use the reward prediction (from the reward model) as a baseline?
+        # optimality_predictions = - self.optimality_scale * (torch.stack(self.reward_predictions) - 1.)
+        # optimality = -(-torch.stack(self.objectives['optimality']) + 1.) * valid
+        # optimality = -(-torch.stack(self.metrics['optimality']['cll']) + 1.) * valid
+        optimality = (-torch.stack(self.metrics['optimality']['cll']) + 1.) * valid
+        # optimality = torch.stack(self.objectives['optimality']) * valid
+        future_terms = optimality[1:]
+        # TODO: should only include these if the action distribution is not reparameterizable
+        if self.action_prior_model is not None:
+            # action_kl = torch.stack(self.objectives['action']) * valid
+            # future_terms = future_terms + action_kl[1:]
+            pass
+        if self.state_prior_model is not None:
+            # state_kl = torch.clamp(torch.stack(self.objectives['state']) * valid, max=30)
+            # future_terms = future_terms + state_kl[1:]
+            pass
+        if self.obs_likelihood_model is not None:
+            # TODO: include information gain terms from observation, reward, and done
+            # info_gain = torch.stack(self.objectives['info_gain']) * valid
+            # future_terms = future_terms + info_gain[1:]
+            pass
 
-    def cond_log_likelihood(self, observation, reward, done, valid):
-        observation, reward, done = self._change_device(observation, reward, done)
-        opt_log_likelihood = self.optimality_scale * (reward - 1.)
-        cond_log_likelihood = valid * opt_log_likelihood
-        if self.observation_variable is not None:
-            obs_log_likelihood = (1 - done) * self.observation_variable.cond_log_likelihood(observation).sum(dim=1, keepdim=True)
-            cond_log_likelihood += valid * obs_log_likelihood
-        if self.reward_variable is not None:
-            reward_log_likelihood = self.reward_variable.cond_log_likelihood(reward).sum(dim=1, keepdim=True)
-            cond_log_likelihood += valid * reward_log_likelihood
-        if self.done_variable is not None:
-            done_log_likelihood = self.done_variable.cond_log_likelihood(done).sum(dim=1, keepdim=True)
-            cond_log_likelihood += valid * done_log_likelihood
-        return cond_log_likelihood
+        deltas = future_terms + self.reward_discount * values[1:] * valid[1:] - values[:-1]
+        advantages = deltas.detach()
+        # use generalized advantage estimator
+        for i in range(advantages.shape[0]-1, 0, -1):
+            advantages[i-1] = advantages[i-1] + self.reward_discount * self.gae_lambda * advantages[i] * valid[i]
+        return advantages
 
-    def kl_divergence(self, valid):
-        state_kl_divergence = self.state_variable.kl_divergence().sum(dim=1, keepdim=True)
-        action_kl_divergence = self.action_variable.kl_divergence().view(-1, 1)
-        kl_divergence = valid * (state_kl_divergence + action_kl_divergence)
-        return kl_divergence
+    def estimate_returns(self):
+        # calculate the discounted Monte Carlo return
+        valid = torch.stack(self.valid)
+        reward = (-torch.stack(self.metrics['optimality']['cll']) + 1.) * valid
+        discounted_returns = reward
+        for i in range(discounted_returns.shape[0]-1, 0, -1):
+            discounted_returns[i-1] += self.reward_discount * discounted_returns[i] * valid[i]
+        return discounted_returns
+
+    # def free_energy(self, observation, reward, done, valid):
+    #     observation, reward, done = self._change_device(observation, reward, done)
+    #     cond_log_likelihood = self.cond_log_likelihood(observation, reward, done)
+    #     kl_divergence = self.kl_divergence()
+    #     free_energy = kl_divergence - cond_log_likelihood
+    #     return free_energy
+    #
+    # def cond_log_likelihood(self, observation, reward, done, valid):
+    #     observation, reward, done = self._change_device(observation, reward, done)
+    #     opt_log_likelihood = self.optimality_scale * (reward - 1.)
+    #     cond_log_likelihood = valid * opt_log_likelihood
+    #     if self.observation_variable is not None:
+    #         obs_log_likelihood = (1 - done) * self.observation_variable.cond_log_likelihood(observation).sum(dim=1, keepdim=True)
+    #         cond_log_likelihood += valid * obs_log_likelihood
+    #     if self.reward_variable is not None:
+    #         reward_log_likelihood = self.reward_variable.cond_log_likelihood(reward).sum(dim=1, keepdim=True)
+    #         cond_log_likelihood += valid * reward_log_likelihood
+    #     if self.done_variable is not None:
+    #         done_log_likelihood = self.done_variable.cond_log_likelihood(done).sum(dim=1, keepdim=True)
+    #         cond_log_likelihood += valid * done_log_likelihood
+    #     return cond_log_likelihood
+    #
+    # def kl_divergence(self, valid):
+    #     state_kl_divergence = self.state_variable.kl_divergence().sum(dim=1, keepdim=True)
+    #     action_kl_divergence = self.action_variable.kl_divergence().view(-1, 1)
+    #     kl_divergence = valid * (state_kl_divergence + action_kl_divergence)
+    #     return kl_divergence
 
     def evaluate(self):
         # evaluate the objective, averaged over the batch, backprop
@@ -187,35 +230,8 @@ class Agent(nn.Module):
         # calculate the REINFORCE terms
         if self.value_model is not None:
             # use a bootstrapped value estimate as a baseline
-            # calculate TD errors
-            discount = 0.99
             values = torch.stack(self.values)
-            # add up the future terms in the objective
-            # can we use the reward prediction (from the reward model) as a baseline?
-            # optimality_predictions = - self.optimality_scale * (torch.stack(self.reward_predictions) - 1.)
-            optimality = -(-torch.stack(self.objectives['optimality']) + 1.) * valid
-            # optimality = torch.stack(self.objectives['optimality']) * valid
-            future_terms = optimality[1:]
-            # TODO: should only include these if the action distribution is not reparameterizable
-            if self.action_prior_model is not None:
-                # action_kl = torch.stack(self.objectives['action']) * valid
-                # future_terms = future_terms + action_kl[1:]
-                pass
-            if self.state_prior_model is not None:
-                # state_kl = torch.clamp(torch.stack(self.objectives['state']) * valid, max=30)
-                # future_terms = future_terms + state_kl[1:]
-                pass
-            if self.obs_likelihood_model is not None:
-                # TODO: include information gain terms from observation, reward, and done
-                # info_gain = torch.stack(self.objectives['info_gain']) * valid
-                # future_terms = future_terms + info_gain[1:]
-                pass
-
-            deltas = future_terms + discount * values[1:] * valid[1:] - values[:-1]
-            advantages = deltas.detach()
-            # use generalized advantage estimator
-            for i in range(advantages.shape[0]-1, 0, -1):
-                advantages[i-1] = advantages[i-1] + discount * self.gae_lambda * advantages[i] * valid[i]
+            advantages = self.estimate_advantages()
             # calculate value loss
             returns = advantages + values[:-1].detach()
             value_loss = 0.5 * (values[:-1] - returns).pow(2)
@@ -234,7 +250,7 @@ class Agent(nn.Module):
         # add the REINFORCE terms to the total objective
         log_probs = torch.stack(self.log_probs['action'])
         importance_weights = torch.stack(self.importance_weights['action']).detach()
-        reinforce_terms = importance_weights[:-1] * log_probs[:-1] * advantages
+        reinforce_terms = - importance_weights[:-1] * log_probs[:-1] * advantages
         # reinforce_terms = - log_probs[:-1] * advantages
         free_energy[:-1] = free_energy[:-1] + reinforce_terms
 
@@ -286,7 +302,7 @@ class Agent(nn.Module):
             if self._mode == 'train':
                 self.objectives['reward'].append(-reward_info_gain * valid)
             self.metrics['reward']['cll'].append((-reward_cll * valid).detach())
-            self.metrics['reward']['mll'].append((-reward_mll * (1 - done) * valid).detach())
+            self.metrics['reward']['mll'].append((-reward_mll * valid).detach())
             self.metrics['reward']['info_gain'].append((-reward_info_gain * valid).detach())
             self.distributions['reward']['pred']['loc'].append(self.reward_variable.likelihood_dist_pred.loc.detach())
             self.distributions['reward']['pred']['scale'].append(self.reward_variable.likelihood_dist_pred.scale.detach())
@@ -457,7 +473,9 @@ class Agent(nn.Module):
                     results['distributions'][k][kk][kkk] = torch.cat(vvv, dim=0).detach().cpu()
         # get the values, advantages
         results['value'] = torch.cat(self.values, dim=0).detach().cpu()
-        results['advantage'] = []
+        results['advantage'] = torch.zeros(results['value'].shape)
+        results['advantage'][:-1] = self.estimate_advantages().mean(dim=1).detach().cpu()
+        results['return'] = self.estimate_returns().mean(dim=1).detach().cpu()
         return results
 
     def reset(self, batch_size=1):

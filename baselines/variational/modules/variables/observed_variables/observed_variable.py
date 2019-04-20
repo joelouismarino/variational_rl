@@ -163,6 +163,11 @@ class ObservedVariable(nn.Module):
     def _change_device(self, observation):
         if type(observation) in [float, bool]:
             observation = torch.tensor(observation).to(torch.float32)
+        if self.distribution_type == torch.distributions.Categorical:
+            if len(observation.shape) == 2:
+                observation = observation.view(-1)
+            elif len(observation.shape) == 4:
+                raise NotImplementedError
         if observation.device != self.device:
             observation = observation.to(self.device)
         return observation
