@@ -71,8 +71,10 @@ class Agent(nn.Module):
         self.alpha = 0.01
         self.reward_discount = 0.99
 
-        self.obs_reconstruction = None
-        self.obs_prediction = None
+        self.advantage_running_mean = 0.
+        self.advantage_running_std = 1.
+        self.value_running_mean = 0.
+        self.value_running_std = 1.
 
     def act(self, observation, reward=None, done=False, action=None, valid=None, log_prob=None):
         observation, reward, action, done, valid, log_prob = self._change_device(observation, reward, action, done, valid, log_prob)
@@ -129,27 +131,20 @@ class Agent(nn.Module):
         valid = torch.stack(self.valid)
         values = torch.stack(self.values)
         # add up the future terms in the objective
-        # can we use the reward prediction (from the reward model) as a baseline?
-        # optimality_predictions = - self.optimality_scale * (torch.stack(self.reward_predictions) - 1.)
-        # optimality = -(-torch.stack(self.objectives['optimality']) + 1.) * valid
-        # optimality = -(-torch.stack(self.metrics['optimality']['cll']) + 1.) * valid
-        optimality = (-torch.stack(self.metrics['optimality']['cll']) + 1.) * valid
-        # optimality = torch.stack(self.objectives['optimality']) * valid
+        optimality = (-torch.stack(self.metrics['optimality']['cll']) + 1. * self.optimality_scale) * valid
         future_terms = optimality[1:]
         # TODO: should only include these if the action distribution is not reparameterizable
         if self.action_prior_model is not None:
-            # action_kl = torch.stack(self.objectives['action']) * valid
-            # future_terms = future_terms + action_kl[1:]
-            pass
+            action_kl = torch.stack(self.metrics['action']['kl']) * valid
+            future_terms = future_terms - action_kl[1:]
         if self.state_prior_model is not None:
-            # state_kl = torch.clamp(torch.stack(self.objectives['state']) * valid, max=30)
-            # future_terms = future_terms + state_kl[1:]
-            pass
+            state_kl = torch.stack(self.metrics['state']['kl']) * valid
+            future_terms = future_terms - state_kl[1:]
         if self.obs_likelihood_model is not None:
-            # TODO: include information gain terms from observation, reward, and done
-            # info_gain = torch.stack(self.objectives['info_gain']) * valid
-            # future_terms = future_terms + info_gain[1:]
-            pass
+            obs_info_gain = torch.stack(self.metrics['observation']['info_gain']) * valid
+            reward_info_gain = torch.stack(self.metrics['reward']['info_gain']) * valid
+            done_info_gain = torch.stack(self.metrics['done']['info_gain']) * valid
+            future_terms = future_terms + obs_info_gain[1:] + reward_info_gain[1:] + done_info_gain[1:]
 
         deltas = future_terms + self.reward_discount * values[1:] * valid[1:] - values[:-1]
         advantages = deltas.detach()
@@ -234,9 +229,20 @@ class Agent(nn.Module):
             advantages = self.estimate_advantages()
             # calculate value loss
             returns = advantages + values[:-1].detach()
+            # returns_mean = returns.mean()
+            # returns_std = returns.std()
+            # self.value_running_mean = 0.99 * self.value_running_mean + (1 - 0.99) * returns_mean
+            # self.value_running_std = 0.99 * self.value_running_std + (1 - 0.99) * returns_std
+            # returns = (returns - self.value_running_mean) / max(self.value_running_std, 1)
             value_loss = 0.5 * (values[:-1] - returns).pow(2)
             free_energy[:-1] = free_energy[:-1] + value_loss
             results['value'] = value_loss.sum(dim=0).div(n_valid_steps).mean(dim=0).detach().cpu().item()
+            # update advantage running mean and variance
+            advantage_mean = advantages.mean()
+            advantage_std = advantages.std()
+            self.advantage_running_mean = 0.99 * self.advantage_running_mean + (1 - 0.99) * advantage_mean
+            self.advantage_running_std = 0.99 * self.advantage_running_std + (1 - 0.99) * advantage_std
+            advantages = (advantages - self.advantage_running_mean) / max(self.advantage_running_std, 1)
         else:
             # TODO: this is hacky and doesn't work
             raise NotImplementedError
@@ -283,11 +289,12 @@ class Agent(nn.Module):
     def _collect_objectives_and_log_probs(self, observation, reward, done, action, value, valid, log_prob):
         if self.done_likelihood_model is not None:
             log_importance_weights = self.state_variable.log_importance_weights().detach()
-            done_info_gain = self.done_variable.info_gain(done, log_importance_weights, alpha=self.alpha)
+            weighted_done_info_gain = self.done_variable.info_gain(done, log_importance_weights, alpha=self.alpha)
+            done_info_gain = self.done_variable.info_gain(done, log_importance_weights, alpha=1.)
             done_cll = self.done_variable.cond_log_likelihood(done).view(self.n_state_samples, -1, 1).mean(dim=0)
             done_mll = self.done_variable.marginal_log_likelihood(done, log_importance_weights)
             if self._mode == 'train':
-                self.objectives['done'].append(-done_info_gain * valid)
+                self.objectives['done'].append(-weighted_done_info_gain * valid)
             self.metrics['done']['cll'].append((-done_cll * valid).detach())
             self.metrics['done']['mll'].append((-done_mll * valid).detach())
             self.metrics['done']['info_gain'].append((-done_info_gain * valid).detach())
@@ -296,11 +303,12 @@ class Agent(nn.Module):
 
         if self.reward_likelihood_model is not None:
             log_importance_weights = self.state_variable.log_importance_weights().detach()
-            reward_info_gain = self.reward_variable.info_gain(reward, log_importance_weights, alpha=self.alpha)
+            weighted_reward_info_gain = self.reward_variable.info_gain(reward, log_importance_weights, alpha=self.alpha)
+            reward_info_gain = self.reward_variable.info_gain(reward, log_importance_weights, alpha=1.)
             reward_cll = self.reward_variable.cond_log_likelihood(reward).view(self.n_state_samples, -1, 1).mean(dim=0)
             reward_mll = self.reward_variable.marginal_log_likelihood(reward, log_importance_weights)
             if self._mode == 'train':
-                self.objectives['reward'].append(-reward_info_gain * valid)
+                self.objectives['reward'].append(-weighted_reward_info_gain * valid)
             self.metrics['reward']['cll'].append((-reward_cll * valid).detach())
             self.metrics['reward']['mll'].append((-reward_mll * valid).detach())
             self.metrics['reward']['info_gain'].append((-reward_info_gain * valid).detach())
@@ -311,11 +319,12 @@ class Agent(nn.Module):
 
         if self.obs_likelihood_model is not None:
             log_importance_weights = self.state_variable.log_importance_weights().detach()
-            observation_info_gain = self.observation_variable.info_gain(observation, log_importance_weights, alpha=self.alpha)
+            weighted_observation_info_gain = self.observation_variable.info_gain(observation, log_importance_weights, alpha=self.alpha)
+            observation_info_gain = self.observation_variable.info_gain(observation, log_importance_weights, alpha=1.)
             observation_cll = self.observation_variable.cond_log_likelihood(observation).view(self.n_state_samples, -1, 1).mean(dim=0)
             observation_mll = self.observation_variable.marginal_log_likelihood(observation, log_importance_weights)
             if self._mode == 'train':
-                self.objectives['observation'].append(-observation_info_gain * (1 - done) * valid)
+                self.objectives['observation'].append(-weighted_observation_info_gain * (1 - done) * valid)
             self.metrics['observation']['cll'].append((-observation_cll * (1 - done) * valid).detach())
             self.metrics['observation']['mll'].append((-observation_mll * (1 - done) * valid).detach())
             self.metrics['observation']['info_gain'].append((-observation_info_gain * (1 - done) * valid).detach())

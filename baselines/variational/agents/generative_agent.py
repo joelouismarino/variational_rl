@@ -95,9 +95,6 @@ class GenerativeAgent(Agent):
         self.batch_size = 1
         self.gae_lambda = misc_args['gae_lambda']
 
-        self.obs_reconstruction = None
-        self.obs_prediction = None
-
     def state_inference(self, observation, reward, done, valid, **kwargs):
         # infer the approx. posterior on the state
         if self.state_inference_model is not None:
@@ -169,10 +166,12 @@ class GenerativeAgent(Agent):
             if self.n_inf_iter['action'] == 0:
                 # direct action inference (i.e. amortized policy network)
                 state = self.state_variable.sample()
+                # hidden_state = self.state_prior_model.network.state
                 if self._prev_action is not None:
                     action = self._prev_action
                 else:
                     action = self.action_variable.sample()
+                # inf_input = self.action_inference_model(state, action, hidden_state)
                 inf_input = self.action_inference_model(state, action)
                 self.action_variable.infer(inf_input)
             else:
@@ -291,34 +290,44 @@ class GenerativeAgent(Agent):
         if self.action_prior_model is not None:
             if not self.action_variable.reinitialized:
                 state = self.state_variable.sample(planning=planning)
+                # hidden_state = self.state_prior_model.network.state
                 if self._prev_action is not None and not planning:
                     action = self._prev_action
                 else:
                     action = self.action_variable.sample(planning=planning)
+                # prior_input = self.action_prior_model(state, action, hidden_state)
                 prior_input = self.action_prior_model(state, action)
                 self.action_variable.step(prior_input, planning=planning)
 
     def generate_observation(self, planning=False):
         # generate the conditional likelihood for the observation
         state = self.state_variable.sample(n_samples=self.n_state_samples, planning=planning)
+        # hidden_state = self.state_prior_model.network.state
+        # likelihood_input = self.obs_likelihood_model(state, hidden_state)
         likelihood_input = self.obs_likelihood_model(state)
         self.observation_variable.generate(likelihood_input, planning=planning)
 
     def generate_reward(self, planning=False):
         # generate the conditional likelihood for the reward
         state = self.state_variable.sample(n_samples=self.n_state_samples, planning=planning)
+        # hidden_state = self.state_prior_model.network.state
+        # likelihood_input = self.reward_likelihood_model(state, hidden_state)
         likelihood_input = self.reward_likelihood_model(state)
         self.reward_variable.generate(likelihood_input, planning=planning)
 
     def generate_done(self, planning=False):
         # generate the conditional likelihood for episode being done
         state = self.state_variable.sample(n_samples=self.n_state_samples, planning=planning)
+        # hidden_state = self.state_prior_model.network.state
+        # likelihood_input = self.done_likelihood_model(state, hidden_state)
         likelihood_input = self.done_likelihood_model(state)
         self.done_variable.generate(likelihood_input, planning=planning)
 
     def estimate_value(self, done, planning=False, **kwargs):
         # estimate the value of the current state
         state = self.state_variable.sample(planning=planning)
+        # hidden_state = self.state_prior_model.network.state
+        # value = self.value_variable(self.value_model(state, hidden_state)) * (1 - done)
         value = self.value_variable(self.value_model(state)) * (1 - done)
         if not planning:
             self.values.append(value)
