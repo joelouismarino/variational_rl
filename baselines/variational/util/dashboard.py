@@ -14,11 +14,11 @@ def plot_dashboard(results, dir):
         dir (str): path to where dashboard plots should be saved
     """
     n_steps = len(results['observation'])
-
     # plot each of the dashboard frames
     for step in range(n_steps):
         fig = plt.figure(figsize=(17, 10))
         img_obs = len(results['observation'][step].size()) == 3
+        state_dim = len(results['observation'][step])
         # plot the observation
         plt.subplot(4, 3, 1)
         if img_obs:
@@ -26,7 +26,12 @@ def plot_dashboard(results, dir):
             plt.imshow(observation)
             plt.axis('off')
         else:
-            pass
+            # plot mujoco
+            observation = np.reshape(results['observation'][step].numpy(), (1, state_dim))
+            im = plt.imshow(observation, cmap = 'Greys', vmin = -2, vmax = 2)
+            plt.tick_params(left = 'off', bottom = 'off', labelleft='off', labelbottom='off')
+            plt.colorbar(im, orientation='horizontal')
+
         plt.title('Observation', fontsize=10)
 
         # plot the prediction
@@ -36,7 +41,10 @@ def plot_dashboard(results, dir):
             plt.imshow(prediction)
             plt.axis('off')
         else:
-            pass
+            # plot mujoco
+            prediction = np.reshape(results['distributions']['observation']['pred']['loc'][step].numpy(), (1, state_dim))
+            plt.imshow(prediction, cmap='Greys', vmin = -2, vmax = 2)
+            plt.tick_params(left='off', bottom='off', labelleft='off', labelbottom='off')
         plt.title('Prediction', fontsize=10)
 
         # plot the prediction error
@@ -46,7 +54,9 @@ def plot_dashboard(results, dir):
             plt.imshow(prediction_error)
             plt.axis('off')
         else:
-            pass
+            prediction_error = (observation - prediction)
+            plt.imshow(prediction_error, cmap='Greys', vmin = -2, vmax = 2)
+            plt.tick_params(left='off', bottom='off', labelleft='off', labelbottom='off')
         plt.title('Prediction Error', fontsize=10)
 
         # plot the reconstruction
@@ -56,7 +66,9 @@ def plot_dashboard(results, dir):
             plt.imshow(reconstruction)
             plt.axis('off')
         else:
-            pass
+            reconstruction = np.reshape(results['distributions']['observation']['recon']['loc'][step].numpy(), (1, state_dim))
+            plt.imshow(reconstruction, cmap='Greys', vmin = -2, vmax = 2)
+            plt.tick_params(left='off', bottom='off', labelleft='off', labelbottom='off')
         plt.title('Reconstruction', fontsize=10)
 
         # plot the reconstruction error
@@ -66,7 +78,9 @@ def plot_dashboard(results, dir):
             plt.imshow(reconstruction_error)
             plt.axis('off')
         else:
-            pass
+            reconstruction_error = (observation - reconstruction)
+            plt.imshow(reconstruction_error, cmap='Greys', vmin = -2, vmax = 2)
+            plt.tick_params(left='off', bottom='off', labelleft='off', labelbottom='off')
         plt.title('Reconstruction Error', fontsize=10)
 
         # plot the reward conditional likelihood distribution

@@ -345,9 +345,11 @@ class Agent(nn.Module):
             self.objectives['state'].append(clamped_state_kl * (1 - done) * valid)
         self.metrics['state']['kl'].append((state_kl * (1 - done) * valid).detach())
         self.distributions['state']['prior']['loc'].append(self.state_variable.prior_dist.loc.detach())
-        self.distributions['state']['prior']['scale'].append(self.state_variable.prior_dist.scale.detach())
-        self.distributions['state']['approx_post']['loc'].append(self.state_variable.approx_post_dist.loc.detach())
-        self.distributions['state']['approx_post']['scale'].append(self.state_variable.approx_post_dist.scale.detach())
+        if hasattr(self.state_variable.prior_dist, 'scale'):
+            self.distributions['state']['prior']['scale'].append(self.state_variable.prior_dist.scale.detach())
+        if self.state_variable.approx_post_dist is not None:
+            self.distributions['state']['approx_post']['loc'].append(self.state_variable.approx_post_dist.loc.detach())
+            self.distributions['state']['approx_post']['scale'].append(self.state_variable.approx_post_dist.scale.detach())
 
         action_kl = self.action_variable.kl_divergence()
         if self.action_variable.approx_post_dist_type == getattr(torch.distributions, 'Categorical'):
@@ -479,7 +481,8 @@ class Agent(nn.Module):
                 results['distributions'][k][kk] = {}
                 for kkk, vvv in vv.items():
                     # parameters
-                    results['distributions'][k][kk][kkk] = torch.cat(vvv, dim=0).detach().cpu()
+                    if len(vvv) > 0:
+                        results['distributions'][k][kk][kkk] = torch.cat(vvv, dim=0).detach().cpu()
         # get the values, advantages
         results['value'] = torch.cat(self.values, dim=0).detach().cpu()
         results['advantage'] = torch.zeros(results['value'].shape)
