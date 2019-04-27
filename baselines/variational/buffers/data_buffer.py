@@ -2,7 +2,7 @@ import random
 import torch
 
 # used so that we sample the ends of sequences more often
-DELTA = 10
+DELTA = 0 # somehow setting this to 10 breaks Mujoco
 
 class DataBuffer(object):
     """
@@ -40,6 +40,8 @@ class DataBuffer(object):
             if seq_len < episode_len:
                 # select a sub-sequence of the episode
                 start_ind = random.randint(0, episode_len - seq_len + DELTA)
+                if start_ind > episode_len:
+                    start_ind = episode_len - 1
                 end_ind = min(start_ind + seq_len, end_ind)
             l = end_ind - start_ind
             for k in episode:
@@ -47,6 +49,10 @@ class DataBuffer(object):
             batch['valid'][:l, batch_ind] = torch.ones(l, 1)
         # self.buffer = []
         return batch
+
+    def prioritized_sample(self):
+        pass
+
 
     def append(self, episode):
         """

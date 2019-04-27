@@ -19,7 +19,7 @@ class Plotter:
         exp_args (str): arguments for the experiment
         dashboard (bool): whether or not to plot the dashboard
     """
-    def __init__(self, log_dir, exp_args, dashboard=False):
+    def __init__(self, log_dir, exp_args, dashboard=True):
         self.log_dir = log_dir
         self.env_id = exp_args['log_str']
         if exp_args['env'] in continuous_control:
@@ -134,7 +134,8 @@ class Plotter:
                     self.plot_image(episode['distributions']['observation']['recon']['loc'][time_step], 'Reconstruction')
         else:
             # plot mujoco states
-            self.plot_states_mujoco(episode, time_step, n_states=len(episode['observation'][time_step]))
+            pass
+            # self.plot_states_mujoco(episode, time_step, n_states=len(episode['observation'][time_step]))
 
         self._plot_metric(self._episode, n_steps, 'length',
                           opts=self._get_opts('length'), name='Episode')
@@ -223,6 +224,7 @@ class Plotter:
             for trace_type in trace_types:
                 self.vis.line(X=x, Y=episode[trace_type][timestep], update='replace', name=trace_type, win=self.window_id[window_name])
         else:
+            import ipdb; ipdb.set_trace()
             for trace_type in trace_types:
                 if window_name in self.window_id:
                     self.vis.line(X=x, Y=episode[trace_type][timestep], update='replace', name=trace_type, win=self.window_id[window_name])
