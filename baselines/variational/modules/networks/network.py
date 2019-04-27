@@ -41,6 +41,12 @@ class Network(nn.Module):
     def reset(self, *args, **kwargs):
         pass
 
+    def planning_mode(self, batch_size):
+        pass
+
+    def acting_mode(self):
+        pass
+
     def detach_hidden_state(self):
         pass
 

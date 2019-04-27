@@ -94,6 +94,7 @@ class GenerativeAgent(Agent):
         self._prev_action = None
         self.batch_size = 1
         self.gae_lambda = misc_args['gae_lambda']
+        self._planning = False
 
     def state_inference(self, observation, reward, done, valid, **kwargs):
         # infer the approx. posterior on the state
@@ -179,25 +180,26 @@ class GenerativeAgent(Agent):
                 # keep track of rollout length and estimated return
                 rollout_lengths = []
                 estimated_returns = []
-
                 # initialize the planning distributions
-                self.state_variable.init_planning(self.n_planning_samples)
-                self.action_variable.init_planning(self.n_planning_samples)
+                self.planning_mode()
+                # self.state_variable.init_planning(self.n_planning_samples)
+                # self.action_variable.init_planning(self.n_planning_samples)
 
                 # estimate the current value
                 current_done = done.repeat(self.n_planning_samples, 1)
-                current_value = self.estimate_value(done=current_done, planning=True).detach()
+                current_value = self.estimate_value(done=current_done).detach()
                 current_value = current_value.view(-1, self.n_planning_samples, 1)
 
                 # inference iterations
                 for inf_iter in range(self.n_inf_iter['action'] + 1):
 
                     # initialize the planning distributions
-                    self.state_variable.init_planning(self.n_planning_samples)
-                    self.action_variable.init_planning(self.n_planning_samples)
+                    self.planning_mode()
+                    # self.state_variable.init_planning(self.n_planning_samples)
+                    # self.action_variable.init_planning(self.n_planning_samples)
 
                     # sample and evaluate log probs of initial actions
-                    action = self.action_variable.sample(planning=True)
+                    action = self.action_variable.sample()
                     action_ind = self._convert_action(action)
                     original_batch_shape = self.action_variable.approx_post_dist.batch_shape[0]
                     expanded_action_dist = self.action_variable.approx_post_dist.expand([self.n_planning_samples, original_batch_shape])
@@ -213,22 +215,22 @@ class GenerativeAgent(Agent):
                         print('Rollout Iteration: ' + str(rollout_iter))
                         rollout_iter += 1
                         # step the state
-                        self.step_state(planning=True)
+                        self.step_state()
                         # generate observation, reward, and done
-                        self.generate_observation(planning=True)
-                        self.generate_reward(planning=True)
-                        self.generate_done(planning=True)
+                        self.generate_observation()
+                        self.generate_reward()
+                        self.generate_done()
                         # step the action
-                        self.step_action(planning=True)
+                        self.step_action()
 
                         # evaluate the objective
-                        reward = self.reward_variable.sample(planning=True)
+                        reward = self.reward_variable.sample()
                         # optimality_log_likelihood = self.optimality_scale * (reward - 1.)
                         optimality_log_likelihood = reward
                         # TODO: evaluate other term
 
                         # evaluate done variables to determine whether all rollouts are completed
-                        done = self.done_variable.sample(planning=True).view(-1, self.n_planning_samples, 1)
+                        done = self.done_variable.sample().view(-1, self.n_planning_samples, 1)
                         if cumulative_flag is None:
                             cumulative_flag = 1 - done
                         cumulative_flag = cumulative_flag * (1 - done)
@@ -245,8 +247,6 @@ class GenerativeAgent(Agent):
                     # backprop objective OR use policy gradients
                     if inf_iter < self.n_inf_iter['action']:
                         objective.mean(dim=1).sum().backward(retain_graph=True)
-
-                    if inf_iter < self.n_inf_iter['action']:
                         # update the approximate posterior using the inference model
                         params, grads = self.action_variable.params_and_grads()
                         inf_input = self.action_inference_model(params, grads)
@@ -255,80 +255,108 @@ class GenerativeAgent(Agent):
                     # store the length of the planning rollout
                     if self._mode == 'train':
                         rollout_lengths.append(rollout_iter)
-
-                    if self._mode == 'train':
                         estimated_returns.append(estimated_return.detach().mean(dim=1))
 
                 # save the maximum rollout length, averaged over inference iterations
                 if self._mode == 'train':
                     ave_rollout_length = sum(rollout_lengths) / len(rollout_lengths)
                     self.rollout_lengths.append(ave_rollout_length)
-
-                if self._mode == 'train':
                     # TODO: need to only collect inference improvement for valid steps
                     estimated_returns = torch.stack(estimated_returns)
                     inference_improvement = estimated_returns[0] - estimated_returns[-1]
                     self.inference_improvement['action'].append(inference_improvement)
 
+                self.acting_mode()
+
             clear_gradients(self.generative_parameters())
             self.generative_mode()
 
-    def step_state(self, planning=False, **kwargs):
+    def step_state(self, **kwargs):
         # calculate the prior on the state variable
         if self.state_prior_model is not None:
             if not self.state_variable.reinitialized:
-                state = self.state_variable.sample(planning=planning)
-                if self._prev_action is not None and not planning:
+                state = self.state_variable.sample()
+                if self._prev_action is not None and not self._planning:
                     action = self._prev_action
                 else:
-                    action = self.action_variable.sample(planning=planning)
+                    action = self.action_variable.sample()
                 prior_input = self.state_prior_model(state, action)
-                self.state_variable.step(prior_input, planning=planning)
+                self.state_variable.step(prior_input)
 
-    def step_action(self, action=None, planning=False, **kwargs):
+    def step_action(self, action=None, **kwargs):
         # calculate the prior on the action variable
         if self.action_prior_model is not None:
             if not self.action_variable.reinitialized:
-                state = self.state_variable.sample(planning=planning)
+                state = self.state_variable.sample()
                 # hidden_state = self.state_prior_model.network.state
-                if self._prev_action is not None and not planning:
+                if self._prev_action is not None and not self._planning:
                     action = self._prev_action
                 else:
-                    action = self.action_variable.sample(planning=planning)
+                    action = self.action_variable.sample()
                 # prior_input = self.action_prior_model(state, action, hidden_state)
                 prior_input = self.action_prior_model(state, action)
-                self.action_variable.step(prior_input, planning=planning)
+                self.action_variable.step(prior_input)
 
-    def generate_observation(self, planning=False):
+    def generate_observation(self):
         # generate the conditional likelihood for the observation
-        state = self.state_variable.sample(n_samples=self.n_state_samples, planning=planning)
+        state = self.state_variable.sample(n_samples=self.n_state_samples)
         # hidden_state = self.state_prior_model.network.state
         # likelihood_input = self.obs_likelihood_model(state, hidden_state)
         likelihood_input = self.obs_likelihood_model(state)
-        self.observation_variable.generate(likelihood_input, planning=planning)
+        self.observation_variable.generate(likelihood_input)
 
-    def generate_reward(self, planning=False):
+    def generate_reward(self):
         # generate the conditional likelihood for the reward
-        state = self.state_variable.sample(n_samples=self.n_state_samples, planning=planning)
+        state = self.state_variable.sample(n_samples=self.n_state_samples)
         # hidden_state = self.state_prior_model.network.state
         # likelihood_input = self.reward_likelihood_model(state, hidden_state)
         likelihood_input = self.reward_likelihood_model(state)
-        self.reward_variable.generate(likelihood_input, planning=planning)
+        self.reward_variable.generate(likelihood_input)
 
-    def generate_done(self, planning=False):
+    def generate_done(self):
         # generate the conditional likelihood for episode being done
-        state = self.state_variable.sample(n_samples=self.n_state_samples, planning=planning)
+        state = self.state_variable.sample(n_samples=self.n_state_samples)
         # hidden_state = self.state_prior_model.network.state
         # likelihood_input = self.done_likelihood_model(state, hidden_state)
         likelihood_input = self.done_likelihood_model(state)
-        self.done_variable.generate(likelihood_input, planning=planning)
+        self.done_variable.generate(likelihood_input)
 
-    def estimate_value(self, done, planning=False, **kwargs):
+    def estimate_value(self, done, **kwargs):
         # estimate the value of the current state
-        state = self.state_variable.sample(planning=planning)
+        state = self.state_variable.sample()
         # hidden_state = self.state_prior_model.network.state
         # value = self.value_variable(self.value_model(state, hidden_state)) * (1 - done)
         value = self.value_variable(self.value_model(state)) * (1 - done)
-        if not planning:
+        if not self._planning:
             self.values.append(value)
         return value
+
+    def planning_mode(self):
+        self._planning = True
+        # set the variables and models for action inference
+        self.state_variable.planning_mode(self.n_planning_samples)
+        self.action_variable.planning_mode(self.n_planning_samples)
+        self.observation_variable.planning_mode()
+        self.reward_variable.planning_mode()
+        self.done_variable.planning_mode()
+
+        self.state_prior_model.planning_mode(self.n_planning_samples)
+        self.action_prior_model.planning_mode(self.n_planning_samples)
+        self.obs_likelihood_model.planning_mode(self.n_planning_samples)
+        self.reward_likelihood_model.planning_mode(self.n_planning_samples)
+        self.done_likelihood_model.planning_mode(self.n_planning_samples)
+
+    def acting_mode(self):
+        self._planning = False
+
+        self.state_variable.acting_mode()
+        self.action_variable.acting_mode()
+        self.observation_variable.acting_mode()
+        self.reward_variable.acting_mode()
+        self.done_variable.acting_mode()
+
+        self.state_prior_model.acting_mode()
+        self.action_prior_model.acting_mode()
+        self.obs_likelihood_model.acting_mode()
+        self.reward_likelihood_model.acting_mode()
+        self.done_likelihood_model.acting_mode()

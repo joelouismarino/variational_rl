@@ -10,17 +10,18 @@ def get_minigrid_config(env):
 
     agent_args['agent_type'] = 'generative'
 
-    agent_args['misc_args'] = {'optimality_scale': 1,
+    agent_args['misc_args'] = {'optimality_scale': 1.,
                                'n_state_samples': 1,
-                               'n_inf_iter': dict(state=1, action=0),
+                               'n_inf_iter': dict(state=1, action=1),
                                'kl_min': dict(state=0.1, action=0.75),
-                               'kl_min_anneal_rate': dict(state=0.99, action=1.),
+                               'kl_min_anneal_rate': dict(state=0.99, action=0.99),
+                               'reward_discount': 0.99,
                                'gae_lambda': 0.95}
 
     if agent_args['misc_args']['n_inf_iter']['action'] > 0:
         # planning configuration
-        agent_args['misc_args']['n_planning_samples'] = 10
-        agent_args['misc_args']['max_rollout_length'] = 100
+        agent_args['misc_args']['n_planning_samples'] = 100
+        agent_args['misc_args']['max_rollout_length'] = 10
 
     observation_size = np.prod(env.observation_space.shape)
     action_space = env.action_space
@@ -91,7 +92,7 @@ def get_minigrid_config(env):
 
     if agent_args['agent_type'] == 'generative':
         # state
-        n_state_variables = 20
+        n_state_variables = 32
         agent_args['state_variable_args'] = {'type': 'fully_connected',
                                              'prior_dist': 'Normal',
                                              'approx_post_dist': 'Normal',
@@ -100,20 +101,20 @@ def get_minigrid_config(env):
                                              'const_scale': False,
                                              'inference_type': 'iterative'}
 
-        agent_args['state_prior_args'] = {'type': 'fully_connected',
-                                          'n_layers': 2,
+        agent_args['state_prior_args'] = {'type': 'recurrent',
+                                          'n_layers': 1,
                                           'n_input': n_state_variables + n_action_variables,
-                                          'n_units': 512,
+                                          'n_units': 128,
                                           'connectivity': 'highway',
-                                          'non_linearity': 'elu',
                                           'dropout': None}
 
         # hidden_state_size = agent_args['state_prior_args']['n_layers'] * agent_args['state_prior_args']['n_units']
+        hidden_state_size = agent_args['state_prior_args']['n_units']
 
         agent_args['state_inference_args'] = {'type': 'fully_connected',
-                                              'n_layers': 1,
+                                              'n_layers': 2,
                                               'n_input': 4 * n_state_variables,
-                                              'n_units': 1024,
+                                              'n_units': 512,
                                               'connectivity': 'highway',
                                               'batch_norm': False,
                                               'non_linearity': 'elu',
@@ -130,18 +131,18 @@ def get_minigrid_config(env):
                                                   'inference_type': 'iterative'}
 
             agent_args['action_prior_args'] = {'type': 'fully_connected',
-                                               'n_layers': 1,
-                                               'n_input': n_state_variables,
+                                               'n_layers': 2,
+                                               'n_input': n_state_variables + n_action_variables,
                                                'n_units': 64,
-                                               'connectivity': 'sequential',
+                                               'connectivity': 'highway',
                                                'batch_norm': False,
-                                               'non_linearity': 'tanh',
+                                               'non_linearity': 'elu',
                                                'dropout': None}
 
             agent_args['action_inference_args'] = {'type': 'fully_connected',
                                                    'n_layers': 1,
                                                    'n_input': 2 * n_action_variables,
-                                                   'n_units': 64,
+                                                   'n_units': 1024,
                                                    'connectivity': 'sequential',
                                                    'batch_norm': False,
                                                    'non_linearity': 'elu',
@@ -153,10 +154,18 @@ def get_minigrid_config(env):
                                                   'prior_dist': action_prior_dist,
                                                   'approx_post_dist': action_approx_post_dist,
                                                   'n_variables': n_action_variables,
-                                                  'constant_prior': True,
+                                                  'constant_prior': False,
                                                   'inference_type': 'direct'}
 
-            agent_args['action_prior_args'] = None
+            # agent_args['action_prior_args'] = None
+            agent_args['action_prior_args'] = {'type': 'fully_connected',
+                                               'n_layers': 2,
+                                               'n_input': n_state_variables + n_action_variables,
+                                               'n_units': 64,
+                                               'connectivity': 'highway',
+                                               'batch_norm': False,
+                                               'non_linearity': 'elu',
+                                               'dropout': None}
 
             agent_args['action_inference_args'] = {'type': 'fully_connected',
                                                    'n_layers': 2,
@@ -178,7 +187,8 @@ def get_minigrid_config(env):
                                                    'sigmoid_loc': True}
 
         agent_args['obs_likelihood_args'] = {'type': 'minigrid_deconv',
-                                             'n_input': n_state_variables}
+                                             'n_input': n_state_variables,
+                                             'non_linearity': 'elu'}
 
         # reward
         agent_args['reward_variable_args'] = {'type': 'fully_connected',
@@ -197,9 +207,22 @@ def get_minigrid_config(env):
                                                 'dropout': None}
 
         # done
+        # agent_args['done_variable_args'] = {'type': 'fully_connected',
+        #                                     'likelihood_dist': 'Bernoulli',
+        #                                     'n_variables': 1}
+
         agent_args['done_variable_args'] = {'type': 'fully_connected',
                                             'likelihood_dist': 'Bernoulli',
                                             'n_variables': 1}
+
+        # agent_args['done_likelihood_args'] = {'type': 'fully_connected',
+        #                                       'n_layers': 2,
+        #                                       'n_input': n_state_variables,
+        #                                       'n_units': 64,
+        #                                       'connectivity': 'highway',
+        #                                       'batch_norm': False,
+        #                                       'non_linearity': 'elu',
+        #                                       'dropout': None}
 
         agent_args['done_likelihood_args'] = {'type': 'fully_connected',
                                               'n_layers': 2,

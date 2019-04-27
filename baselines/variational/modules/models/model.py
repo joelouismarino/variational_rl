@@ -20,6 +20,14 @@ class Model(nn.Module):
         if self.network is not None:
             self.network.reset(batch_size)
 
+    def planning_mode(self, batch_size=0):
+        if self.network is not None:
+            self.network.planning_mode(batch_size)
+
+    def acting_mode(self):
+        if self.network is not None:
+            self.network.acting_mode()
+
     def detach_hidden_state(self):
         if self.network is not None:
             self.network.detach_hidden_state()

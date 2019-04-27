@@ -30,6 +30,11 @@ except ImportError:
     pybullet_envs = None
 
 try:
+    import pybulletgym
+except ImportError:
+    pybulletgym = None
+
+try:
     import roboschool
 except ImportError:
     roboschool = None

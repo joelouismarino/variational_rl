@@ -53,6 +53,14 @@ class RecurrentNetwork(Network):
         for layer in self.layers:
             layer.reset(batch_size)
 
+    def planning_mode(self, batch_size):
+        for layer in self.layers:
+            layer.planning_mode(batch_size)
+
+    def acting_mode(self):
+        for layer in self.layers:
+            layer.acting_mode()
+
     def detach_hidden_state(self):
         for layer in self.layers:
             layer.detach_hidden_state()

@@ -31,8 +31,9 @@ class ObservedVariable(nn.Module):
             parameter_names.remove('scale')
         self.likelihood_models = nn.ModuleDict({name: None for name in parameter_names})
         self._log_scale_limits = [-15, 0]
+        self._planning = False
 
-    def generate(self, input, planning=False):
+    def generate(self, input):
         parameters = {}
         for parameter_name in self.likelihood_models:
             # calculate the value
@@ -54,13 +55,13 @@ class ObservedVariable(nn.Module):
             log_scale = torch.clamp(log_scale, self._log_scale_limits[0], self._log_scale_limits[1])
             parameters['scale'] = torch.exp(log_scale)
         # create a new distribution with the parameters
-        if planning:
+        if self._planning:
             self.planning_likelihood_dist = self.distribution_type(**parameters)
         else:
             self.likelihood_dist = self.distribution_type(**parameters)
 
-    def sample(self, planning=False):
-        if planning:
+    def sample(self):
+        if self._planning:
             assert self.planning_likelihood_dist is not None
             sampling_dist = self.planning_likelihood_dist
         else:
@@ -85,7 +86,9 @@ class ObservedVariable(nn.Module):
             batch_size = observation.shape[0]
             n_samples = int(d.logits.shape[0] / batch_size)
             observation = torch.cat(n_samples * [observation], dim=0)
-            return d.log_prob(observation)
+            # temporary hack to handle rare done observations
+            factor = observation.new_ones(observation.shape) + observation * 10
+            return d.log_prob(observation) * factor
         else:
             # TODO: remove requirement for integration window
             # probability density function
@@ -136,11 +139,11 @@ class ObservedVariable(nn.Module):
     def marginal_log_likelihood(self, observation, log_importance_weights):
         # estimate the marginal log likelihood
         n_samples = log_importance_weights.shape[0]
-        cll = self._cond_log_likelihood(observation).view(n_samples, -1, 1)
-        log_imp_weighted_cl = log_importance_weights + cll
-        mll = log_imp_weighted_cl.logsumexp(dim=0) - torch.tensor(float(n_samples)).log()
-        return mll
-        # return self._cond_log_likelihood(observation, dist='likelihood_pred').view(n_samples, -1, 1).mean(dim=0)
+        # cll = self._cond_log_likelihood(observation).view(n_samples, -1, 1)
+        # log_imp_weighted_cl = log_importance_weights + cll
+        # mll = log_imp_weighted_cl.logsumexp(dim=0) - torch.tensor(float(n_samples)).log()
+        # return mll
+        return self._cond_log_likelihood(observation, dist='likelihood_pred').view(n_samples, -1, 1).mean(dim=0)
 
     def info_gain(self, observation, log_importance_weights, alpha):
         # calculate the information gain from the conditional and marginal likelihoods
@@ -149,6 +152,7 @@ class ObservedVariable(nn.Module):
         cll = self.cond_log_likelihood(observation).view(n_samples, -1, 1)
         mll = self.marginal_log_likelihood(observation, log_importance_weights)
         ig = cll - alpha * mll.repeat(n_samples, 1).view(n_samples, -1, 1).detach()
+        # ig = cll - alpha * mll.repeat(n_samples, 1).view(n_samples, -1, 1)
         return ig.mean(dim=0)
         # ig = cll.mean(dim=0) - mll
         # return ig
@@ -176,9 +180,18 @@ class ObservedVariable(nn.Module):
         self.likelihood_dist = None
         self.likelihood_dist_pred = None
         self.planning_likelihood_dist = None
+        self._planning = False
 
-    def entropy(self, planning=False):
-        if planning:
+    def planning_mode(self):
+        self._planning = True
+        self.planning_likelihood_dist = None
+
+    def acting_mode(self):
+        self._planning = False
+        self.planning_likelihood_dist = None
+
+    def entropy(self):
+        if self._planning:
             return self.planning_likelihood_dist.entropy()
         else:
             return self.likelihood_dist.entropy()

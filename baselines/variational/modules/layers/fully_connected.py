@@ -3,7 +3,9 @@ from .layer import Layer
 
 
 class FullyConnectedLayer(Layer):
-
+    """
+    A fully-connected layer.
+    """
     def __init__(self, n_input, n_output, batch_norm=False, non_linearity=None,
                  dropout=None):
         super(FullyConnectedLayer, self).__init__()

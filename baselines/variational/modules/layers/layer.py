@@ -2,7 +2,9 @@ import torch.nn as nn
 
 
 class Layer(nn.Module):
-
+    """
+    Parent class for a neural network layer.
+    """
     def __init__(self):
         super(Layer, self).__init__()
         self.linear = lambda x: x

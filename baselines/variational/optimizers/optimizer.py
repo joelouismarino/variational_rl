@@ -49,8 +49,8 @@ class Optimizer(object):
     def apply(self):
         grads = []
         for model_name, params in self.parameters.items():
-            # if self.update_inf_online and model_name == 'state_inference_model':
-            #     continue
+            if self.update_inf_online and model_name == 'state_inference_model':
+                continue
             # if self.update_inf_online and model_name == 'action_inference_model':
             #     continue
             grads += [param.grad for param in params]

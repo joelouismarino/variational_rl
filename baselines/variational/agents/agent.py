@@ -134,17 +134,17 @@ class Agent(nn.Module):
         optimality = (-torch.stack(self.metrics['optimality']['cll']) + 1. * self.optimality_scale) * valid
         future_terms = optimality[1:]
         # TODO: should only include these if the action distribution is not reparameterizable
-        if self.action_prior_model is not None:
-            action_kl = torch.stack(self.metrics['action']['kl']) * valid
-            future_terms = future_terms - action_kl[1:]
-        if self.state_prior_model is not None:
-            state_kl = torch.stack(self.metrics['state']['kl']) * valid
-            future_terms = future_terms - state_kl[1:]
-        if self.obs_likelihood_model is not None:
-            obs_info_gain = torch.stack(self.metrics['observation']['info_gain']) * valid
-            reward_info_gain = torch.stack(self.metrics['reward']['info_gain']) * valid
-            done_info_gain = torch.stack(self.metrics['done']['info_gain']) * valid
-            future_terms = future_terms + obs_info_gain[1:] + reward_info_gain[1:] + done_info_gain[1:]
+        # if self.action_prior_model is not None:
+        #     action_kl = torch.stack(self.metrics['action']['kl']) * valid
+        #     future_terms = future_terms - action_kl[1:]
+        # if self.state_prior_model is not None:
+        #     state_kl = torch.stack(self.metrics['state']['kl']) * valid
+        #     future_terms = future_terms - state_kl[1:]
+        # if self.obs_likelihood_model is not None:
+        #     obs_info_gain = torch.stack(self.metrics['observation']['info_gain']) * valid
+        #     reward_info_gain = torch.stack(self.metrics['reward']['info_gain']) * valid
+        #     done_info_gain = torch.stack(self.metrics['done']['info_gain']) * valid
+        #     future_terms = future_terms + obs_info_gain[1:] + reward_info_gain[1:] + done_info_gain[1:]
 
         deltas = future_terms + self.reward_discount * values[1:] * valid[1:] - values[:-1]
         advantages = deltas.detach()
@@ -238,11 +238,11 @@ class Agent(nn.Module):
             free_energy[:-1] = free_energy[:-1] + value_loss
             results['value'] = value_loss.sum(dim=0).div(n_valid_steps).mean(dim=0).detach().cpu().item()
             # update advantage running mean and variance
-            advantage_mean = advantages.mean()
-            advantage_std = advantages.std()
-            self.advantage_running_mean = 0.99 * self.advantage_running_mean + (1 - 0.99) * advantage_mean
-            self.advantage_running_std = 0.99 * self.advantage_running_std + (1 - 0.99) * advantage_std
-            advantages = (advantages - self.advantage_running_mean) / max(self.advantage_running_std, 1)
+            # advantage_mean = advantages.mean()
+            # advantage_std = advantages.std()
+            # self.advantage_running_mean = 0.99 * self.advantage_running_mean + (1 - 0.99) * advantage_mean
+            # self.advantage_running_std = 0.99 * self.advantage_running_std + (1 - 0.99) * advantage_std
+            # advantages = (advantages - self.advantage_running_mean) / max(self.advantage_running_std, 1)
         else:
             # TODO: this is hacky and doesn't work
             raise NotImplementedError
@@ -258,7 +258,7 @@ class Agent(nn.Module):
         importance_weights = torch.stack(self.importance_weights['action']).detach()
         reinforce_terms = - importance_weights[:-1] * log_probs[:-1] * advantages
         # reinforce_terms = - log_probs[:-1] * advantages
-        free_energy[:-1] = free_energy[:-1] + reinforce_terms
+        # free_energy[:-1] = free_energy[:-1] + reinforce_terms
 
         results['importance_weights'] = importance_weights.sum(dim=0).div(n_valid_steps).mean(dim=0).detach().cpu().item()
         results['policy_gradients'] = reinforce_terms.sum(dim=0).div(n_valid_steps-1).mean(dim=0).detach().cpu().item()
@@ -504,11 +504,11 @@ class Agent(nn.Module):
         if self.action_prior_model is not None:
             self.action_prior_model.reset(batch_size)
         if self.obs_likelihood_model is not None:
-            self.obs_likelihood_model.reset()
+            self.obs_likelihood_model.reset(batch_size)
         if self.reward_likelihood_model is not None:
-            self.reward_likelihood_model.reset()
+            self.reward_likelihood_model.reset(batch_size)
         if self.done_likelihood_model is not None:
-            self.done_likelihood_model.reset()
+            self.done_likelihood_model.reset(batch_size)
 
         # reset the episode, objectives, and log probs
         self.episode = {'observation': [], 'reward': [], 'done': [],
@@ -662,3 +662,12 @@ class Agent(nn.Module):
             self.reward_likelihood_model.attach_hidden_state()
         if self.done_likelihood_model is not None:
             self.done_likelihood_model.attach_hidden_state()
+
+    def load(self, state_dict):
+        # load the state dictionary for the agent
+        for k, v in state_dict.items():
+            if hasattr(self, k):
+                attr = getattr(self, k)
+                attr.load_state_dict(v)
+            else:
+                raise ValueError

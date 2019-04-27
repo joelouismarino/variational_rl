@@ -1,3 +1,4 @@
+import torch
 from .config import get_agent_args
 from .agents import get_agent
 from .buffers import DataBuffer
@@ -9,13 +10,17 @@ from .util.train_util import collect_episode, train
 
 
 def learn(env, seed, total_timesteps, log_dir, batch_size=16, n_updates=50,
-          n_initial_batches=1, train_seq_len=8, lr=1e-4, device=None, **kwargs):
+          n_initial_batches=1, train_seq_len=32, lr=1e-4, device=None,
+          ckpt_path=None, **kwargs):
 
     # torch.manual_seed(seed)
 
     # create the agent
     agent_args = get_agent_args(env)
     agent = get_agent(agent_args)
+    if ckpt_path is not None:
+        state_dict = torch.load(ckpt_path)
+        agent.load(state_dict)
     if device is not None:
         agent.to(device)
     agent.reset()
@@ -44,7 +49,7 @@ def learn(env, seed, total_timesteps, log_dir, batch_size=16, n_updates=50,
                 'total_timesteps': total_timesteps, 'batch_size': batch_size,
                 'n_updates': n_updates, 'n_initial_batches': n_initial_batches,
                 'lr': lr, 'device': device, 'agent_args': agent_args}
-    logger = Logger(log_dir, exp_args)
+    logger = Logger(log_dir, exp_args, agent)
     exp_args['log_str'] = logger.log_str
     plotter = Plotter(log_dir, exp_args)
 
