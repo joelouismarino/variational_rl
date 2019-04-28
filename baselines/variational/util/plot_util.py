@@ -19,7 +19,7 @@ class Plotter:
         exp_args (str): arguments for the experiment
         dashboard (bool): whether or not to plot the dashboard
     """
-    def __init__(self, log_dir, exp_args, dashboard=True):
+    def __init__(self, log_dir, exp_args, dashboard=False):
         self.log_dir = log_dir
         self.env_id = exp_args['log_str']
         if exp_args['env'] in continuous_control:

@@ -53,7 +53,6 @@ class DataBuffer(object):
     def prioritized_sample(self):
         pass
 
-
     def append(self, episode):
         """
         Removes excess episodes if capacity has been reached. Appends a new
@@ -73,5 +72,11 @@ class DataBuffer(object):
             self.buffer = self.buffer[-self.capacity+1:-1]
         self.buffer.append(episode)
 
+    def empty(self):
+        """
+        Emptys the buffer.
+        """
+        self.buffer = []
+        
     def __len__(self):
         return len(self.buffer)

@@ -36,93 +36,99 @@ def plot_dashboard(results, dir):
 
         # plot the prediction
         plt.subplot(8, 6, 3)
-        if img_obs:
-            prediction = results['distributions']['observation']['pred']['loc'][step].numpy().transpose(1, 2, 0)
-            plt.imshow(prediction)
-            plt.axis('off')
-        else:
-            # plot mujoco
-            prediction = np.reshape(results['distributions']['observation']['pred']['loc'][step].numpy(), (1, state_dim))
-            plt.imshow(prediction, cmap='Greys', vmin = -2, vmax = 2)
-            plt.tick_params(left='off', bottom='off', labelleft='off', labelbottom='off')
-        plt.title('Prediction', fontsize=10)
+        if 'observation' in results['distributions'].keys():
+            if img_obs:
+                prediction = results['distributions']['observation']['pred']['loc'][step].numpy().transpose(1, 2, 0)
+                plt.imshow(prediction)
+                plt.axis('off')
+            else:
+                # plot mujoco
+                prediction = np.reshape(results['distributions']['observation']['pred']['loc'][step].numpy(), (1, state_dim))
+                plt.imshow(prediction, cmap='Greys', vmin = -2, vmax = 2)
+                plt.tick_params(left='off', bottom='off', labelleft='off', labelbottom='off')
+            plt.title('Prediction', fontsize=10)
 
         # plot the prediction error
         plt.subplot(8, 6, 4)
-        if img_obs:
-            prediction_error = (observation - prediction + 1.) / 2
-            plt.imshow(prediction_error)
-            plt.axis('off')
-        else:
-            prediction_error = (observation - prediction)
-            plt.imshow(prediction_error, cmap='Greys', vmin = -2, vmax = 2)
-            plt.tick_params(left='off', bottom='off', labelleft='off', labelbottom='off')
-        plt.title('Prediction Error', fontsize=10)
+        if 'observation' in results['distributions'].keys():
+            if img_obs:
+                prediction_error = (observation - prediction + 1.) / 2
+                plt.imshow(prediction_error)
+                plt.axis('off')
+            else:
+                prediction_error = (observation - prediction)
+                plt.imshow(prediction_error, cmap='Greys', vmin = -2, vmax = 2)
+                plt.tick_params(left='off', bottom='off', labelleft='off', labelbottom='off')
+            plt.title('Prediction Error', fontsize=10)
 
         # plot the reconstruction
         plt.subplot(8, 6, 9)
-        if img_obs:
-            reconstruction = results['distributions']['observation']['recon']['loc'][step].numpy().transpose(1, 2, 0)
-            plt.imshow(reconstruction)
-            plt.axis('off')
-        else:
-            reconstruction = np.reshape(results['distributions']['observation']['recon']['loc'][step].numpy(), (1, state_dim))
-            plt.imshow(reconstruction, cmap='Greys', vmin = -2, vmax = 2)
-            plt.tick_params(left='off', bottom='off', labelleft='off', labelbottom='off')
-        plt.title('Reconstruction', fontsize=10)
+        if 'observation' in results['distributions'].keys():
+            if img_obs:
+                reconstruction = results['distributions']['observation']['recon']['loc'][step].numpy().transpose(1, 2, 0)
+                plt.imshow(reconstruction)
+                plt.axis('off')
+            else:
+                reconstruction = np.reshape(results['distributions']['observation']['recon']['loc'][step].numpy(), (1, state_dim))
+                plt.imshow(reconstruction, cmap='Greys', vmin = -2, vmax = 2)
+                plt.tick_params(left='off', bottom='off', labelleft='off', labelbottom='off')
+            plt.title('Reconstruction', fontsize=10)
 
         # plot the reconstruction error
         plt.subplot(8, 6, 10)
-        if img_obs:
-            reconstruction_error = (observation - reconstruction + 1.) / 2
-            plt.imshow(reconstruction_error)
-            plt.axis('off')
-        else:
-            reconstruction_error = (observation - reconstruction)
-            plt.imshow(reconstruction_error, cmap='Greys', vmin = -2, vmax = 2)
-            plt.tick_params(left='off', bottom='off', labelleft='off', labelbottom='off')
-        plt.title('Reconstruction Error', fontsize=10)
+        if 'observation' in results['distributions'].keys():
+            if img_obs:
+                reconstruction_error = (observation - reconstruction + 1.) / 2
+                plt.imshow(reconstruction_error)
+                plt.axis('off')
+            else:
+                reconstruction_error = (observation - reconstruction)
+                plt.imshow(reconstruction_error, cmap='Greys', vmin = -2, vmax = 2)
+                plt.tick_params(left='off', bottom='off', labelleft='off', labelbottom='off')
+            plt.title('Reconstruction Error', fontsize=10)
 
         # plot the reward conditional likelihood distribution
         plt.subplot(8, 3, 3)
-        reward = results['reward'][step].item()
-        reward_cll_pred_loc = results['distributions']['reward']['pred']['loc'][step].item()
-        reward_cll_pred_scale = results['distributions']['reward']['pred']['scale'][step].item()
-        reward_cll_recon_loc = results['distributions']['reward']['recon']['loc'][step].item()
-        reward_cll_recon_scale = results['distributions']['reward']['recon']['scale'][step].item()
-        x = np.linspace(-1, 2, 1000)
-        reward_pred = ss.norm.pdf(x, reward_cll_pred_loc, reward_cll_pred_scale)
-        reward_recon = ss.norm.pdf(x, reward_cll_recon_loc, reward_cll_recon_scale)
-        plt.plot(x, reward_pred, label='Prediction')
-        plt.plot(x, reward_recon, label='Reconstruction')
-        point = plt.plot([reward], [0], 'gD', label='Reward')[0]
-        point.set_clip_on(False)
-        plt.legend(loc='upper center', ncol=3)
-        plt.title('Reward Prediction and Reconstruction')
-        plt.xlim(-1, 2)
-        plt.ylim(0, 5)
+        if 'reward' in results['distributions'].keys():
+            reward = results['reward'][step].item()
+            reward_cll_pred_loc = results['distributions']['reward']['pred']['loc'][step].item()
+            reward_cll_pred_scale = results['distributions']['reward']['pred']['scale'][step].item()
+            reward_cll_recon_loc = results['distributions']['reward']['recon']['loc'][step].item()
+            reward_cll_recon_scale = results['distributions']['reward']['recon']['scale'][step].item()
+            x = np.linspace(-1, 2, 1000)
+            reward_pred = ss.norm.pdf(x, reward_cll_pred_loc, reward_cll_pred_scale)
+            reward_recon = ss.norm.pdf(x, reward_cll_recon_loc, reward_cll_recon_scale)
+            plt.plot(x, reward_pred, label='Prediction')
+            plt.plot(x, reward_recon, label='Reconstruction')
+            point = plt.plot([reward], [0], 'gD', label='Reward')[0]
+            point.set_clip_on(False)
+            plt.legend(loc='upper center', ncol=3)
+            plt.title('Reward Prediction and Reconstruction')
+            plt.xlim(-1, 2)
+            plt.ylim(0, 5)
 
         # plot the done conditional likelihood distribution
         plt.subplot(8, 3, 6)
-        done = results['done'][step].item()
-        done_cll_pred_prob = results['distributions']['done']['pred']['probs'][step].numpy()
-        done_cll_recon_prob = results['distributions']['done']['recon']['probs'][step].numpy()
-        if done_cll_pred_prob.shape[0] == 2:
-            # categorical
-            done_cll_pred_prob = done_cll_pred_prob[1]
-            done_cll_recon_prob = done_cll_recon_prob[1]
-        else:
-            # bernoulli
-            done_cll_pred_prob = done_cll_pred_prob[0]
-            done_cll_recon_prob = done_cll_recon_prob[0]
-        plt.bar([-0.125, 0.875], [1. - done_cll_pred_prob, done_cll_pred_prob], 0.25, label='Prediction')
-        plt.bar([0.125, 1.125], [1. - done_cll_recon_prob, done_cll_recon_prob], 0.25, label='Reconstruction')
-        point = plt.plot([done], [0], 'gD', label='Done')[0]
-        point.set_clip_on(False)
-        plt.legend(loc='upper center', ncol=3)
-        plt.title('Done Prediction and Reconstruction')
-        plt.ylim(0, 2)
-        plt.xticks([0,1])
+        if 'done' in results['distributions'].keys():
+            done = results['done'][step].item()
+            done_cll_pred_prob = results['distributions']['done']['pred']['probs'][step].numpy()
+            done_cll_recon_prob = results['distributions']['done']['recon']['probs'][step].numpy()
+            if done_cll_pred_prob.shape[0] == 2:
+                # categorical
+                done_cll_pred_prob = done_cll_pred_prob[1]
+                done_cll_recon_prob = done_cll_recon_prob[1]
+            else:
+                # bernoulli
+                done_cll_pred_prob = done_cll_pred_prob[0]
+                done_cll_recon_prob = done_cll_recon_prob[0]
+            plt.bar([-0.125, 0.875], [1. - done_cll_pred_prob, done_cll_pred_prob], 0.25, label='Prediction')
+            plt.bar([0.125, 1.125], [1. - done_cll_recon_prob, done_cll_recon_prob], 0.25, label='Reconstruction')
+            point = plt.plot([done], [0], 'gD', label='Done')[0]
+            point.set_clip_on(False)
+            plt.legend(loc='upper center', ncol=3)
+            plt.title('Done Prediction and Reconstruction')
+            plt.ylim(0, 2)
+            plt.xticks([0,1])
 
         # plot the action distribution
         discrete_actions = 'probs' in results['distributions']['action']['prior']
@@ -152,12 +158,13 @@ def plot_dashboard(results, dir):
 
         # plot the state inference improvement over time
         plt.subplot(8, 3, 9)
-        state_inf_imp = results['inf_imp']['state'][:step+1].numpy()
-        plt.plot(state_inf_imp)
-        plt.ylim(results['inf_imp']['state'].min().item() - 0.5,
-                 results['inf_imp']['state'].max().item() + 0.5)
-        plt.xlim(0, n_steps)
-        plt.title('State Inf. Imp.')
+        if len(results['inf_imp']['state']) > 0:
+            state_inf_imp = results['inf_imp']['state'][:step+1].numpy()
+            plt.plot(state_inf_imp)
+            plt.ylim(results['inf_imp']['state'].min().item() - 0.5,
+                     results['inf_imp']['state'].max().item() + 0.5)
+            plt.xlim(0, n_steps)
+            plt.title('State Inf. Imp.')
 
         # plot the reward over time
         plt.subplot(8, 3, 10)
@@ -183,7 +190,7 @@ def plot_dashboard(results, dir):
             plt.ylim(results['inf_imp']['action'].min().item() - 0.5,
                      results['inf_imp']['action'].max().item() + 0.5)
             plt.xlim(0, n_steps)
-        plt.title('Action Inf. Imp.')
+            plt.title('Action Inf. Imp.')
 
         # plot the value estimate over time
         plt.subplot(8, 3, 13)
@@ -196,21 +203,23 @@ def plot_dashboard(results, dir):
 
         # plot the observation info gain over time
         plt.subplot(8, 3, 14)
-        obs_info_gain = results['metrics']['observation']['info_gain'][:step+1].numpy()
-        plt.plot(obs_info_gain)
-        plt.ylim(results['metrics']['observation']['info_gain'][:-1].min().item() - 0.5,
-                 results['metrics']['observation']['info_gain'].max().item() + 0.5)
-        plt.xlim(0, n_steps)
-        plt.title('Obs. Info. Gain')
+        if 'observation' in results['metrics'].keys():
+            obs_info_gain = results['metrics']['observation']['info_gain'][:step+1].numpy()
+            plt.plot(obs_info_gain)
+            plt.ylim(results['metrics']['observation']['info_gain'][:-1].min().item() - 0.5,
+                     results['metrics']['observation']['info_gain'].max().item() + 0.5)
+            plt.xlim(0, n_steps)
+            plt.title('Obs. Info. Gain')
 
         # plot the observation conditional log-likelihood over time
         plt.subplot(8, 3, 15)
-        obs_cll = results['metrics']['observation']['cll'][:step+1].numpy()
-        plt.plot(obs_cll)
-        plt.ylim(results['metrics']['observation']['cll'][:-1].min().item() - 0.5,
-                 results['metrics']['observation']['cll'].max().item() + 0.5)
-        plt.xlim(0, n_steps)
-        plt.title('Obs. Cond. Log-Likelihood')
+        if 'observation' in results['metrics'].keys():
+            obs_cll = results['metrics']['observation']['cll'][:step+1].numpy()
+            plt.plot(obs_cll)
+            plt.ylim(results['metrics']['observation']['cll'][:-1].min().item() - 0.5,
+                     results['metrics']['observation']['cll'].max().item() + 0.5)
+            plt.xlim(0, n_steps)
+            plt.title('Obs. Cond. Log-Likelihood')
 
         # plot the advantage estimate over time
         plt.subplot(8, 3, 16)
@@ -224,21 +233,23 @@ def plot_dashboard(results, dir):
 
         # plot the reward info gain over time
         plt.subplot(8, 3, 17)
-        reward_info_gain = results['metrics']['reward']['info_gain'][:step+1].numpy()
-        plt.plot(reward_info_gain)
-        plt.ylim(results['metrics']['reward']['info_gain'].min().item() - 0.5,
-                 results['metrics']['reward']['info_gain'].max().item() + 0.5)
-        plt.xlim(0, n_steps)
-        plt.title('Reward Info. Gain')
+        if 'reward' in results['metrics'].keys():
+            reward_info_gain = results['metrics']['reward']['info_gain'][:step+1].numpy()
+            plt.plot(reward_info_gain)
+            plt.ylim(results['metrics']['reward']['info_gain'].min().item() - 0.5,
+                     results['metrics']['reward']['info_gain'].max().item() + 0.5)
+            plt.xlim(0, n_steps)
+            plt.title('Reward Info. Gain')
 
         # plot the reward conditional log-likelihood over time
         plt.subplot(8, 3, 18)
-        reward_cll = results['metrics']['reward']['cll'][:step+1].numpy()
-        plt.plot(reward_cll)
-        plt.ylim(results['metrics']['reward']['cll'].min().item() - 0.5,
-                 results['metrics']['reward']['cll'].max().item() + 0.5)
-        plt.xlim(0, n_steps)
-        plt.title('Reward Cond. Log-Likelihood')
+        if 'reward' in results['metrics'].keys():
+            reward_cll = results['metrics']['reward']['cll'][:step+1].numpy()
+            plt.plot(reward_cll)
+            plt.ylim(results['metrics']['reward']['cll'].min().item() - 0.5,
+                     results['metrics']['reward']['cll'].max().item() + 0.5)
+            plt.xlim(0, n_steps)
+            plt.title('Reward Cond. Log-Likelihood')
 
         # plot the Monte Carlo return over time
         plt.subplot(8, 3, 19)
@@ -248,25 +259,27 @@ def plot_dashboard(results, dir):
             plt.ylim(results['return'].min().item() - 0.5,
                      results['return'].max().item() + 0.5)
             plt.xlim(0, n_steps)
-        plt.title('Discounted Return')
+            plt.title('Discounted Return')
 
         # plot the done info gain over time
         plt.subplot(8, 3, 20)
-        done_info_gain = results['metrics']['done']['info_gain'][:step+1].numpy()
-        plt.plot(done_info_gain)
-        plt.ylim(results['metrics']['done']['info_gain'].min().item() - 0.5,
-                 results['metrics']['done']['info_gain'].max().item() + 0.5)
-        plt.xlim(0, n_steps)
-        plt.title('Done Info. Gain')
+        if 'done' in results['metrics'].keys():
+            done_info_gain = results['metrics']['done']['info_gain'][:step+1].numpy()
+            plt.plot(done_info_gain)
+            plt.ylim(results['metrics']['done']['info_gain'].min().item() - 0.5,
+                     results['metrics']['done']['info_gain'].max().item() + 0.5)
+            plt.xlim(0, n_steps)
+            plt.title('Done Info. Gain')
 
         # plot the done conditional log-likelihood over time
         plt.subplot(8, 3, 21)
-        done_cll = results['metrics']['done']['cll'][:step+1].numpy()
-        plt.plot(done_cll)
-        plt.ylim(results['metrics']['done']['cll'].min().item() - 0.5,
-                 results['metrics']['done']['cll'].max().item() + 0.5)
-        plt.xlim(0, n_steps)
-        plt.title('Done Cond. Log-Likelihood')
+        if 'done' in results['metrics'].keys():
+            done_cll = results['metrics']['done']['cll'][:step+1].numpy()
+            plt.plot(done_cll)
+            plt.ylim(results['metrics']['done']['cll'].min().item() - 0.5,
+                     results['metrics']['done']['cll'].max().item() + 0.5)
+            plt.xlim(0, n_steps)
+            plt.title('Done Cond. Log-Likelihood')
 
         fig.canvas.draw()
         plt.tight_layout()

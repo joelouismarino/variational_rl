@@ -258,7 +258,7 @@ class Agent(nn.Module):
         importance_weights = torch.stack(self.importance_weights['action']).detach()
         reinforce_terms = - importance_weights[:-1] * log_probs[:-1] * advantages
         # reinforce_terms = - log_probs[:-1] * advantages
-        # free_energy[:-1] = free_energy[:-1] + reinforce_terms
+        free_energy[:-1] = free_energy[:-1] + reinforce_terms
 
         results['importance_weights'] = importance_weights.sum(dim=0).div(n_valid_steps).mean(dim=0).detach().cpu().item()
         results['policy_gradients'] = reinforce_terms.sum(dim=0).div(n_valid_steps-1).mean(dim=0).detach().cpu().item()

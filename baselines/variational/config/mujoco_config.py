@@ -4,22 +4,24 @@ import numpy as np
 
 def get_mujoco_config(env):
     """
-    Get the model configuration arguments for MiniGrid environments.
+    Get the model configuration arguments for Mujoco environments.
     """
     agent_args = {}
 
     agent_args['agent_type'] = 'discriminative'
 
     agent_args['misc_args'] = {'optimality_scale': 1,
+                               'n_state_samples': 1,
                                'n_inf_iter': dict(state=1, action=0),
-                               'kl_min': dict(state=0.1, action=0),
-                               'gae_lambda': 0.95}
+                               'kl_min': dict(state=0.1, action=1.),
+                               'kl_min_anneal_rate': dict(state=0.99, action=1.),
+                               'reward_discount': 0.99,
+                               'gae_lambda': 0.99}
 
     if agent_args['misc_args']['n_inf_iter']['action'] > 0:
         # planning configuration
-        agent_args['misc_args']['n_planning_samples'] = 10
-        agent_args['misc_args']['n_state_samples'] = 5
-        agent_args['misc_args']['max_rollout_length'] = 100
+        agent_args['misc_args']['n_planning_samples'] = 100
+        agent_args['misc_args']['max_rollout_length'] = 10
 
     observation_size = np.prod(env.observation_space.shape)
     action_space = env.action_space
@@ -43,18 +45,18 @@ def get_mujoco_config(env):
 
     if agent_args['agent_type'] == 'discriminative':
         # state
-        n_state_variables = 100
+        n_state_variables = 32
         agent_args['state_variable_args'] = {'type': 'fully_connected',
-                                             'prior_dist': 'Normal', #'Normal' or 'Delta'
+                                             'prior_dist': 'Delta', #'Normal' or 'Delta'
                                              'approx_post_dist': None,
                                              'n_variables': n_state_variables}
 
         agent_args['state_prior_args'] = {'type': 'fully_connected',
-                                          'n_layers': 2,
+                                          'n_layers': 1,
                                           'n_input': observation_size,
-                                          'n_units': 64,
+                                          'n_units': 32,
                                           'connectivity': 'sequential',
-                                          'non_linearity': 'elu',
+                                          'non_linearity': 'tanh',
                                           'dropout': None}
         # agent_args['state_prior_args'] = {'type': 'minigrid_conv'}
         # hidden_state_size = agent_args['state_prior_args']['n_layers'] * agent_args['state_prior_args']['n_units']
@@ -72,9 +74,9 @@ def get_mujoco_config(env):
         agent_args['action_prior_args'] = None
 
         agent_args['action_inference_args'] = {'type': 'fully_connected',
-                                               'n_layers': 2,
+                                               'n_layers': 1,
                                                'n_input': n_state_variables,
-                                               'n_units': 64,
+                                               'n_units': 32,
                                                'connectivity': 'sequential',
                                                'batch_norm': False,
                                                'non_linearity': 'tanh',
@@ -83,7 +85,7 @@ def get_mujoco_config(env):
         agent_args['value_model_args'] = {'type': 'fully_connected',
                                           'n_layers': 1,
                                           'n_input': n_state_variables,
-                                          'n_units': 64,
+                                          'n_units': 32,
                                           'connectivity': 'sequential',
                                           'non_linearity': 'tanh',
                                           'dropout': None}
