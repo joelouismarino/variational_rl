@@ -9,8 +9,8 @@ from .util.print_util import print_step_metrics, print_episode_metrics
 from .util.train_util import collect_episode, train
 
 
-def learn(env, seed, total_timesteps, log_dir, batch_size=128, n_updates=20,
-          n_initial_batches=1, train_seq_len=32, lr=1e-4, device=None,
+def learn(env, seed, total_timesteps, log_dir, batch_size=64, n_updates=10,
+          n_initial_batches=1, train_seq_len=64, lr=3e-4, device=None,
           ckpt_path=None, **kwargs):
 
     # torch.manual_seed(seed)
@@ -33,12 +33,12 @@ def learn(env, seed, total_timesteps, log_dir, batch_size=128, n_updates=20,
     lr = {'state_inference_model': base_lr,
           'action_inference_model': base_lr,
           'state_prior_model': base_lr,
-          'action_prior_model': base_lr,
+          'action_prior_model': 0.5 * base_lr,
           'obs_likelihood_model': base_lr,
           'reward_likelihood_model': base_lr,
           'done_likelihood_model': base_lr,
           'value_model': base_lr}
-    optimizer = Optimizer(agent, lr=lr, norm_grad=0.5)
+    optimizer = Optimizer(agent, lr=lr, norm_grad=1.)
 
     # logging and plotting
     if hasattr(env, 'spec'):
@@ -48,7 +48,8 @@ def learn(env, seed, total_timesteps, log_dir, batch_size=128, n_updates=20,
     exp_args = {'env': env_name, 'seed': seed,
                 'total_timesteps': total_timesteps, 'batch_size': batch_size,
                 'n_updates': n_updates, 'n_initial_batches': n_initial_batches,
-                'lr': lr, 'device': device, 'agent_args': agent_args}
+                'train_seq_len': train_seq_len, 'lr': lr, 'device': device,
+                'ckpt_path': ckpt_path, 'agent_args': agent_args}
     logger = Logger(log_dir, exp_args, agent)
     exp_args['log_str'] = logger.log_str
     plotter = Plotter(log_dir, exp_args)

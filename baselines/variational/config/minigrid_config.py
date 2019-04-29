@@ -14,7 +14,7 @@ def get_minigrid_config(env):
                                'n_state_samples': 1,
                                'n_inf_iter': dict(state=1, action=1),
                                'kl_min': dict(state=0.1, action=0.75),
-                               'kl_min_anneal_rate': dict(state=0.99, action=0.99),
+                               'kl_min_anneal_rate': dict(state=0.99, action=1.),
                                'reward_discount': 0.99,
                                'gae_lambda': 0.95}
 

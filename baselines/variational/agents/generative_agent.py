@@ -5,6 +5,7 @@ from .agent import Agent
 from ..modules.models import get_model
 from ..modules.variables import get_variable
 from ..misc import clear_gradients, one_hot_to_index
+from ..util.normalization_util import Normalizer
 
 
 class GenerativeAgent(Agent):
@@ -87,13 +88,12 @@ class GenerativeAgent(Agent):
         self.log_probs = {'action': []}
         # store the values during training
         self.values = []
-        # store the reward predictions during training
-        self.reward_predictions = []
 
         self.valid = []
         self._prev_action = None
         self.batch_size = 1
         self.gae_lambda = misc_args['gae_lambda']
+        self.reward_discount = misc_args['reward_discount']
         self._planning = False
 
     def state_inference(self, observation, reward, done, valid, **kwargs):

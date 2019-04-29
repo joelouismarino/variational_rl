@@ -5,6 +5,7 @@ from abc import abstractmethod
 from ..modules.networks import get_network
 from ..modules.variables import get_variable
 from ..misc import clear_gradients, one_hot_to_index
+from ..util.normalization_util import Normalizer
 import numpy as np
 
 
@@ -71,10 +72,9 @@ class Agent(nn.Module):
         self.alpha = 0.01
         self.reward_discount = 0.99
 
-        self.advantage_running_mean = 0.
-        self.advantage_running_std = 1.
-        self.value_running_mean = 0.
-        self.value_running_std = 1.
+        self.return_normalizer = None
+        self.observation_normalizer = None
+        # self.advantage_normalizer = None
 
     def act(self, observation, reward=None, done=False, action=None, valid=None, log_prob=None):
         observation, reward, action, done, valid, log_prob = self._change_device(observation, reward, action, done, valid, log_prob)
@@ -126,12 +126,10 @@ class Agent(nn.Module):
         # estimate the value of the current state
         pass
 
-    def estimate_advantages(self):
-        # estimate bootstrapped advantages
+    def get_future_terms(self):
+        # get the future terms in the objective
         valid = torch.stack(self.valid)
-        values = torch.stack(self.values)
-        # add up the future terms in the objective
-        optimality = (-torch.stack(self.metrics['optimality']['cll']) + 1. * self.optimality_scale) * valid
+        optimality = (-torch.stack(self.metrics['optimality']['cll']) + 1.) * valid
         future_terms = optimality[1:]
         # TODO: should only include these if the action distribution is not reparameterizable
         # if self.action_prior_model is not None:
@@ -145,50 +143,39 @@ class Agent(nn.Module):
         #     reward_info_gain = torch.stack(self.metrics['reward']['info_gain']) * valid
         #     done_info_gain = torch.stack(self.metrics['done']['info_gain']) * valid
         #     future_terms = future_terms + obs_info_gain[1:] + reward_info_gain[1:] + done_info_gain[1:]
+        return future_terms
 
+    def estimate_advantages(self, update=False):
+        # estimate bootstrapped advantages
+        valid = torch.stack(self.valid)
+        values = torch.stack(self.values)
+        future_terms = self.get_future_terms()
+        if self.return_normalizer:
+            # normalize the future terms
+            future_terms = self.return_normalizer(future_terms.squeeze(-1))
+            future_terms = future_terms.unsqueeze(-1)
         deltas = future_terms + self.reward_discount * values[1:] * valid[1:] - values[:-1]
         advantages = deltas.detach()
         # use generalized advantage estimator
         for i in range(advantages.shape[0]-1, 0, -1):
             advantages[i-1] = advantages[i-1] + self.reward_discount * self.gae_lambda * advantages[i] * valid[i]
+        if self.advantage_normalizer and update:
+            self.advantage_normalizer.update(advantages.squeeze(-1))
         return advantages
 
-    def estimate_returns(self):
+    def estimate_returns(self, update=False):
         # calculate the discounted Monte Carlo return
         valid = torch.stack(self.valid)
-        reward = (-torch.stack(self.metrics['optimality']['cll']) + 1.) * valid
-        discounted_returns = reward
+        discounted_returns = self.get_future_terms()
         for i in range(discounted_returns.shape[0]-1, 0, -1):
             discounted_returns[i-1] += self.reward_discount * discounted_returns[i] * valid[i]
+        # NOTE: calculating past returns to try to reproduce baselines experiments
+        # for i in range(1, discounted_returns.shape[0]):
+        #     discounted_returns[i] += self.reward_discount * discounted_returns[i-1] * valid[i]
+        if self.return_normalizer:
+            # normalize the discounted returns
+            self.return_normalizer(discounted_returns.squeeze(-1), update=update)
         return discounted_returns
-
-    # def free_energy(self, observation, reward, done, valid):
-    #     observation, reward, done = self._change_device(observation, reward, done)
-    #     cond_log_likelihood = self.cond_log_likelihood(observation, reward, done)
-    #     kl_divergence = self.kl_divergence()
-    #     free_energy = kl_divergence - cond_log_likelihood
-    #     return free_energy
-    #
-    # def cond_log_likelihood(self, observation, reward, done, valid):
-    #     observation, reward, done = self._change_device(observation, reward, done)
-    #     opt_log_likelihood = self.optimality_scale * (reward - 1.)
-    #     cond_log_likelihood = valid * opt_log_likelihood
-    #     if self.observation_variable is not None:
-    #         obs_log_likelihood = (1 - done) * self.observation_variable.cond_log_likelihood(observation).sum(dim=1, keepdim=True)
-    #         cond_log_likelihood += valid * obs_log_likelihood
-    #     if self.reward_variable is not None:
-    #         reward_log_likelihood = self.reward_variable.cond_log_likelihood(reward).sum(dim=1, keepdim=True)
-    #         cond_log_likelihood += valid * reward_log_likelihood
-    #     if self.done_variable is not None:
-    #         done_log_likelihood = self.done_variable.cond_log_likelihood(done).sum(dim=1, keepdim=True)
-    #         cond_log_likelihood += valid * done_log_likelihood
-    #     return cond_log_likelihood
-    #
-    # def kl_divergence(self, valid):
-    #     state_kl_divergence = self.state_variable.kl_divergence().sum(dim=1, keepdim=True)
-    #     action_kl_divergence = self.action_variable.kl_divergence().view(-1, 1)
-    #     kl_divergence = valid * (state_kl_divergence + action_kl_divergence)
-    #     return kl_divergence
 
     def evaluate(self):
         # evaluate the objective, averaged over the batch, backprop
@@ -223,36 +210,24 @@ class Agent(nn.Module):
             free_energy = free_energy + torch.stack(objective)
 
         # calculate the REINFORCE terms
-        if self.value_model is not None:
+        if self.value_model:
             # use a bootstrapped value estimate as a baseline
             values = torch.stack(self.values)
             advantages = self.estimate_advantages()
             # calculate value loss
             returns = advantages + values[:-1].detach()
-            # returns_mean = returns.mean()
-            # returns_std = returns.std()
-            # self.value_running_mean = 0.99 * self.value_running_mean + (1 - 0.99) * returns_mean
-            # self.value_running_std = 0.99 * self.value_running_std + (1 - 0.99) * returns_std
-            # returns = (returns - self.value_running_mean) / max(self.value_running_std, 1)
             value_loss = 0.5 * (values[:-1] - returns).pow(2)
             free_energy[:-1] = free_energy[:-1] + value_loss
             results['value'] = value_loss.sum(dim=0).div(n_valid_steps).mean(dim=0).detach().cpu().item()
-            # update advantage running mean and variance
+            if self.advantage_normalizer:
+                advantages = self.advantage_normalizer(advantages.squeeze(-1))
+                advantages = advantages.unsqueeze(-1)
+            # normalize advantages
             # advantage_mean = advantages.mean()
             # advantage_std = advantages.std()
-            # self.advantage_running_mean = 0.99 * self.advantage_running_mean + (1 - 0.99) * advantage_mean
-            # self.advantage_running_std = 0.99 * self.advantage_running_std + (1 - 0.99) * advantage_std
-            # advantages = (advantages - self.advantage_running_mean) / max(self.advantage_running_std, 1)
+            # advantages = (advantages - advantage_mean) / advantage_std
         else:
-            # TODO: this is hacky and doesn't work
             raise NotImplementedError
-            # use Monte Carlo baseline
-            # rewards = (-torch.stack(self.objectives['optimality']) + 1.) * valid
-            # returns = torch.flip(torch.cumsum(torch.flip(rewards.detach(), dims=[0]), dim=0), dims=[0])
-            # # normalize the future sums
-            # returns_mean = returns[1:].sum(dim=0, keepdim=True).div(n_valid_steps)
-            # returns_std = (returns[1:] - returns_mean).pow(2).mul(valid[1:]).sum(dim=0, keepdim=True).div(n_valid_steps-1).pow(0.5)
-            # advantages = (returns - returns_mean) / (returns_std + 1e-6)
         # add the REINFORCE terms to the total objective
         log_probs = torch.stack(self.log_probs['action'])
         importance_weights = torch.stack(self.importance_weights['action']).detach()
@@ -483,11 +458,11 @@ class Agent(nn.Module):
                     # parameters
                     if len(vvv) > 0:
                         results['distributions'][k][kk][kkk] = torch.cat(vvv, dim=0).detach().cpu()
-        # get the values, advantages
+        # get the returns, values, advantages
+        results['return'] = self.estimate_returns(update=True).mean(dim=1).detach().cpu()
         results['value'] = torch.cat(self.values, dim=0).detach().cpu()
         results['advantage'] = torch.zeros(results['value'].shape)
-        results['advantage'][:-1] = self.estimate_advantages().mean(dim=1).detach().cpu()
-        results['return'] = self.estimate_returns().mean(dim=1).detach().cpu()
+        results['advantage'][:-1] = self.estimate_advantages(update=True).mean(dim=1).detach().cpu()
         return results
 
     def reset(self, batch_size=1):

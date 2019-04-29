@@ -68,6 +68,8 @@ class DataBuffer(object):
             del episode['value']
         if 'advantage' in episode:
             del episode['advantage']
+        if 'return' in episode:
+            del episode['return']
         if len(self.buffer) >= self.capacity:
             self.buffer = self.buffer[-self.capacity+1:-1]
         self.buffer.append(episode)
@@ -77,6 +79,6 @@ class DataBuffer(object):
         Emptys the buffer.
         """
         self.buffer = []
-        
+
     def __len__(self):
         return len(self.buffer)

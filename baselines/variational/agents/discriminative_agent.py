@@ -4,6 +4,7 @@ from .agent import Agent
 from ..modules.models import get_model
 from ..modules.variables import get_variable
 from ..misc import clear_gradients, one_hot_to_index
+from ..util.normalization_util import Normalizer
 
 
 class DiscriminativeAgent(Agent):
@@ -64,6 +65,15 @@ class DiscriminativeAgent(Agent):
         self._prev_action = None
         self.batch_size = 1
         self.gae_lambda = misc_args['gae_lambda']
+        self.reward_discount = misc_args['reward_discount']
+
+        if misc_args['normalize_returns']:
+            self.return_normalizer = Normalizer(shift=False, clip_value=10.)
+        if misc_args['normalize_advantages']:
+            self.advantage_normalizer = Normalizer(clip_value=10.)
+        if misc_args['normalize_observations']:
+            # TODO: set observation shape
+            self.obs_normalizer = Normalizer()
 
         self.state_variable.inference_mode()
         self.action_variable.inference_mode()

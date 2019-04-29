@@ -140,8 +140,7 @@ def build_env(args):
                                                                         'sign_rewards': True})
     # elif env_type == 'mujoco' and alg == 'variational':
     #     env = make_env(env_id, env_type, wrapper_kwargs={'to_tensor': True,
-    #                                                     'add_batch_dim': True,
-    #                                                     'sign_rewards': True})
+    #                                                      'add_batch_dim': True})
     #     # normalize
     #     env = VecNormalize(env)
     else:
@@ -153,7 +152,7 @@ def build_env(args):
 
         env = make_vec_env(env_id, env_type, args.num_env or 1, seed, reward_scale=args.reward_scale)
         if env_type == 'mujoco':
-           env = VecNormalize(env)
+           env = VecNormalize(env, ob=True, ret=True)
 
     return env
 
