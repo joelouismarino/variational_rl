@@ -14,11 +14,11 @@ def get_mujoco_config(env):
                                'n_state_samples': 1,
                                'n_inf_iter': dict(state=1, action=0),
                                'kl_min': dict(state=0.1, action=0.2),
-                               'kl_min_anneal_rate': dict(state=0.99, action=1.),
+                               'kl_min_anneal_rate': dict(state=1., action=1.),
                                'reward_discount': 0.99,
                                'normalize_returns': True,
                                'normalize_advantages': True,
-                               'normalize_observations': False,
+                               'normalize_observations': True,
                                'gae_lambda': 1.}
 
     if agent_args['misc_args']['n_inf_iter']['action'] > 0:

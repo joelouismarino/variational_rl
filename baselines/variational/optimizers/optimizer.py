@@ -8,13 +8,17 @@ class Optimizer(object):
     An optimizer object to handle updating the model parameters.
     """
     def __init__(self, model, lr, update_inf_online=True, clip_grad=None,
-                 norm_grad=None):
+                 norm_grad=None, optimizer='rmsprop'):
         self.model = model
         self.parameters = model.parameters()
         if type(lr) == float:
             lr = {k: lr for k in self.parameters}
-        self.opt = {k: optim.RMSprop(v, lr=lr[k], alpha=0.99, eps=1e-5) for k, v in self.parameters.items()}
-        # self.opt = {k: optim.Adam(v, lr=lr[k]) for k, v in self.parameters.items()}
+        if optimizer == 'rmsprop':
+            self.opt = {k: optim.RMSprop(v, lr=lr[k], alpha=0.99, eps=1e-5) for k, v in self.parameters.items()}
+        elif optimizer == 'adam':
+            self.opt = {k: optim.Adam(v, lr=lr[k]) for k, v in self.parameters.items()}
+        else:
+            raise NotImplementedError
         self.update_inf_online = update_inf_online
         self.clip_grad = clip_grad
         self.norm_grad = norm_grad

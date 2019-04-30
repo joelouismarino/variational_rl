@@ -10,8 +10,8 @@ from .util.train_util import collect_episode, train
 
 
 def learn(env, seed, total_timesteps, log_dir, batch_size=64, n_updates=10,
-          n_initial_batches=1, train_seq_len=64, lr=3e-4, device=None,
-          ckpt_path=None, **kwargs):
+          n_initial_batches=1, train_seq_len=64, lr=3e-4, on_policy=False,
+          device=None, ckpt_path=None, **kwargs):
 
     # torch.manual_seed(seed)
 
@@ -33,12 +33,14 @@ def learn(env, seed, total_timesteps, log_dir, batch_size=64, n_updates=10,
     lr = {'state_inference_model': base_lr,
           'action_inference_model': base_lr,
           'state_prior_model': base_lr,
-          'action_prior_model': 0.5 * base_lr,
+          'action_prior_model': 0.75 * base_lr,
           'obs_likelihood_model': base_lr,
           'reward_likelihood_model': base_lr,
           'done_likelihood_model': base_lr,
           'value_model': base_lr}
-    optimizer = Optimizer(agent, lr=lr, norm_grad=1.)
+    norm_grad = 1.
+    optim = 'rmsprop'
+    optimizer = Optimizer(agent, lr=lr, norm_grad=norm_grad, optimizer=optim)
 
     # logging and plotting
     if hasattr(env, 'spec'):
@@ -48,8 +50,9 @@ def learn(env, seed, total_timesteps, log_dir, batch_size=64, n_updates=10,
     exp_args = {'env': env_name, 'seed': seed,
                 'total_timesteps': total_timesteps, 'batch_size': batch_size,
                 'n_updates': n_updates, 'n_initial_batches': n_initial_batches,
-                'train_seq_len': train_seq_len, 'lr': lr, 'device': device,
-                'ckpt_path': ckpt_path, 'agent_args': agent_args}
+                'train_seq_len': train_seq_len, 'lr': lr, 'on_policy': on_policy,
+                'device': device, 'ckpt_path': ckpt_path, 'norm_grad': norm_grad,
+                'optimizer': optim, 'agent_args': agent_args}
     logger = Logger(log_dir, exp_args, agent)
     exp_args['log_str'] = logger.log_str
     plotter = Plotter(log_dir, exp_args)
@@ -78,6 +81,7 @@ def learn(env, seed, total_timesteps, log_dir, batch_size=64, n_updates=10,
                 logger.log_train_step(results)
                 plotter.plot_train_step(results, plot=(update==n_updates-1))
 
-            buffer.empty()
+            if on_policy:
+                buffer.empty()
 
     return agent

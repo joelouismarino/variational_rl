@@ -22,7 +22,6 @@ class Normalizer(object):
 
     def __call__(self, input, update=False):
         # normalizes the inputs, updates the running mean and std. if update is True
-        # TODO: need to handle the batch dimension properly
         if update:
             self.update(input)
         if self.shift:
@@ -51,9 +50,9 @@ class RunningMeanStd(object):
 
     def update(self, x):
         self._change_device(x)
-        batch_mean = x.mean(dim=0)
-        batch_var = x.var(dim=0)
         batch_count = x.shape[0]
+        batch_mean = x.mean(dim=0)
+        batch_var = x.var(dim=0) if batch_count > 1 else x.new_zeros(batch_mean.shape)
 
         delta = batch_mean - self.mean
         tot_count = self.count + batch_count

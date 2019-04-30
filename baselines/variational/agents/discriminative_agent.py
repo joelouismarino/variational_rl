@@ -45,7 +45,8 @@ class DiscriminativeAgent(Agent):
         self.optimality_scale = misc_args['optimality_scale']
         self.kl_min = {'state': misc_args['kl_min']['state'],
                        'action': misc_args['kl_min']['action']}
-
+        self.kl_min_anneal_rate = {'state': misc_args['kl_min_anneal_rate']['state'],
+                                   'action': misc_args['kl_min_anneal_rate']['action']}
         # mode (either 'train' or 'eval')
         self._mode = 'train'
 
@@ -72,8 +73,12 @@ class DiscriminativeAgent(Agent):
         if misc_args['normalize_advantages']:
             self.advantage_normalizer = Normalizer(clip_value=10.)
         if misc_args['normalize_observations']:
-            # TODO: set observation shape
-            self.obs_normalizer = Normalizer()
+            if state_prior_args:
+                observation_size = state_prior_args['n_input']
+            else:
+                observation_size = state_inference_args['n_input']
+            # TODO: should set this in a better way, in case of image input
+            self.obs_normalizer = Normalizer(shape=(observation_size), clip_value=10.)
 
         self.state_variable.inference_mode()
         self.action_variable.inference_mode()
@@ -91,6 +96,9 @@ class DiscriminativeAgent(Agent):
                 state = state.new_zeros(state.shape)
                 action = self.action_variable.sample()
                 action = action.new_zeros(action.shape)
+            if self.obs_normalizer:
+                update = self._mode=='eval' and self.state_prior_model is None
+                observation = self.obs_normalizer(observation, update=update)
             inf_input = self.state_inference_model(observation, reward, state, action)
             self.state_variable.infer(inf_input)
 
@@ -121,6 +129,8 @@ class DiscriminativeAgent(Agent):
                 state = state.new_zeros(state.shape)
                 action = self.action_variable.sample()
                 action = action.new_zeros(action.shape)
+            if self.obs_normalizer:
+                observation = self.obs_normalizer(observation, update=self._mode=='eval')
             prior_input = self.state_prior_model(observation, reward, state, action)
             self.state_variable.step(prior_input)
 

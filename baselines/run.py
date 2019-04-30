@@ -152,7 +152,7 @@ def build_env(args):
 
         env = make_vec_env(env_id, env_type, args.num_env or 1, seed, reward_scale=args.reward_scale)
         if env_type == 'mujoco':
-           env = VecNormalize(env, ob=True, ret=True)
+           env = VecNormalize(env, ob=False, ret=False)
 
     return env
 

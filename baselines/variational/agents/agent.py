@@ -72,9 +72,10 @@ class Agent(nn.Module):
         self.alpha = 0.01
         self.reward_discount = 0.99
 
+        # normalizers for various quantities
         self.return_normalizer = None
         self.observation_normalizer = None
-        # self.advantage_normalizer = None
+        self.advantage_normalizer = None
 
     def act(self, observation, reward=None, done=False, action=None, valid=None, log_prob=None):
         observation, reward, action, done, valid, log_prob = self._change_device(observation, reward, action, done, valid, log_prob)
@@ -169,12 +170,9 @@ class Agent(nn.Module):
         discounted_returns = self.get_future_terms()
         for i in range(discounted_returns.shape[0]-1, 0, -1):
             discounted_returns[i-1] += self.reward_discount * discounted_returns[i] * valid[i]
-        # NOTE: calculating past returns to try to reproduce baselines experiments
-        # for i in range(1, discounted_returns.shape[0]):
-        #     discounted_returns[i] += self.reward_discount * discounted_returns[i-1] * valid[i]
-        if self.return_normalizer:
+        if self.return_normalizer and update:
             # normalize the discounted returns
-            self.return_normalizer(discounted_returns.squeeze(-1), update=update)
+            self.return_normalizer.update(discounted_returns.squeeze(-1))
         return discounted_returns
 
     def evaluate(self):
@@ -219,13 +217,12 @@ class Agent(nn.Module):
             value_loss = 0.5 * (values[:-1] - returns).pow(2)
             free_energy[:-1] = free_energy[:-1] + value_loss
             results['value'] = value_loss.sum(dim=0).div(n_valid_steps).mean(dim=0).detach().cpu().item()
-            if self.advantage_normalizer:
-                advantages = self.advantage_normalizer(advantages.squeeze(-1))
-                advantages = advantages.unsqueeze(-1)
-            # normalize advantages
-            # advantage_mean = advantages.mean()
-            # advantage_std = advantages.std()
-            # advantages = (advantages - advantage_mean) / advantage_std
+            # if self.advantage_normalizer:
+            #     # normalize advantages
+            #     advantages = self.advantage_normalizer(advantages.squeeze(-1))
+            #     advantages = advantages.unsqueeze(-1)
+            advantages_mean = advantages.sum(dim=0).div(n_valid_steps).mean(dim=0)
+            advantages = (advantages - advantages_mean) / advantages.std()
         else:
             raise NotImplementedError
         # add the REINFORCE terms to the total objective
