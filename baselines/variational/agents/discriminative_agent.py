@@ -47,6 +47,10 @@ class DiscriminativeAgent(Agent):
                        'action': misc_args['kl_min']['action']}
         self.kl_min_anneal_rate = {'state': misc_args['kl_min_anneal_rate']['state'],
                                    'action': misc_args['kl_min_anneal_rate']['action']}
+        self.kl_factor = {'state': misc_args['kl_factor']['state'],
+                          'action': misc_args['kl_factor']['action']}
+        self.kl_factor_anneal_rate = {'state': misc_args['kl_factor_anneal_rate']['state'],
+                                      'action': misc_args['kl_factor_anneal_rate']['action']}
         # mode (either 'train' or 'eval')
         self._mode = 'train'
 

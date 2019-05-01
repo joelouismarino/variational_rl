@@ -66,6 +66,10 @@ class GenerativeAgent(Agent):
                        'action': misc_args['kl_min']['action']}
         self.kl_min_anneal_rate = {'state': misc_args['kl_min_anneal_rate']['state'],
                                    'action': misc_args['kl_min_anneal_rate']['action']}
+        self.kl_factor = {'state': misc_args['kl_factor']['state'],
+                          'action': misc_args['kl_factor']['action']}
+        self.kl_factor_anneal_rate = {'state': misc_args['kl_factor_anneal_rate']['state'],
+                                      'action': misc_args['kl_factor_anneal_rate']['action']}
         if self.n_inf_iter['action'] > 0:
             self.n_planning_samples = misc_args['n_planning_samples']
             self.max_rollout_length = misc_args['max_rollout_length']
@@ -164,7 +168,7 @@ class GenerativeAgent(Agent):
             self.inference_mode()
             # infer the approx. posterior on the action
             self.action_variable.init_approx_post()
-            if self.n_inf_iter['action'] == 0:
+            if self.action_variable.inference_type == 'direct':
                 # direct action inference (i.e. amortized policy network)
                 state = self.state_variable.sample()
                 # hidden_state = self.state_prior_model.network.state

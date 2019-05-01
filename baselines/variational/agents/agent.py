@@ -37,6 +37,8 @@ class Agent(nn.Module):
         self.optimality_scale = 1.
         self.kl_min = {'state': 0, 'action': 0}
         self.kl_min_anneal_rate = {'state': 1., 'action': 1.}
+        self.kl_factor = {'state': 1., 'action': 1.}
+        self.kl_factor_anneal_rate = {'state': 1., 'action': 1.}
 
         # mode (either 'train' or 'eval')
         self._mode = 'train'
@@ -78,6 +80,8 @@ class Agent(nn.Module):
         self.advantage_normalizer = None
 
     def act(self, observation, reward=None, done=False, action=None, valid=None, log_prob=None):
+        # if len(self.metrics['optimality']['cll']) == 0:
+        #     import ipdb; ipdb.set_trace()
         observation, reward, action, done, valid, log_prob = self._change_device(observation, reward, action, done, valid, log_prob)
         self.step_state(observation=observation, reward=reward, done=done, valid=valid)
         self.state_inference(observation=observation, reward=reward, done=done, valid=valid)
@@ -224,8 +228,8 @@ class Agent(nn.Module):
             #     # normalize advantages
             #     advantages = self.advantage_normalizer(advantages.squeeze(-1))
             #     advantages = advantages.unsqueeze(-1)
-            # advantages_mean = advantages.sum(dim=0).div(n_valid_steps).mean(dim=0)
-            # advantages = (advantages - advantages_mean) / advantages.std()
+            advantages_mean = advantages.sum(dim=0).div(n_valid_steps).mean(dim=0)
+            advantages = (advantages - advantages_mean) / advantages.std()
         else:
             raise NotImplementedError
         # add the REINFORCE terms to the total objective
@@ -234,7 +238,7 @@ class Agent(nn.Module):
         # reinforce_terms = - importance_weights[:-1] * log_probs[:-1] * advantages
         reinforce_terms = - log_probs[:-1] * advantages
         free_energy[:-1] = free_energy[:-1] + reinforce_terms
-        import ipdb; ipdb.set_trace()
+
         results['importance_weights'] = importance_weights.sum(dim=0).div(n_valid_steps).mean(dim=0).detach().cpu().item()
         results['policy_gradients'] = reinforce_terms.sum(dim=0).div(n_valid_steps-1).mean(dim=0).detach().cpu().item()
         results['advantages'] = advantages.sum(dim=0).div(n_valid_steps-1).mean(dim=0).detach().cpu().item()
@@ -314,10 +318,10 @@ class Agent(nn.Module):
         self.metrics['optimality']['cll'].append((-optimality_cll * valid).detach())
 
         state_kl = self.state_variable.kl_divergence()
-        clamped_state_kl = torch.clamp(state_kl, min=self.kl_min['state']).sum(dim=1, keepdim=True)
+        obj_state_kl = self.kl_factor['state'] * torch.clamp(state_kl, min=self.kl_min['state']).sum(dim=1, keepdim=True)
         state_kl = state_kl.sum(dim=1, keepdim=True)
         if self._mode == 'train':
-            self.objectives['state'].append(clamped_state_kl * (1 - done) * valid)
+            self.objectives['state'].append(obj_state_kl * (1 - done) * valid)
         self.metrics['state']['kl'].append((state_kl * (1 - done) * valid).detach())
         self.distributions['state']['prior']['loc'].append(self.state_variable.prior_dist.loc.detach())
         if hasattr(self.state_variable.prior_dist, 'scale'):
@@ -327,20 +331,22 @@ class Agent(nn.Module):
             self.distributions['state']['approx_post']['scale'].append(self.state_variable.approx_post_dist.scale.detach())
 
         action_kl = self.action_variable.kl_divergence()
+        obj_action_kl = self.kl_factor['action'] * torch.clamp(action_kl, min=self.kl_min['action'])
         if self.action_variable.approx_post_dist_type == getattr(torch.distributions, 'Categorical'):
             action_kl = action_kl.view(-1, 1)
+            obj_action_kl = obj_action_kl.view(-1, 1)
             self.distributions['action']['prior']['probs'].append(self.action_variable.prior_dist.probs.detach())
             self.distributions['action']['approx_post']['probs'].append(self.action_variable.approx_post_dist.probs.detach())
         else:
             action_kl = action_kl.sum(dim=1, keepdim=True)
+            obj_action_kl = obj_action_kl.sum(dim=1, keepdim=True)
             self.distributions['action']['prior']['loc'].append(self.action_variable.prior_dist.loc.detach())
             self.distributions['action']['prior']['scale'].append(self.action_variable.prior_dist.scale.detach())
             self.distributions['action']['approx_post']['loc'].append(self.action_variable.approx_post_dist.loc.detach())
             self.distributions['action']['approx_post']['scale'].append(self.action_variable.approx_post_dist.scale.detach())
-        clamped_action_kl = torch.clamp(action_kl, min=self.kl_min['action'])
         if self._mode == 'train':
-            self.objectives['action'].append(clamped_action_kl * valid)
-        self.metrics['action']['kl'].append((action_kl * valid).detach())
+            self.objectives['action'].append(obj_action_kl * (1 - done) * valid)
+        self.metrics['action']['kl'].append((action_kl * (1 - done) * valid).detach())
 
         if self._mode == 'train':
             # if action is None:
@@ -366,7 +372,11 @@ class Agent(nn.Module):
             self.episode['action'].append(self.action_variable.sample().detach())
             self.episode['state'].append(self.state_variable.sample().detach())
             act = self._convert_action(self.action_variable.sample().detach())
-            action_log_prob = self.action_variable.approx_post_dist.log_prob(act).view(-1, 1)
+            action_log_prob = self.action_variable.approx_post_dist.log_prob(act)
+            if self.action_variable.approx_post_dist_type == getattr(torch.distributions, 'Categorical'):
+                action_log_prob = action_log_prob.view(-1, 1)
+            else:
+                action_log_prob = action_log_prob.sum(dim=1, keepdim = True)
             self.episode['log_prob'].append(action_log_prob.detach())
         else:
             obs = self.episode['observation'][0]
@@ -386,6 +396,10 @@ class Agent(nn.Module):
 
             self.kl_min['state'] *= self.kl_min_anneal_rate['state']
             self.kl_min['action'] *= self.kl_min_anneal_rate['action']
+            self.kl_factor['state'] *= self.kl_factor_anneal_rate['state']
+            self.kl_factor['action'] *= self.kl_factor_anneal_rate['action']
+            self.kl_factor['state'] = min(self.kl_factor['state'], 1.)
+            self.kl_factor['action'] = min(self.kl_factor['action'], 1.)
 
     def _convert_action(self, action):
         # converts categorical action from one-hot encoding to the action index
