@@ -13,13 +13,13 @@ def get_mujoco_config(env):
     agent_args['misc_args'] = {'optimality_scale': 1,
                                'n_state_samples': 1,
                                'n_inf_iter': dict(state=1, action=0),
-                               'kl_min': dict(state=0.1, action=0.2),
+                               'kl_min': dict(state=0., action=0.75),
                                'kl_min_anneal_rate': dict(state=1., action=1.),
                                'reward_discount': 0.99,
                                'normalize_returns': True,
                                'normalize_advantages': True,
-                               'normalize_observations': True,
-                               'gae_lambda': 1.}
+                               'normalize_observations': False,
+                               'gae_lambda': 0.98}
 
     if agent_args['misc_args']['n_inf_iter']['action'] > 0:
         # planning configuration
@@ -57,7 +57,7 @@ def get_mujoco_config(env):
         agent_args['state_prior_args'] = {'type': 'fully_connected',
                                           'n_layers': 1,
                                           'n_input': observation_size,
-                                          'n_units': 32,
+                                          'n_units': 64,
                                           'connectivity': 'sequential',
                                           'non_linearity': 'tanh',
                                           'dropout': None}
@@ -71,24 +71,24 @@ def get_mujoco_config(env):
                                               'prior_dist': action_prior_dist,
                                               'approx_post_dist': action_approx_post_dist,
                                               'n_variables': n_action_variables,
-                                              'constant_prior': False,
+                                              'constant_prior': True,
                                               'inference_type': 'direct'}
 
-        agent_args['action_prior_args'] = {'type': 'fully_connected',
-                                               'n_layers': 1,
-                                               'n_input': n_state_variables,
-                                               'n_units': 32,
-                                               'connectivity': 'sequential',
-                                               'batch_norm': False,
-                                               'non_linearity': 'tanh',
-                                               'dropout': None}
+        # agent_args['action_prior_args'] = {'type': 'fully_connected',
+        #                                        'n_layers': 1,
+        #                                        'n_input': n_state_variables,
+        #                                        'n_units': 32,
+        #                                        'connectivity': 'sequential',
+        #                                        'batch_norm': False,
+        #                                        'non_linearity': 'tanh',
+        #                                        'dropout': None}
 
-        # agent_args['action_prior_args'] = None
+        agent_args['action_prior_args'] = None
 
         agent_args['action_inference_args'] = {'type': 'fully_connected',
                                                'n_layers': 1,
                                                'n_input': n_state_variables,
-                                               'n_units': 32,
+                                               'n_units': 64,
                                                'connectivity': 'sequential',
                                                'batch_norm': False,
                                                'non_linearity': 'tanh',

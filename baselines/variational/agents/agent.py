@@ -74,7 +74,7 @@ class Agent(nn.Module):
 
         # normalizers for various quantities
         self.return_normalizer = None
-        self.observation_normalizer = None
+        self.obs_normalizer = None
         self.advantage_normalizer = None
 
     def act(self, observation, reward=None, done=False, action=None, valid=None, log_prob=None):
@@ -205,6 +205,9 @@ class Agent(nn.Module):
         n_steps = len(self.objectives['optimality'])
         free_energy = torch.zeros(n_steps, self.batch_size, 1).to(self.device)
         for objective_name, objective in self.objectives.items():
+            # if objective_name == 'action':
+            #     free_energy = free_energy + 0.01 * torch.stack(objective)
+            # else:
             free_energy = free_energy + torch.stack(objective)
 
         # calculate the REINFORCE terms
@@ -221,17 +224,17 @@ class Agent(nn.Module):
             #     # normalize advantages
             #     advantages = self.advantage_normalizer(advantages.squeeze(-1))
             #     advantages = advantages.unsqueeze(-1)
-            advantages_mean = advantages.sum(dim=0).div(n_valid_steps).mean(dim=0)
-            advantages = (advantages - advantages_mean) / advantages.std()
+            # advantages_mean = advantages.sum(dim=0).div(n_valid_steps).mean(dim=0)
+            # advantages = (advantages - advantages_mean) / advantages.std()
         else:
             raise NotImplementedError
         # add the REINFORCE terms to the total objective
         log_probs = torch.stack(self.log_probs['action'])
         importance_weights = torch.stack(self.importance_weights['action']).detach()
-        reinforce_terms = - importance_weights[:-1] * log_probs[:-1] * advantages
-        # reinforce_terms = - log_probs[:-1] * advantages
+        # reinforce_terms = - importance_weights[:-1] * log_probs[:-1] * advantages
+        reinforce_terms = - log_probs[:-1] * advantages
         free_energy[:-1] = free_energy[:-1] + reinforce_terms
-
+        import ipdb; ipdb.set_trace()
         results['importance_weights'] = importance_weights.sum(dim=0).div(n_valid_steps).mean(dim=0).detach().cpu().item()
         results['policy_gradients'] = reinforce_terms.sum(dim=0).div(n_valid_steps-1).mean(dim=0).detach().cpu().item()
         results['advantages'] = advantages.sum(dim=0).div(n_valid_steps-1).mean(dim=0).detach().cpu().item()
@@ -340,19 +343,19 @@ class Agent(nn.Module):
         self.metrics['action']['kl'].append((action_kl * valid).detach())
 
         if self._mode == 'train':
-            if action is None:
-                action = self.action_variable.sample()
+            # if action is None:
+            #     action = self.action_variable.sample()
             action = self._convert_action(action)
             action_log_prob = self.action_variable.approx_post_dist.log_prob(action)
-            if log_prob is None:
-                log_prob = action_log_prob
+            # if log_prob is None:
+            #     log_prob = action_log_prob
             if self.action_variable.approx_post_dist_type == getattr(torch.distributions, 'Categorical'):
                 action_log_prob = action_log_prob.view(-1, 1)
             else:
                 action_log_prob = action_log_prob.sum(dim=1, keepdim = True)
             self.log_probs['action'].append(action_log_prob * valid)
-            if log_prob is None:
-                log_prob = action_log_prob
+            # if log_prob is None:
+            #     log_prob = action_log_prob
             importance_weight = torch.exp(action_log_prob) / torch.exp(log_prob)
             self.importance_weights['action'].append(importance_weight.detach())
 
@@ -362,8 +365,8 @@ class Agent(nn.Module):
             self.episode['observation'].append(observation)
             self.episode['action'].append(self.action_variable.sample().detach())
             self.episode['state'].append(self.state_variable.sample().detach())
-            action_ind = self._convert_action(self.action_variable.sample().detach())
-            action_log_prob = self.action_variable.approx_post_dist.log_prob(action_ind).view(-1, 1)
+            act = self._convert_action(self.action_variable.sample().detach())
+            action_log_prob = self.action_variable.approx_post_dist.log_prob(act).view(-1, 1)
             self.episode['log_prob'].append(action_log_prob.detach())
         else:
             obs = self.episode['observation'][0]

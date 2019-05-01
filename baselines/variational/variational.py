@@ -9,8 +9,8 @@ from .util.print_util import print_step_metrics, print_episode_metrics
 from .util.train_util import collect_episode, train
 
 
-def learn(env, seed, total_timesteps, log_dir, batch_size=64, n_updates=10,
-          n_initial_batches=1, train_seq_len=64, lr=3e-4, on_policy=False,
+def learn(env, seed, total_timesteps, log_dir, batch_size=20, n_updates=1,
+          n_initial_batches=1, train_seq_len=50, lr=7e-4, on_policy=False,
           device=None, ckpt_path=None, **kwargs):
 
     # torch.manual_seed(seed)
@@ -33,12 +33,12 @@ def learn(env, seed, total_timesteps, log_dir, batch_size=64, n_updates=10,
     lr = {'state_inference_model': base_lr,
           'action_inference_model': base_lr,
           'state_prior_model': base_lr,
-          'action_prior_model': 0.75 * base_lr,
+          'action_prior_model': base_lr,
           'obs_likelihood_model': base_lr,
           'reward_likelihood_model': base_lr,
           'done_likelihood_model': base_lr,
           'value_model': base_lr}
-    norm_grad = 1.
+    norm_grad = 0.5
     optim = 'rmsprop'
     optimizer = Optimizer(agent, lr=lr, norm_grad=norm_grad, optimizer=optim)
 

@@ -39,6 +39,7 @@ def train(agent, data, optimizer):
     for step in range(n_steps):
         agent.act(observation[step], reward[step], done[step], action[step], valid[step], log_prob[step])
         optimizer.step()
+    import ipdb; ipdb.set_trace()
     results = agent.evaluate()
     optimizer.apply()
     return results
