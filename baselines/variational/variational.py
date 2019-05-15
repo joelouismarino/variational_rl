@@ -1,4 +1,5 @@
 import torch
+import time
 from .config import get_agent_args
 from .agents import get_agent
 from .buffers import DataBuffer
@@ -9,16 +10,18 @@ from .util.print_util import print_step_metrics, print_episode_metrics
 from .util.train_util import collect_episode, train
 
 
-def learn(env, seed, total_timesteps, log_dir, batch_size=20, n_updates=1,
-          n_initial_batches=1, train_seq_len=50, lr=7e-4, on_policy=False,
+def learn(env, seed, total_timesteps, log_dir, batch_size=20, n_updates=10,
+          n_initial_batches=1, train_seq_len=50, lr=1e-4, on_policy=False,
           device=None, ckpt_path=None, **kwargs):
 
+    torch.manual_seed(0)
     # torch.manual_seed(seed)
 
     # create the agent
     agent_args = get_agent_args(env)
     agent = get_agent(agent_args)
     if ckpt_path is not None:
+        print('Loading checkpoint from ' + ckpt_path)
         state_dict = torch.load(ckpt_path)
         agent.load(state_dict)
     if device is not None:
@@ -38,7 +41,7 @@ def learn(env, seed, total_timesteps, log_dir, batch_size=20, n_updates=1,
           'reward_likelihood_model': base_lr,
           'done_likelihood_model': base_lr,
           'value_model': base_lr}
-    norm_grad = 0.5
+    norm_grad = None
     optim = 'rmsprop'
     update_inf = agent_args['agent_type'] == 'generative'
     optimizer = Optimizer(agent, lr=lr, norm_grad=norm_grad, optimizer=optim, update_inf_online=update_inf)
@@ -65,7 +68,10 @@ def learn(env, seed, total_timesteps, log_dir, batch_size=20, n_updates=1,
 
         # collect an episode
         print(logger.log_str + ' -- Collecting Episode: ' + str(n_episodes + 1))
+        t_start = time.time()
         episode, episode_length = collect_episode(env, agent)
+        t_end = time.time()
+        print('Duration: ' + '{:.2f}'.format(t_end - t_start) + ' s.')
         timestep += episode_length
         n_episodes += 1
         plotter.plot_episode(episode)
@@ -77,8 +83,11 @@ def learn(env, seed, total_timesteps, log_dir, batch_size=20, n_updates=1,
             print('Training Model.')
             for update in range(n_updates):
                 print(' Batch: ' + str(update + 1))
+                t_start = time.time()
                 batch = buffer.sample()
                 results = train(agent, batch, optimizer)
+                t_end = time.time()
+                print('Duration: ' + '{:.2f}'.format(t_end - t_start) + ' s.')
                 logger.log_train_step(results)
                 plotter.plot_train_step(results, plot=(update==n_updates-1))
 

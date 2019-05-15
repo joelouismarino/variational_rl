@@ -169,7 +169,7 @@ class GenerativeAgent(Agent):
             # infer the approx. posterior on the action
             self.action_variable.init_approx_post()
             if self.action_variable.inference_type == 'direct':
-                # direct action inference (i.e. amortized policy network)
+                # model-free action inference
                 state = self.state_variable.sample()
                 # hidden_state = self.state_prior_model.network.state
                 if self._prev_action is not None:
@@ -180,34 +180,32 @@ class GenerativeAgent(Agent):
                 inf_input = self.action_inference_model(state, action)
                 self.action_variable.infer(inf_input)
             else:
-                # planning action inference (unroll the model)
+                # model-based action inference
                 # keep track of rollout length and estimated return
                 rollout_lengths = []
                 estimated_returns = []
                 # initialize the planning distributions
                 self.planning_mode()
-                # self.state_variable.init_planning(self.n_planning_samples)
-                # self.action_variable.init_planning(self.n_planning_samples)
 
-                # estimate the current value
-                current_done = done.repeat(self.n_planning_samples, 1)
-                current_value = self.estimate_value(done=current_done).detach()
-                current_value = current_value.view(-1, self.n_planning_samples, 1)
+                # if we can't backprop through action sampling
+                if not self.action_variable.approx_post_dist.has_rsample:
+                    # estimate the current value as baseline for REINFORCE gradients
+                    current_done = done.repeat(self.n_planning_samples, 1)
+                    current_value = self.estimate_value(done=current_done).detach()
+                    current_value = current_value.view(-1, self.n_planning_samples, 1)
 
                 # inference iterations
                 for inf_iter in range(self.n_inf_iter['action'] + 1):
 
                     # initialize the planning distributions
                     self.planning_mode()
-                    # self.state_variable.init_planning(self.n_planning_samples)
-                    # self.action_variable.init_planning(self.n_planning_samples)
 
                     # sample and evaluate log probs of initial actions
                     action = self.action_variable.sample()
                     action_ind = self._convert_action(action)
                     original_batch_shape = self.action_variable.approx_post_dist.batch_shape[0]
-                    expanded_action_dist = self.action_variable.approx_post_dist.expand([self.n_planning_samples, original_batch_shape])
-                    action_log_prob = expanded_action_dist.log_prob(action_ind.view(self.n_planning_samples, -1)).view(-1, self.n_planning_samples, 1)
+                    # expanded_action_dist = self.action_variable.approx_post_dist.expand([self.n_planning_samples, original_batch_shape])
+                    # action_log_prob = expanded_action_dist.log_prob(action_ind.view(self.n_planning_samples, -1)).view(-1, self.n_planning_samples, 1)
 
                     estimated_return = 0.
 
@@ -215,9 +213,7 @@ class GenerativeAgent(Agent):
                     cumulative_flag = None
                     rollout_iter = 0
                     # roll out the model
-                    while total_flag and rollout_iter < self.max_rollout_length:
-                        print('Rollout Iteration: ' + str(rollout_iter))
-                        rollout_iter += 1
+                    for rollout_iter in range(self.max_rollout_length):
                         # step the state
                         self.step_state()
                         # generate observation, reward, and done
@@ -229,9 +225,15 @@ class GenerativeAgent(Agent):
 
                         # evaluate the objective
                         reward = self.reward_variable.sample()
-                        # optimality_log_likelihood = self.optimality_scale * (reward - 1.)
                         optimality_log_likelihood = reward
-                        # TODO: evaluate other term
+                        # TODO: evaluate other terms
+                        # reward_mi = self.reward_variable.info_gain()
+                        # observation_mi = self.observation_variable.info_gain()
+                        # done_mi = self.done_variable.info_gain()
+                        #
+                        # optimality_log_likelihood = self.optimality_scale * (reward - 1.)
+                        #
+                        # value = self.estimate_value()
 
                         # evaluate done variables to determine whether all rollouts are completed
                         done = self.done_variable.sample().view(-1, self.n_planning_samples, 1)
@@ -244,13 +246,20 @@ class GenerativeAgent(Agent):
                         new_terms = cumulative_flag * optimality_log_likelihood.view(-1, self.n_planning_samples, 1)
                         estimated_return = estimated_return + new_terms
 
-                    # estimate policy gradients
-                    advantages = estimated_return - current_value
-                    objective = - action_log_prob * advantages.detach()
+                        # exit if all sampled rollouts are done
+                        if not total_flag:
+                            break
 
-                    # backprop objective OR use policy gradients
+                    # estimate and apply the policy gradients
+                    if not self.action_variable.approx_post_dist.has_rsample:
+                        advantages = estimated_return - current_value
+                        objective = - action_log_prob * advantages.detach()
+                    else:
+                        objective = - estimated_return
+                    # average over samples, sum over other dimensions
+                    objective.mean(dim=1).sum().backward(retain_graph=True)
+
                     if inf_iter < self.n_inf_iter['action']:
-                        objective.mean(dim=1).sum().backward(retain_graph=True)
                         # update the approximate posterior using the inference model
                         params, grads = self.action_variable.params_and_grads()
                         inf_input = self.action_inference_model(params, grads)
@@ -267,7 +276,7 @@ class GenerativeAgent(Agent):
                     self.rollout_lengths.append(ave_rollout_length)
                     # TODO: need to only collect inference improvement for valid steps
                     estimated_returns = torch.stack(estimated_returns)
-                    inference_improvement = estimated_returns[0] - estimated_returns[-1]
+                    inference_improvement = - estimated_returns[0] + estimated_returns[-1]
                     self.inference_improvement['action'].append(inference_improvement)
 
                 self.acting_mode()
@@ -344,8 +353,10 @@ class GenerativeAgent(Agent):
         self.reward_variable.planning_mode()
         self.done_variable.planning_mode()
 
-        self.state_prior_model.planning_mode(self.n_planning_samples)
-        self.action_prior_model.planning_mode(self.n_planning_samples)
+        if self.state_prior_model is not None:
+            self.state_prior_model.planning_mode(self.n_planning_samples)
+        if self.action_prior_model is not None:
+            self.action_prior_model.planning_mode(self.n_planning_samples)
         self.obs_likelihood_model.planning_mode(self.n_planning_samples)
         self.reward_likelihood_model.planning_mode(self.n_planning_samples)
         self.done_likelihood_model.planning_mode(self.n_planning_samples)
@@ -359,8 +370,10 @@ class GenerativeAgent(Agent):
         self.reward_variable.acting_mode()
         self.done_variable.acting_mode()
 
-        self.state_prior_model.acting_mode()
-        self.action_prior_model.acting_mode()
+        if self.state_prior_model is not None:
+            self.state_prior_model.acting_mode()
+        if self.action_prior_model is not None:
+            self.action_prior_model.acting_mode()
         self.obs_likelihood_model.acting_mode()
         self.reward_likelihood_model.acting_mode()
         self.done_likelihood_model.acting_mode()

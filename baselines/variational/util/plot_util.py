@@ -30,7 +30,7 @@ class Plotter:
         self.metric_plot_names = ['optimality_cll', 'state_kl', 'action_kl', 'value']
         self.metric_plot_names += ['importance_weights', 'policy_gradients', 'advantages']
         self.episode_plot_names = ['length', 'env_return', 'total_steps']
-        self.misc_plot_names = ['kl_min']
+        self.misc_plot_names = ['kl_min', 'kl_factor']
         self.img_names = ['obs']
         self.grad_names = ['grads', 'grad_norms']
         self.hist_names = ['actions']
@@ -114,7 +114,7 @@ class Plotter:
                                       opts=self._get_opts(metric_name))
             self._plot_grads(results['grads'], 'grads')
             self._plot_grads(results['grad_norms'], 'grad_norms')
-            self._plot_kl_min(results['kl_min'], 'kl_min')
+            self._plot_kl_terms(results['kl_min'], results['kl_factor'])
             self.vis.save([self.env_id])
             # reset the internal training results
             self._train_results = {}
@@ -148,10 +148,10 @@ class Plotter:
             self._plot_hist(action_idxs, win_name = 'actions', opts = self._get_opts('actions'))
         else:
             self._plot_hist(episode['action'], win_name = 'actions', opts = self._get_opts('actions'))
-        if self._plt_dashboard and self._episode % self._dashboard_interval == 1:
+        if self._episode % self._dashboard_interval == 1:
             path = os.path.join(self.log_dir, self.env_id, 'vis', str(self._episode))
             os.makedirs(path)
-            plot_dashboard(episode, path)
+            plot_dashboard(episode, path, plot=self._plt_dashboard)
         self._episode += 1
 
     def _plot_metric(self, step, metric, win_name, opts=None, name='Train Step', plot_avg_trace=True, avg_window=50):
@@ -198,18 +198,20 @@ class Plotter:
                     opts = self._get_opts(window_name)
                     self.window_id[window_name] = self.vis.line(X=[self._step], Y=[grads[model_name]], name=model_name, opts=opts)
 
-    def _plot_kl_min(self, kl_min, window_name):
-        # plots kl min values
-        if self.window_id[window_name] is not None:
-            for variable_name in kl_min:
-                self.vis.line(X=[self._step], Y=[kl_min[variable_name]], update='append', name=variable_name, win=self.window_id[window_name])
-        else:
-            for variable_name in kl_min:
-                if self.window_id[window_name] is not None:
-                    self.vis.line(X=[self._step], Y=[kl_min[variable_name]], update='replace', name=variable_name, win=self.window_id[window_name])
-                else:
-                    opts = self._get_opts(window_name)
-                    self.window_id[window_name] = self.vis.line(X=[self._step], Y=[kl_min[variable_name]], name=variable_name, opts=opts)
+    def _plot_kl_terms(self, kl_min, kl_factor):
+        # plots kl terms
+        kl_dict = {'kl_min': kl_min, 'kl_factor': kl_factor}
+        for window_name, kl_term in kl_dict.items():
+            if self.window_id[window_name] is not None:
+                for variable_name in kl_term:
+                    self.vis.line(X=[self._step], Y=[kl_term[variable_name]], update='append', name=variable_name, win=self.window_id[window_name])
+            else:
+                for variable_name in kl_term:
+                    if self.window_id[window_name] is not None:
+                        self.vis.line(X=[self._step], Y=[kl_term[variable_name]], update='replace', name=variable_name, win=self.window_id[window_name])
+                    else:
+                        opts = self._get_opts(window_name)
+                        self.window_id[window_name] = self.vis.line(X=[self._step], Y=[kl_term[variable_name]], name=variable_name, opts=opts)
 
     def plot_states_mujoco(self, episode, timestep, n_states, window_name='mujoco states'):
         if 'distributions' in episode:
@@ -358,6 +360,10 @@ class Plotter:
         elif win_name == 'kl_min':
             ylabel = 'KL Min. Clamp (nats)'
             title = 'KL Min. Clamp'
+            xtype = 'line'
+        elif win_name == 'kl_factor':
+            ylabel = 'KL Anneal Factor'
+            title = 'KL Anneal Factor'
             xtype = 'line'
         elif win_name == 'actions':
             ylabel = 'Count'

@@ -98,10 +98,11 @@ class Logger:
         state_dict = {}
         variable_names = ['state_variable', 'action_variable',
                           'observation_variable', 'reward_variable',
-                          'done_variable']
+                          'done_variable', 'value_variable']
         model_names = ['state_prior_model', 'action_prior_model',
                        'obs_likelihood_model', 'reward_likelihood_model',
-                       'done_likelihood_model', 'value_model']
+                       'done_likelihood_model', 'value_model',
+                       'state_inference_model', 'action_inference_model']
 
         for attr in variable_names + model_names:
             if hasattr(self.agent, attr):

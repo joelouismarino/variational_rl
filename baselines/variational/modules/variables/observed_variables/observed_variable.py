@@ -12,9 +12,10 @@ class ObservedVariable(nn.Module):
         likelihood_dist (str): the name of the conditional likelihood distribution
         integration_window (optional, float): window over which to integrate the likelihood
     """
-    def __init__(self, likelihood_dist, integration_window=0.1):
+    def __init__(self, likelihood_dist, n_variables, integration_window=0.1, constant_scale=True):
         super(ObservedVariable, self).__init__()
         self.distribution_type = getattr(torch.distributions, likelihood_dist)
+        self.n_variables = n_variables
         self.integration_window = integration_window
         self.likelihood_dist = None
         self.likelihood_dist_pred = None
@@ -25,9 +26,11 @@ class ObservedVariable(nn.Module):
             parameter_names = ['logits']
         else:
             parameter_names = list(self.distribution_type.arg_constraints.keys())
-        if 'scale' in parameter_names:
-            # global log scale
-            self.likelihood_params = nn.ParameterDict({'log_scale': nn.Parameter(torch.zeros(1), requires_grad=True)})
+        if 'scale' in parameter_names and constant_scale:
+            # constant log scale
+            # log_scale = nn.Parameter(torch.zeros(1, n_variables), requires_grad=True)
+            log_scale = nn.Parameter(torch.zeros(1), requires_grad=True)
+            self.likelihood_params = nn.ParameterDict({'log_scale': log_scale})
             parameter_names.remove('scale')
         self.likelihood_models = nn.ModuleDict({name: None for name in parameter_names})
         self._log_scale_limits = [-15, 0]
@@ -50,8 +53,11 @@ class ObservedVariable(nn.Module):
             # set the parameter
             parameters[parameter_name] = parameter_value
         if self.likelihood_params is not None:
+            # TODO: currently only works for fully-connected outputs
             output_shape = parameters['loc'].shape
+            # batch_size = parameters['loc'].shape[0]
             log_scale = self.likelihood_params['log_scale'].repeat(output_shape)
+            # log_scale = self.likelihood_params['log_scale'].repeat(batch_size, 1)
             log_scale = torch.clamp(log_scale, self._log_scale_limits[0], self._log_scale_limits[1])
             parameters['scale'] = torch.exp(log_scale)
         # create a new distribution with the parameters

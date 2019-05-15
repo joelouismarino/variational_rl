@@ -7,7 +7,9 @@ from ...layers import TransposedConvLayer
 class TransposedConvObservedVariable(ObservedVariable):
 
     def __init__(self, likelihood_dist, n_variables, n_input, filter_size, padding, stride, integration_window=1, sigmoid_loc=False):
-        super(TransposedConvObservedVariable, self).__init__(likelihood_dist, integration_window)
+        super(TransposedConvObservedVariable, self).__init__(likelihood_dist=likelihood_dist,
+                                                             n_variables=n_variables,
+                                                             integration_window=integration_window)
         for model_name in self.likelihood_models:
             non_linearity = None
             if model_name == 'loc' and sigmoid_loc:

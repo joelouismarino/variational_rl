@@ -207,12 +207,9 @@ class Agent(nn.Module):
 
         # sum the objectives (for training)
         n_steps = len(self.objectives['optimality'])
-        free_energy = torch.zeros(n_steps, self.batch_size, 1).to(self.device)
+        total_objective = torch.zeros(n_steps, self.batch_size, 1).to(self.device)
         for objective_name, objective in self.objectives.items():
-            # if objective_name == 'action':
-            #     free_energy = free_energy + 0.01 * torch.stack(objective)
-            # else:
-            free_energy = free_energy + torch.stack(objective)
+            total_objective = total_objective + torch.stack(objective)
 
         # calculate the REINFORCE terms
         if self.value_model:
@@ -222,32 +219,34 @@ class Agent(nn.Module):
             # calculate value loss
             returns = advantages + values[:-1].detach()
             value_loss = 0.5 * (values[:-1] - returns).pow(2)
-            free_energy[:-1] = free_energy[:-1] + value_loss
+            total_objective[:-1] = total_objective[:-1] + value_loss
             results['value'] = value_loss.sum(dim=0).div(n_valid_steps).mean(dim=0).detach().cpu().item()
             # if self.advantage_normalizer:
             #     # normalize advantages
             #     advantages = self.advantage_normalizer(advantages.squeeze(-1))
             #     advantages = advantages.unsqueeze(-1)
             advantages_mean = advantages.sum(dim=0).div(n_valid_steps).mean(dim=0)
-            advantages = (advantages - advantages_mean) / advantages.std()
+            advantages_std = torch.sqrt((advantages - advantages_mean).pow(2).mul(valid[:-1]).sum(dim=0).div(n_valid_steps).mean(dim=0))
+            advantages = (advantages - advantages_mean) / advantages_std
         else:
             raise NotImplementedError
         # add the REINFORCE terms to the total objective
         log_probs = torch.stack(self.log_probs['action'])
         importance_weights = torch.stack(self.importance_weights['action']).detach()
-        # reinforce_terms = - importance_weights[:-1] * log_probs[:-1] * advantages
-        reinforce_terms = - log_probs[:-1] * advantages
-        free_energy[:-1] = free_energy[:-1] + reinforce_terms
+        reinforce_terms = - importance_weights[:-1] * log_probs[:-1] * advantages
+        # reinforce_terms = - log_probs[:-1] * advantages
+        if not self.action_variable.inference_type == 'iterative':
+            # include the policy gradients in the total objective
+            total_objective[:-1] = total_objective[:-1] + reinforce_terms
 
         results['importance_weights'] = importance_weights.sum(dim=0).div(n_valid_steps).mean(dim=0).detach().cpu().item()
         results['policy_gradients'] = reinforce_terms.sum(dim=0).div(n_valid_steps-1).mean(dim=0).detach().cpu().item()
         results['advantages'] = advantages.sum(dim=0).div(n_valid_steps-1).mean(dim=0).detach().cpu().item()
 
         # time average, batch average, and backprop
-        free_energy = free_energy.sum(dim=0).div(n_valid_steps)
-        # free_energy = free_energy.mean(dim=0)
-        free_energy = free_energy.mean(dim=0)
-        free_energy.sum().backward()
+        total_objective = total_objective.sum(dim=0).div(n_valid_steps)
+        total_objective = total_objective.mean(dim=0)
+        total_objective.sum().backward()
 
         # calculate the average gradient for each model (for reporting)
         grads_dict = {}
@@ -262,6 +261,7 @@ class Agent(nn.Module):
         results['grad_norms'] = grad_norm_dict
 
         results['kl_min'] = self.kl_min
+        results['kl_factor'] = self.kl_factor
 
         return results
 
@@ -405,8 +405,8 @@ class Agent(nn.Module):
         # converts categorical action from one-hot encoding to the action index
         if self.action_variable.approx_post_dist_type == getattr(torch.distributions, 'Categorical'):
             action = one_hot_to_index(action)
-        else:
-            action = action.detach()
+        # else:
+        #     action = action.detach()
         return action
 
     def _change_device(self, observation, reward, action, done, valid, log_prob):
@@ -660,6 +660,9 @@ class Agent(nn.Module):
         for k, v in state_dict.items():
             if hasattr(self, k):
                 attr = getattr(self, k)
-                attr.load_state_dict(v)
+                try:
+                    attr.load_state_dict(v)
+                except:
+                    print('WARNING: could not load ' + k + '.')
             else:
                 raise ValueError

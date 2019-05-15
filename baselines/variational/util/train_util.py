@@ -1,5 +1,5 @@
 import torch
-
+import time
 
 def collect_episode(env, agent):
     """
@@ -12,6 +12,8 @@ def collect_episode(env, agent):
     n_steps = 0
 
     while not done:
+        # time.sleep(0.05)
+        # env.render()
         action = agent.act(observation, reward, done)
         observation, reward, done, _ = env.step(action)
         n_steps += 1
