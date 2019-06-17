@@ -183,7 +183,7 @@ class GenerativeAgent(Agent):
                 # model-based action inference
                 # keep track of rollout length and estimated return
                 rollout_lengths = []
-                estimated_returns = []
+                estimated_objectives = []
                 # initialize the planning distributions
                 self.planning_mode()
 
@@ -193,6 +193,8 @@ class GenerativeAgent(Agent):
                     current_done = done.repeat(self.n_planning_samples, 1)
                     current_value = self.estimate_value(done=current_done).detach()
                     current_value = current_value.view(-1, self.n_planning_samples, 1)
+
+                objective_dict = {'reward': [], 'reward_mi': [], 'observation_mi': [], 'done_mi': []}
 
                 # inference iterations
                 for inf_iter in range(self.n_inf_iter['action'] + 1):
@@ -207,7 +209,7 @@ class GenerativeAgent(Agent):
                     # expanded_action_dist = self.action_variable.approx_post_dist.expand([self.n_planning_samples, original_batch_shape])
                     # action_log_prob = expanded_action_dist.log_prob(action_ind.view(self.n_planning_samples, -1)).view(-1, self.n_planning_samples, 1)
 
-                    estimated_return = 0.
+                    estimated_objective = 0.
 
                     total_flag = True
                     cumulative_flag = None
@@ -224,38 +226,47 @@ class GenerativeAgent(Agent):
                         self.step_action()
 
                         # evaluate the objective
+                        # import ipdb; ipdb.set_trace()
                         reward = self.reward_variable.sample()
-                        optimality_log_likelihood = reward
-                        # TODO: evaluate other terms
-                        # reward_mi = self.reward_variable.info_gain()
-                        # observation_mi = self.observation_variable.info_gain()
-                        # done_mi = self.done_variable.info_gain()
-                        #
-                        # optimality_log_likelihood = self.optimality_scale * (reward - 1.)
-                        #
-                        # value = self.estimate_value()
+                        reward = reward.view(self.n_state_samples, -1, 1)
+                        reward = reward.mean(dim=0)
+                        reward_mi = self.reward_variable.mutual_info()
+                        observation_mi = self.observation_variable.mutual_info()
+                        done_mi = self.done_variable.mutual_info()
+                        optimality_log_likelihood = self.optimality_scale * reward
+                        new_objective_terms = reward_mi + observation_mi + done_mi + optimality_log_likelihood
+                        # new_objective_terms = optimality_log_likelihood
+                        objective_dict['reward'].append(reward.detach())
+                        objective_dict['reward_mi'].append(reward_mi.detach())
+                        objective_dict['observation_mi'].append(observation_mi.detach())
+                        objective_dict['done_mi'].append(done_mi.detach())
 
                         # evaluate done variables to determine whether all rollouts are completed
-                        done = self.done_variable.sample().view(-1, self.n_planning_samples, 1)
+                        done = self.done_variable.sample().view(self.n_state_samples, -1, self.n_planning_samples, 1)[0]
                         if cumulative_flag is None:
                             cumulative_flag = 1 - done
                         cumulative_flag = cumulative_flag * (1 - done)
                         total_flag = cumulative_flag.sum().sign().item()
 
                         # add new terms to the total estimate
-                        new_terms = cumulative_flag * optimality_log_likelihood.view(-1, self.n_planning_samples, 1)
-                        estimated_return = estimated_return + new_terms
+                        new_objective_terms = cumulative_flag * new_objective_terms.view(-1, self.n_planning_samples, 1)
+                        estimated_objective = estimated_objective + new_objective_terms
 
                         # exit if all sampled rollouts are done
                         if not total_flag:
                             break
 
+                    import ipdb; ipdb.set_trace()
+
+                    # TODO: add value estimate to the end of un-finished roll-outs
+                    # value = self.estimate_value()
+
                     # estimate and apply the policy gradients
                     if not self.action_variable.approx_post_dist.has_rsample:
-                        advantages = estimated_return - current_value
+                        advantages = estimated_objective - current_value
                         objective = - action_log_prob * advantages.detach()
                     else:
-                        objective = - estimated_return
+                        objective = - estimated_objective
                     # average over samples, sum over other dimensions
                     objective.mean(dim=1).sum().backward(retain_graph=True)
 
@@ -265,18 +276,18 @@ class GenerativeAgent(Agent):
                         inf_input = self.action_inference_model(params, grads)
                         self.action_variable.infer(inf_input)
 
-                    # store the length of the planning rollout
+                    # store the length of the planning rollout and objective estimate
                     if self._mode == 'train':
                         rollout_lengths.append(rollout_iter)
-                        estimated_returns.append(estimated_return.detach().mean(dim=1))
+                        estimated_objectives.append(estimated_objective.detach().mean(dim=1))
 
                 # save the maximum rollout length, averaged over inference iterations
                 if self._mode == 'train':
                     ave_rollout_length = sum(rollout_lengths) / len(rollout_lengths)
                     self.rollout_lengths.append(ave_rollout_length)
-                    # TODO: need to only collect inference improvement for valid steps
-                    estimated_returns = torch.stack(estimated_returns)
-                    inference_improvement = - estimated_returns[0] + estimated_returns[-1]
+                    # TODO: only collect inference improvement for valid steps
+                    estimated_objectives = torch.stack(estimated_objectives)
+                    inference_improvement = - estimated_objectives[0] + estimated_objectives[-1]
                     self.inference_improvement['action'].append(inference_improvement)
 
                 self.acting_mode()
@@ -349,9 +360,9 @@ class GenerativeAgent(Agent):
         # set the variables and models for action inference
         self.state_variable.planning_mode(self.n_planning_samples)
         self.action_variable.planning_mode(self.n_planning_samples)
-        self.observation_variable.planning_mode()
-        self.reward_variable.planning_mode()
-        self.done_variable.planning_mode()
+        self.observation_variable.planning_mode(self.n_planning_samples)
+        self.reward_variable.planning_mode(self.n_planning_samples)
+        self.done_variable.planning_mode(self.n_planning_samples)
 
         if self.state_prior_model is not None:
             self.state_prior_model.planning_mode(self.n_planning_samples)

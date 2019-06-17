@@ -4,7 +4,7 @@ from ...layers import FullyConnectedLayer
 
 class FullyConnectedObservedVariable(ObservedVariable):
 
-    def __init__(self, likelihood_dist, n_variables, n_input, integration_window=1., sigmoid_loc=False):
+    def __init__(self, likelihood_dist, n_variables, n_input, integration_window=None, sigmoid_loc=False):
         super(FullyConnectedObservedVariable, self).__init__(likelihood_dist=likelihood_dist,
                                                              n_variables=n_variables,
                                                              integration_window=integration_window)

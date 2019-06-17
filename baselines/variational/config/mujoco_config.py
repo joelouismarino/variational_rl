@@ -11,18 +11,19 @@ def get_mujoco_config(env):
     agent_args['agent_type'] = 'generative'
 
     agent_args['misc_args'] = {'optimality_scale': 1,
-                               'n_state_samples': 1,
-                               'n_inf_iter': dict(state=1, action=2),
+                               'n_state_samples': 5,
+                               'n_inf_iter': dict(state=1, action=1),
                                'kl_min': dict(state=0., action=0.),
                                'kl_min_anneal_rate': dict(state=1., action=1.),
                                'kl_factor': dict(state=1., action=1.),
-                               'kl_factor_anneal_rate': dict(state=1., action=1.004),
+                               'kl_factor_anneal_rate': dict(state=1., action=1.),
                                'reward_discount': 0.99,
                                'normalize_returns': True,
                                'normalize_advantages': True,
                                'normalize_observations': False,
                                'gae_lambda': 0.98}
 
+    # TODO: should change this to use 'iterative' as the inference_type
     if agent_args['misc_args']['n_inf_iter']['action'] > 0:
         # planning configuration
         agent_args['misc_args']['n_planning_samples'] = 200
@@ -137,20 +138,20 @@ def get_mujoco_config(env):
                                               'prior_dist': action_prior_dist,
                                               'approx_post_dist': action_approx_post_dist,
                                               'n_variables': n_action_variables,
-                                              'constant_prior': True,
+                                              'constant_prior': False,
                                               'inference_type': 'iterative'}
 
         if agent_args['action_variable_args']['inference_type'] == 'iterative':
             # model-based action inference
-            agent_args['action_prior_args'] = None
-            # agent_args['action_prior_args'] = {'type': 'fully_connected',
-            #                                    'n_layers': 2,
-            #                                    'n_input': n_state_variables + n_action_variables,
-            #                                    'n_units': 64,
-            #                                    'connectivity': 'highway',
-            #                                    'batch_norm': False,
-            #                                    'non_linearity': 'elu',
-            #                                    'dropout': None}
+            # agent_args['action_prior_args'] = None
+            agent_args['action_prior_args'] = {'type': 'fully_connected',
+                                               'n_layers': 2,
+                                               'n_input': n_state_variables + n_action_variables,
+                                               'n_units': 64,
+                                               'connectivity': 'highway',
+                                               'batch_norm': False,
+                                               'non_linearity': 'elu',
+                                               'dropout': None}
 
             agent_args['action_inference_args'] = {'type': 'fully_connected',
                                                    'n_layers': 1,
@@ -183,6 +184,7 @@ def get_mujoco_config(env):
         # observation
         agent_args['observation_variable_args'] = {'type': 'fully_connected',
                                               'likelihood_dist': 'Normal',
+                                              'integration_window': None,
                                               'n_variables': observation_size}
 
         agent_args['obs_likelihood_args'] = {'type': 'fully_connected',
@@ -228,7 +230,7 @@ def get_mujoco_config(env):
                                           'n_input': n_state_variables,
                                           'n_units': 64,
                                           'connectivity': 'highway',
-                                          'non_linearity': 'elu',
+                                          'non_linearity': 'tanh',
                                           'dropout': None}
 
     return agent_args

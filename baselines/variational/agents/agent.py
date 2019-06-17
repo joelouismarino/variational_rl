@@ -484,11 +484,11 @@ class Agent(nn.Module):
         self.state_variable.reset(batch_size)
         self.action_variable.reset(batch_size)
         if self.observation_variable is not None:
-            self.observation_variable.reset()
+            self.observation_variable.reset(batch_size)
         if self.reward_variable is not None:
-            self.reward_variable.reset()
+            self.reward_variable.reset(batch_size)
         if self.done_variable is not None:
-            self.done_variable.reset()
+            self.done_variable.reset(batch_size)
 
         # reset the networks
         if self.state_prior_model is not None:

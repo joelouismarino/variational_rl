@@ -41,7 +41,7 @@ def learn(env, seed, total_timesteps, log_dir, batch_size=20, n_updates=10,
           'reward_likelihood_model': base_lr,
           'done_likelihood_model': base_lr,
           'value_model': base_lr}
-    norm_grad = None
+    norm_grad = 0.5
     optim = 'rmsprop'
     update_inf = agent_args['agent_type'] == 'generative'
     optimizer = Optimizer(agent, lr=lr, norm_grad=norm_grad, optimizer=optim, update_inf_online=update_inf)

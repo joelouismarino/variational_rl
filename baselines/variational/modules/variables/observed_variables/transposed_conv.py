@@ -6,7 +6,7 @@ from ...layers import TransposedConvLayer
 
 class TransposedConvObservedVariable(ObservedVariable):
 
-    def __init__(self, likelihood_dist, n_variables, n_input, filter_size, padding, stride, integration_window=1, sigmoid_loc=False):
+    def __init__(self, likelihood_dist, n_variables, n_input, filter_size, padding, stride, integration_window=None, sigmoid_loc=False):
         super(TransposedConvObservedVariable, self).__init__(likelihood_dist=likelihood_dist,
                                                              n_variables=n_variables,
                                                              integration_window=integration_window)
