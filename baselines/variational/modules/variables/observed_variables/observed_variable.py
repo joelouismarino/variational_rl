@@ -158,8 +158,8 @@ class ObservedVariable(nn.Module):
         n_samples = log_importance_weights.shape[0]
         cll = self.cond_log_likelihood(observation).view(n_samples, -1, 1)
         mll = self.marginal_log_likelihood(observation, log_importance_weights)
-        ig = cll - alpha * mll.repeat(n_samples, 1).view(n_samples, -1, 1).detach()
-        # ig = cll - alpha * mll.repeat(n_samples, 1).view(n_samples, -1, 1)
+        # ig = cll - alpha * mll.repeat(n_samples, 1).view(n_samples, -1, 1).detach()
+        ig = cll - alpha * mll.repeat(n_samples, 1).view(n_samples, -1, 1)
         return ig.mean(dim=0)
         # ig = cll.mean(dim=0) - mll
         # return ig

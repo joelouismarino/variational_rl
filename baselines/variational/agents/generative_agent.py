@@ -226,7 +226,6 @@ class GenerativeAgent(Agent):
                         self.step_action()
 
                         # evaluate the objective
-                        # import ipdb; ipdb.set_trace()
                         reward = self.reward_variable.sample()
                         reward = reward.view(self.n_state_samples, -1, 1)
                         reward = reward.mean(dim=0)

@@ -64,8 +64,6 @@ def get_mujoco_config(env):
                                           'connectivity': 'sequential',
                                           'non_linearity': 'tanh',
                                           'dropout': None}
-        # agent_args['state_prior_args'] = {'type': 'minigrid_conv'}
-        # hidden_state_size = agent_args['state_prior_args']['n_layers'] * agent_args['state_prior_args']['n_units']
 
         agent_args['state_inference_args'] = None
 
