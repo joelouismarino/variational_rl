@@ -255,8 +255,6 @@ class GenerativeAgent(Agent):
                         if not total_flag:
                             break
 
-                    import ipdb; ipdb.set_trace()
-
                     # TODO: add value estimate to the end of un-finished roll-outs
                     # value = self.estimate_value()
 
