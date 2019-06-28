@@ -12,7 +12,7 @@ def get_mujoco_config(env):
 
     agent_args['misc_args'] = {'optimality_scale': 1,
                                'n_state_samples': 5,
-                               'n_inf_iter': dict(state=1, action=1),
+                               'n_inf_iter': dict(state=1, action=0),
                                'kl_min': dict(state=0., action=0.),
                                'kl_min_anneal_rate': dict(state=1., action=1.),
                                'kl_factor': dict(state=1., action=1.),
@@ -23,11 +23,15 @@ def get_mujoco_config(env):
                                'normalize_observations': False,
                                'gae_lambda': 0.98}
 
+    if agent_args['agent_type'] == 'generative':
+        agent_args['misc_args']['marginal_factor'] = 0.01
+        agent_args['misc_args']['marginal_factor_anneal_rate'] = 1.01
+
     # TODO: should change this to use 'iterative' as the inference_type
     if agent_args['misc_args']['n_inf_iter']['action'] > 0:
         # planning configuration
         agent_args['misc_args']['n_planning_samples'] = 200
-        agent_args['misc_args']['max_rollout_length'] = 10
+        agent_args['misc_args']['max_rollout_length'] = 5
 
     observation_size = np.prod(env.observation_space.shape)
     action_space = env.action_space
@@ -137,7 +141,7 @@ def get_mujoco_config(env):
                                               'approx_post_dist': action_approx_post_dist,
                                               'n_variables': n_action_variables,
                                               'constant_prior': False,
-                                              'inference_type': 'iterative'}
+                                              'inference_type': 'direct'}
 
         if agent_args['action_variable_args']['inference_type'] == 'iterative':
             # model-based action inference
@@ -152,7 +156,7 @@ def get_mujoco_config(env):
                                                'dropout': None}
 
             agent_args['action_inference_args'] = {'type': 'fully_connected',
-                                                   'n_layers': 1,
+                                                   'n_layers': 0,
                                                    'n_input': 4 * n_action_variables,
                                                    'n_units': 128,
                                                    'connectivity': 'highway',
@@ -163,7 +167,7 @@ def get_mujoco_config(env):
             # model-free action inference
             agent_args['action_prior_args'] = {'type': 'fully_connected',
                                                'n_layers': 2,
-                                               'n_input': n_state_variables + n_action_variables,
+                                               'n_input': n_state_variables + n_action_variables + observation_size,
                                                'n_units': 64,
                                                'connectivity': 'highway',
                                                'batch_norm': False,
@@ -172,7 +176,7 @@ def get_mujoco_config(env):
 
             agent_args['action_inference_args'] = {'type': 'fully_connected',
                                                    'n_layers': 2,
-                                                   'n_input': n_state_variables + n_action_variables,
+                                                   'n_input': n_state_variables + n_action_variables + observation_size,
                                                    'n_units': 64,
                                                    'connectivity': 'highway',
                                                    'batch_norm': False,

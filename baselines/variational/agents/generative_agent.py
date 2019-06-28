@@ -70,6 +70,9 @@ class GenerativeAgent(Agent):
                           'action': misc_args['kl_factor']['action']}
         self.kl_factor_anneal_rate = {'state': misc_args['kl_factor_anneal_rate']['state'],
                                       'action': misc_args['kl_factor_anneal_rate']['action']}
+        self.marginal_factor = misc_args['marginal_factor']
+        self.marginal_factor_anneal_rate = misc_args['marginal_factor_anneal_rate']
+        
         if self.n_inf_iter['action'] > 0:
             self.n_planning_samples = misc_args['n_planning_samples']
             self.max_rollout_length = misc_args['max_rollout_length']
@@ -89,7 +92,7 @@ class GenerativeAgent(Agent):
         # stores planning rollout lengths during training
         self.rollout_lengths = []
         # stores the log probabilities during an episode
-        self.log_probs = {'action': []}
+        self.log_probs = {'action': [], 'state': []}
         # store the values during training
         self.values = []
 
@@ -163,7 +166,7 @@ class GenerativeAgent(Agent):
         self.generate_reward()
         self.generate_done()
 
-    def action_inference(self, done, valid, action=None, **kwargs):
+    def action_inference(self, done, valid, action=None, observation=None, **kwargs):
         if self.action_inference_model is not None:
             self.inference_mode()
             # infer the approx. posterior on the action
@@ -177,7 +180,7 @@ class GenerativeAgent(Agent):
                 else:
                     action = self.action_variable.sample()
                 # inf_input = self.action_inference_model(state, action, hidden_state)
-                inf_input = self.action_inference_model(state, action)
+                inf_input = self.action_inference_model(state, action, observation)
                 self.action_variable.infer(inf_input)
             else:
                 # model-based action inference
@@ -296,6 +299,7 @@ class GenerativeAgent(Agent):
         # calculate the prior on the state variable
         if self.state_prior_model is not None:
             if not self.state_variable.reinitialized:
+                self.state_variable.inference_mode()
                 state = self.state_variable.sample()
                 if self._prev_action is not None and not self._planning:
                     action = self._prev_action
@@ -304,10 +308,11 @@ class GenerativeAgent(Agent):
                 prior_input = self.state_prior_model(state, action)
                 self.state_variable.step(prior_input)
 
-    def step_action(self, action=None, **kwargs):
+    def step_action(self, action=None, observation=None, **kwargs):
         # calculate the prior on the action variable
         if self.action_prior_model is not None:
             if not self.action_variable.reinitialized:
+                self.state_variable.inference_mode()
                 state = self.state_variable.sample()
                 # hidden_state = self.state_prior_model.network.state
                 if self._prev_action is not None and not self._planning:
@@ -315,7 +320,7 @@ class GenerativeAgent(Agent):
                 else:
                     action = self.action_variable.sample()
                 # prior_input = self.action_prior_model(state, action, hidden_state)
-                prior_input = self.action_prior_model(state, action)
+                prior_input = self.action_prior_model(state, action, observation)
                 self.action_variable.step(prior_input)
 
     def generate_observation(self):

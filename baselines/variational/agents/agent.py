@@ -60,7 +60,7 @@ class Agent(nn.Module):
         # stores planning rollout lengths during training
         self.rollout_lengths = []
         # stores the log probabilities during training
-        self.log_probs = {'action': []}
+        self.log_probs = {'action': [], 'state': []}
         # stores the importance weights during training
         self.importance_weights = {'action': []}
         # store the values during training
@@ -71,7 +71,8 @@ class Agent(nn.Module):
         self.batch_size = 1
         self.gae_lambda = 0.
         self.max_rollout_length = 1
-        self.alpha = 0.01
+        self.marginal_factor = 1.
+        self.marginal_factor_anneal_rate = 1.
         self.reward_discount = 0.99
 
         # normalizers for various quantities
@@ -231,16 +232,19 @@ class Agent(nn.Module):
         else:
             raise NotImplementedError
         # add the REINFORCE terms to the total objective
-        log_probs = torch.stack(self.log_probs['action'])
-        importance_weights = torch.stack(self.importance_weights['action']).detach()
-        reinforce_terms = - importance_weights[:-1] * log_probs[:-1] * advantages
+        action_log_probs = torch.stack(self.log_probs['action'])
+        action_importance_weights = torch.stack(self.importance_weights['action']).detach()
+        action_reinforce_terms = - action_importance_weights[:-1] * action_log_probs[:-1] * advantages
+        # state_log_probs = torch.stack(self.log_probs['state'])
+        # state_reinforce_terms = - state_log_probs[:-1] * advantages
         # reinforce_terms = - log_probs[:-1] * advantages
         if not self.action_variable.inference_type == 'iterative':
             # include the policy gradients in the total objective
-            total_objective[:-1] = total_objective[:-1] + reinforce_terms
+            total_objective[:-1] = total_objective[:-1] + action_reinforce_terms
+        # total_objective[:-1] = total_objective[:-1] + state_reinforce_terms
 
-        results['importance_weights'] = importance_weights.sum(dim=0).div(n_valid_steps).mean(dim=0).detach().cpu().item()
-        results['policy_gradients'] = reinforce_terms.sum(dim=0).div(n_valid_steps-1).mean(dim=0).detach().cpu().item()
+        results['importance_weights'] = action_importance_weights.sum(dim=0).div(n_valid_steps).mean(dim=0).detach().cpu().item()
+        results['policy_gradients'] = action_reinforce_terms.sum(dim=0).div(n_valid_steps-1).mean(dim=0).detach().cpu().item()
         results['advantages'] = advantages.sum(dim=0).div(n_valid_steps-1).mean(dim=0).detach().cpu().item()
 
         # time average, batch average, and backprop
@@ -268,8 +272,8 @@ class Agent(nn.Module):
     def _collect_objectives_and_log_probs(self, observation, reward, done, action, value, valid, log_prob):
         if self.done_likelihood_model is not None:
             log_importance_weights = self.state_variable.log_importance_weights().detach()
-            weighted_done_info_gain = self.done_variable.info_gain(done, log_importance_weights, alpha=self.alpha)
-            done_info_gain = self.done_variable.info_gain(done, log_importance_weights, alpha=1.)
+            weighted_done_info_gain = self.done_variable.info_gain(done, log_importance_weights, marginal_factor=self.marginal_factor)
+            done_info_gain = self.done_variable.info_gain(done, log_importance_weights, marginal_factor=1.)
             done_cll = self.done_variable.cond_log_likelihood(done).view(self.n_state_samples, -1, 1).mean(dim=0)
             done_mll = self.done_variable.marginal_log_likelihood(done, log_importance_weights)
             if self._mode == 'train':
@@ -282,8 +286,8 @@ class Agent(nn.Module):
 
         if self.reward_likelihood_model is not None:
             log_importance_weights = self.state_variable.log_importance_weights().detach()
-            weighted_reward_info_gain = self.reward_variable.info_gain(reward, log_importance_weights, alpha=self.alpha)
-            reward_info_gain = self.reward_variable.info_gain(reward, log_importance_weights, alpha=1.)
+            weighted_reward_info_gain = self.reward_variable.info_gain(reward, log_importance_weights, marginal_factor=self.marginal_factor)
+            reward_info_gain = self.reward_variable.info_gain(reward, log_importance_weights, marginal_factor=1.)
             reward_cll = self.reward_variable.cond_log_likelihood(reward).view(self.n_state_samples, -1, 1).mean(dim=0)
             reward_mll = self.reward_variable.marginal_log_likelihood(reward, log_importance_weights)
             if self._mode == 'train':
@@ -298,8 +302,8 @@ class Agent(nn.Module):
 
         if self.obs_likelihood_model is not None:
             log_importance_weights = self.state_variable.log_importance_weights().detach()
-            weighted_observation_info_gain = self.observation_variable.info_gain(observation, log_importance_weights, alpha=self.alpha)
-            observation_info_gain = self.observation_variable.info_gain(observation, log_importance_weights, alpha=1.)
+            weighted_observation_info_gain = self.observation_variable.info_gain(observation, log_importance_weights, marginal_factor=self.marginal_factor)
+            observation_info_gain = self.observation_variable.info_gain(observation, log_importance_weights, marginal_factor=1.)
             observation_cll = self.observation_variable.cond_log_likelihood(observation).view(self.n_state_samples, -1, 1).mean(dim=0)
             observation_mll = self.observation_variable.marginal_log_likelihood(observation, log_importance_weights)
             if self._mode == 'train':
@@ -358,8 +362,12 @@ class Agent(nn.Module):
             if self.action_variable.approx_post_dist_type == getattr(torch.distributions, 'Categorical'):
                 action_log_prob = action_log_prob.view(-1, 1)
             else:
-                action_log_prob = action_log_prob.sum(dim=1, keepdim = True)
+                action_log_prob = action_log_prob.sum(dim=1, keepdim=True)
             self.log_probs['action'].append(action_log_prob * valid)
+            state = self.state_variable.sample()
+            state_log_prob = self.state_variable.approx_post_dist.log_prob(state)
+            state_log_prob = state_log_prob.sum(dim=1, keepdim=True)
+            self.log_probs['state'].append(state_log_prob * valid)
             # if log_prob is None:
             #     log_prob = action_log_prob
             importance_weight = torch.exp(action_log_prob) / torch.exp(log_prob)
@@ -376,7 +384,7 @@ class Agent(nn.Module):
             if self.action_variable.approx_post_dist_type == getattr(torch.distributions, 'Categorical'):
                 action_log_prob = action_log_prob.view(-1, 1)
             else:
-                action_log_prob = action_log_prob.sum(dim=1, keepdim = True)
+                action_log_prob = action_log_prob.sum(dim=1, keepdim=True)
             self.episode['log_prob'].append(action_log_prob.detach())
         else:
             obs = self.episode['observation'][0]
@@ -391,8 +399,8 @@ class Agent(nn.Module):
         self.episode['done'].append(done)
 
         if done:
-            self.alpha *= 1.01
-            self.alpha = min(self.alpha, 1.)
+            self.marginal_factor *= self.marginal_factor_anneal_rate
+            self.marginal_factor = min(self.marginal_factor, 1.)
 
             self.kl_min['state'] *= self.kl_min_anneal_rate['state']
             self.kl_min['action'] *= self.kl_min_anneal_rate['action']
@@ -533,7 +541,7 @@ class Agent(nn.Module):
             self.metrics['done'] = {'cll': [], 'info_gain': [], 'mll': []}
             self.distributions['done'] = {'pred': {'probs': []}, 'recon': {'probs': []}}
         self.inference_improvement = {'state': [], 'action': []}
-        self.log_probs = {'action': []}
+        self.log_probs = {'action': [], 'state': []}
         self.rollout_lenghts = []
         self.importance_weights = {'action': []}
         self.values = []

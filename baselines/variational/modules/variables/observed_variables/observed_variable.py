@@ -152,14 +152,14 @@ class ObservedVariable(nn.Module):
         # return mll
         return self._cond_log_likelihood(observation, dist='likelihood_pred').view(n_samples, -1, 1).mean(dim=0)
 
-    def info_gain(self, observation=None, log_importance_weights=None, alpha=1.):
+    def info_gain(self, observation=None, log_importance_weights=None, marginal_factor=1.):
         # calculate the information gain from the conditional and marginal likelihoods
         observation = self._change_device(observation)
         n_samples = log_importance_weights.shape[0]
         cll = self.cond_log_likelihood(observation).view(n_samples, -1, 1)
         mll = self.marginal_log_likelihood(observation, log_importance_weights)
         # ig = cll - alpha * mll.repeat(n_samples, 1).view(n_samples, -1, 1).detach()
-        ig = cll - alpha * mll.repeat(n_samples, 1).view(n_samples, -1, 1)
+        ig = cll - marginal_factor * mll.repeat(n_samples, 1).view(n_samples, -1, 1)
         return ig.mean(dim=0)
         # ig = cll.mean(dim=0) - mll
         # return ig

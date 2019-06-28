@@ -62,7 +62,7 @@ class DiscriminativeAgent(Agent):
         # stores inference improvement
         self.inference_improvement = {'state': [], 'action': []}
         # stores the log probabilities during an episode
-        self.log_probs = {'action': []}
+        self.log_probs = {'action': [], 'state': []}
         # store the values during training
         self.values = []
 
