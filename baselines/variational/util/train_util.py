@@ -1,7 +1,7 @@
 import torch
 import time
 
-def collect_episode(env, agent):
+def collect_episode(env, agent, random=False):
     """
     Collects an episode of experience using the model and environment.
     """
@@ -14,10 +14,12 @@ def collect_episode(env, agent):
     while not done:
         # time.sleep(0.05)
         # env.render()
-        action = agent.act(observation, reward, done)
+        action = agent.act(observation, reward, done, random=random)
+        if random:
+            action = env.action_space.sample()
         observation, reward, done, _ = env.step(action)
         n_steps += 1
-    agent.act(None, reward, done)
+    agent.act(None, reward, done, random=random)
 
     return agent.get_episode(), n_steps
 

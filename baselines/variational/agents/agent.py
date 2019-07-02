@@ -80,14 +80,13 @@ class Agent(nn.Module):
         self.obs_normalizer = None
         self.advantage_normalizer = None
 
-    def act(self, observation, reward=None, done=False, action=None, valid=None, log_prob=None):
-        # if len(self.metrics['optimality']['cll']) == 0:
-        #     import ipdb; ipdb.set_trace()
+    def act(self, observation, reward=None, done=False, action=None, valid=None, log_prob=None, random=False):
         observation, reward, action, done, valid, log_prob = self._change_device(observation, reward, action, done, valid, log_prob)
         self.step_state(observation=observation, reward=reward, done=done, valid=valid)
         self.state_inference(observation=observation, reward=reward, done=done, valid=valid)
         self.step_action(observation=observation, reward=reward, done=done, valid=valid, action=action)
-        self.action_inference(observation=observation, reward=reward, done=done, valid=valid, action=action)
+        if not random:
+            self.action_inference(observation=observation, reward=reward, done=done, valid=valid, action=action)
         value = self.estimate_value(observation=observation, reward=reward, done=done, valid=valid)
         self._collect_objectives_and_log_probs(observation, reward, done, action, value, valid, log_prob)
         self.valid.append(valid)
@@ -266,6 +265,7 @@ class Agent(nn.Module):
 
         results['kl_min'] = self.kl_min
         results['kl_factor'] = self.kl_factor
+        results['marginal_factor'] = self.marginal_factor
 
         return results
 

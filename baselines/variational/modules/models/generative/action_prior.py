@@ -7,13 +7,16 @@ class ActionPrior(Model):
 
     def __init__(self, network_args):
         super(ActionPrior, self).__init__()
+        self.inputs = network_args.pop('inputs')
         self.network = get_network(network_args)
 
-    def forward(self, state, action):
-        # combine inputs
-        inputs = torch.cat([state, action], dim=1)
-        return self.network(inputs)
-        # return self.network(state)
+    # # def forward(self, state, action, observation):
+    # def forward(self, state, action):
+    #     # combine inputs
+    #     # inputs = torch.cat([state, action, observation], dim=1)
+    #     inputs = torch.cat([state, action], dim=1)
+    #     return self.network(inputs)
+    #     # return self.network(state)
 
     # def forward(self, state, action, hidden_state):
     #     # combine inputs

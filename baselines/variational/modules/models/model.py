@@ -1,13 +1,16 @@
+import torch
 import torch.nn as nn
+from ..networks import get_network
 
 
 class Model(nn.Module):
     """
     Wrapper class around network to parameterize each of the conditional mappings.
     """
-    def __init__(self):
+    def __init__(self, network_args):
         super(Model, self).__init__()
-        self.network = None
+        self.inputs = network_args.pop('inputs')
+        self.network = get_network(network_args)
 
     @property
     def n_out(self):
@@ -36,5 +39,15 @@ class Model(nn.Module):
         if self.network is not None:
             self.network.attach_hidden_state()
 
-    def forward(self):
-        raise NotImplementedError
+    def forward(self, **kwargs):
+        inputs = []
+        for k in self.inputs:
+            if k in kwargs:
+                inputs += [kwargs[k]]
+            else:
+                raise InputError
+        if len(inputs) > 1:
+            inputs = torch.cat(inputs, dim=1)
+        else:
+            inputs = inputs[0]
+        return self.network(inputs)

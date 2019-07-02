@@ -21,14 +21,14 @@ class GenerativeAgent(Agent):
         super(GenerativeAgent, self).__init__()
 
         # models
-        self.state_prior_model = get_model('generative', 'state', 'prior', state_prior_args)
-        self.action_prior_model = get_model('generative', 'action', 'prior', action_prior_args)
-        self.obs_likelihood_model = get_model('generative', 'observation', 'likelihood', obs_likelihood_args)
-        self.reward_likelihood_model = get_model('generative', 'reward', 'likelihood', reward_likelihood_args)
-        self.done_likelihood_model = get_model('generative', 'done', 'likelihood', done_likelihood_args)
-        self.state_inference_model = get_model('generative', 'state', 'inference', state_inference_args)
-        self.action_inference_model = get_model('generative', 'action', 'inference', action_inference_args)
-        self.value_model = get_model('value', value_model_args)
+        self.state_prior_model = get_model(state_prior_args)
+        self.action_prior_model = get_model(action_prior_args)
+        self.obs_likelihood_model = get_model(obs_likelihood_args)
+        self.reward_likelihood_model = get_model(reward_likelihood_args)
+        self.done_likelihood_model = get_model(done_likelihood_args)
+        self.state_inference_model = get_model(state_inference_args)
+        self.action_inference_model = get_model(action_inference_args)
+        self.value_model = get_model(value_model_args)
 
         # variables
         state_variable_args['n_input'] = [None, None]
@@ -72,8 +72,8 @@ class GenerativeAgent(Agent):
                                       'action': misc_args['kl_factor_anneal_rate']['action']}
         self.marginal_factor = misc_args['marginal_factor']
         self.marginal_factor_anneal_rate = misc_args['marginal_factor_anneal_rate']
-        
-        if self.n_inf_iter['action'] > 0:
+
+        if self.action_variable.inference_type == 'iterative':
             self.n_planning_samples = misc_args['n_planning_samples']
             self.max_rollout_length = misc_args['max_rollout_length']
 
@@ -134,7 +134,7 @@ class GenerativeAgent(Agent):
                 (state_inf_free_energy.sum()).backward(retain_graph=True)
                 # update approx. posterior
                 params, grads = self.state_variable.params_and_grads()
-                inf_input = self.state_inference_model(params, grads)
+                inf_input = self.state_inference_model(params=params, grads=grads)
                 self.state_variable.infer(inf_input)
             # final evaluation
             self.generate_observation()
@@ -180,7 +180,8 @@ class GenerativeAgent(Agent):
                 else:
                     action = self.action_variable.sample()
                 # inf_input = self.action_inference_model(state, action, hidden_state)
-                inf_input = self.action_inference_model(state, action, observation)
+                # inf_input = self.action_inference_model(state, action, observation)
+                inf_input = self.action_inference_model(state=state, action=action)
                 self.action_variable.infer(inf_input)
             else:
                 # model-based action inference
@@ -273,7 +274,7 @@ class GenerativeAgent(Agent):
                     if inf_iter < self.n_inf_iter['action']:
                         # update the approximate posterior using the inference model
                         params, grads = self.action_variable.params_and_grads()
-                        inf_input = self.action_inference_model(params, grads)
+                        inf_input = self.action_inference_model(params=params, grads=grads)
                         self.action_variable.infer(inf_input)
 
                     # store the length of the planning rollout and objective estimate
@@ -305,7 +306,7 @@ class GenerativeAgent(Agent):
                     action = self._prev_action
                 else:
                     action = self.action_variable.sample()
-                prior_input = self.state_prior_model(state, action)
+                prior_input = self.state_prior_model(state=state, action=action)
                 self.state_variable.step(prior_input)
 
     def step_action(self, action=None, observation=None, **kwargs):
@@ -320,7 +321,8 @@ class GenerativeAgent(Agent):
                 else:
                     action = self.action_variable.sample()
                 # prior_input = self.action_prior_model(state, action, hidden_state)
-                prior_input = self.action_prior_model(state, action, observation)
+                # prior_input = self.action_prior_model(state, action, observation)
+                prior_input = self.action_prior_model(state=state, action=action)
                 self.action_variable.step(prior_input)
 
     def generate_observation(self):
@@ -328,7 +330,7 @@ class GenerativeAgent(Agent):
         state = self.state_variable.sample(n_samples=self.n_state_samples)
         # hidden_state = self.state_prior_model.network.state
         # likelihood_input = self.obs_likelihood_model(state, hidden_state)
-        likelihood_input = self.obs_likelihood_model(state)
+        likelihood_input = self.obs_likelihood_model(state=state)
         self.observation_variable.generate(likelihood_input)
 
     def generate_reward(self):
@@ -336,7 +338,7 @@ class GenerativeAgent(Agent):
         state = self.state_variable.sample(n_samples=self.n_state_samples)
         # hidden_state = self.state_prior_model.network.state
         # likelihood_input = self.reward_likelihood_model(state, hidden_state)
-        likelihood_input = self.reward_likelihood_model(state)
+        likelihood_input = self.reward_likelihood_model(state=state)
         self.reward_variable.generate(likelihood_input)
 
     def generate_done(self):
@@ -344,7 +346,7 @@ class GenerativeAgent(Agent):
         state = self.state_variable.sample(n_samples=self.n_state_samples)
         # hidden_state = self.state_prior_model.network.state
         # likelihood_input = self.done_likelihood_model(state, hidden_state)
-        likelihood_input = self.done_likelihood_model(state)
+        likelihood_input = self.done_likelihood_model(state=state)
         self.done_variable.generate(likelihood_input)
 
     def estimate_value(self, done, **kwargs):
@@ -352,7 +354,7 @@ class GenerativeAgent(Agent):
         state = self.state_variable.sample()
         # hidden_state = self.state_prior_model.network.state
         # value = self.value_variable(self.value_model(state, hidden_state)) * (1 - done)
-        value = self.value_variable(self.value_model(state)) * (1 - done)
+        value = self.value_variable(self.value_model(state=state)) * (1 - done)
         if not self._planning:
             self.values.append(value)
         return value

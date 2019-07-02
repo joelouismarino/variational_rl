@@ -30,7 +30,7 @@ class Plotter:
         self.metric_plot_names = ['optimality_cll', 'state_kl', 'action_kl', 'value']
         self.metric_plot_names += ['importance_weights', 'policy_gradients', 'advantages']
         self.episode_plot_names = ['length', 'env_return', 'total_steps']
-        self.misc_plot_names = ['kl_min', 'kl_factor']
+        self.misc_plot_names = ['kl_min', 'kl_factor', 'marginal_factor']
         self.img_names = ['obs']
         self.grad_names = ['grads', 'grad_norms']
         self.hist_names = ['actions']
@@ -114,7 +114,8 @@ class Plotter:
                                       opts=self._get_opts(metric_name))
             self._plot_grads(results['grads'], 'grads')
             self._plot_grads(results['grad_norms'], 'grad_norms')
-            self._plot_kl_terms(results['kl_min'], results['kl_factor'])
+            self._plot_kl_factors(results['kl_min'], results['kl_factor'])
+            self._plot_marginal_factor(results['marginal_factor'])
             self.vis.save([self.env_id])
             # reset the internal training results
             self._train_results = {}
@@ -198,7 +199,7 @@ class Plotter:
                     opts = self._get_opts(window_name)
                     self.window_id[window_name] = self.vis.line(X=[self._step], Y=[grads[model_name]], name=model_name, opts=opts)
 
-    def _plot_kl_terms(self, kl_min, kl_factor):
+    def _plot_kl_factors(self, kl_min, kl_factor):
         # plots kl terms
         kl_dict = {'kl_min': kl_min, 'kl_factor': kl_factor}
         for window_name, kl_term in kl_dict.items():
@@ -212,6 +213,16 @@ class Plotter:
                     else:
                         opts = self._get_opts(window_name)
                         self.window_id[window_name] = self.vis.line(X=[self._step], Y=[kl_term[variable_name]], name=variable_name, opts=opts)
+
+    def _plot_marginal_factor(self, marginal_factor):
+        if self.window_id['marginal_factor'] is not None:
+            self.vis.line(X=[self._step], Y=[marginal_factor], update='append', win=self.window_id['marginal_factor'])
+        else:
+            if self.window_id['marginal_factor'] is not None:
+                self.vis.line(X=[self._step], Y=[marginal_factor], update='replace', win=self.window_id['marginal_factor'])
+            else:
+                opts = self._get_opts('marginal_factor')
+                self.window_id['marginal_factor'] = self.vis.line(X=[self._step], Y=[marginal_factor], opts=opts)
 
     def plot_states_mujoco(self, episode, timestep, n_states, window_name='mujoco states'):
         if 'distributions' in episode:
@@ -364,6 +375,10 @@ class Plotter:
         elif win_name == 'kl_factor':
             ylabel = 'KL Anneal Factor'
             title = 'KL Anneal Factor'
+            xtype = 'line'
+        elif win_name == 'marginal_factor':
+            ylabel = 'Marginal Factor'
+            title = 'Marginal Factor'
             xtype = 'line'
         elif win_name == 'actions':
             ylabel = 'Count'

@@ -9,7 +9,7 @@ class StateInference(Model):
         super(StateInference, self).__init__()
         self.network = get_network(network_args)
 
-    def forward(self, params, grads):
-        # combine inputs
-        inputs = torch.cat([params, grads], dim=1)
-        return self.network(inputs)
+    # def forward(self, params, grads):
+    #     # combine inputs
+    #     inputs = torch.cat([params, grads], dim=1)
+    #     return self.network(inputs)

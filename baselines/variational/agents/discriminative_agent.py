@@ -17,11 +17,11 @@ class DiscriminativeAgent(Agent):
         super(DiscriminativeAgent, self).__init__()
 
         # models
-        self.state_prior_model = get_model('discriminative', 'state', 'prior', state_prior_args)
-        self.action_prior_model = get_model('discriminative', 'action', 'prior', action_prior_args)
-        self.state_inference_model = get_model('discriminative', 'state', 'inference', state_inference_args)
-        self.action_inference_model = get_model('discriminative', 'action', 'inference', action_inference_args)
-        self.value_model = get_model('value', value_model_args)
+        self.state_prior_model = get_model(state_prior_args)
+        self.action_prior_model = get_model(action_prior_args)
+        self.state_inference_model = get_model(state_inference_args)
+        self.action_inference_model = get_model(action_inference_args)
+        self.value_model = get_model(value_model_args)
 
         # variables
         state_variable_args['n_input'] = [None, None]
@@ -103,7 +103,7 @@ class DiscriminativeAgent(Agent):
             if self.obs_normalizer:
                 update = self._mode=='eval' and self.state_prior_model is None
                 observation = self.obs_normalizer(observation, update=update)
-            inf_input = self.state_inference_model(observation, reward, state, action)
+            inf_input = self.state_inference_model(observation=observation, reward=reward, state=state, action=action)
             self.state_variable.infer(inf_input)
 
     def action_inference(self, observation, reward, action=None, **kwargs):
@@ -117,7 +117,7 @@ class DiscriminativeAgent(Agent):
             if self.action_variable.reinitialized:
                 action = self.action_variable.sample()
                 action = action.new_zeros(action.shape)
-            inf_input = self.action_inference_model(observation, reward, state, action)
+            inf_input = self.action_inference_model(observation=observation, reward=reward, state=state, action=action)
             self.action_variable.infer(inf_input)
 
     def step_state(self, observation, reward, **kwargs):
@@ -135,7 +135,7 @@ class DiscriminativeAgent(Agent):
                 action = action.new_zeros(action.shape)
             if self.obs_normalizer:
                 observation = self.obs_normalizer(observation, update=self._mode=='eval')
-            prior_input = self.state_prior_model(observation, reward, state, action)
+            prior_input = self.state_prior_model(observation=observation, reward=reward, state=state, action=action)
             self.state_variable.step(prior_input)
 
     def step_action(self, observation, reward, **kwargs):
@@ -149,12 +149,12 @@ class DiscriminativeAgent(Agent):
             if self.action_variable.reinitialized:
                 action = self.action_variable.sample()
                 action = action.new_zeros(action.shape)
-            prior_input = self.action_prior_model(observation, reward, state, action)
+            prior_input = self.action_prior_model(observation=observation, reward=reward, state=state, action=action)
             self.action_variable.step(prior_input)
 
     def estimate_value(self, done, **kwargs):
         # estimate the value of the current state
         state = self.state_variable.sample()
-        value = self.value_variable(self.value_model(state)) * (1 - done)
+        value = self.value_variable(self.value_model(state=state)) * (1 - done)
         self.values.append(value)
         return value

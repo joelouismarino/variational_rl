@@ -9,8 +9,8 @@ class RewardLikelihood(Model):
         super(RewardLikelihood, self).__init__()
         self.network = get_network(network_args)
 
-    def forward(self, state):
-        return self.network(state)
+    # def forward(self, state):
+    #     return self.network(state)
 
     # def forward(self, state, hidden_state):
     #     inputs = torch.cat([state, hidden_state], dim=1)

@@ -10,8 +10,8 @@ from .util.print_util import print_step_metrics, print_episode_metrics
 from .util.train_util import collect_episode, train
 
 
-def learn(env, seed, total_timesteps, log_dir, batch_size=20, n_updates=10,
-          n_initial_batches=1, train_seq_len=50, lr=1e-4, on_policy=False,
+def learn(env, seed, total_timesteps, log_dir, batch_size=64, n_updates=1,
+          n_initial_batches=1, train_seq_len=15, lr=1e-4, on_policy=False,
           device=None, ckpt_path=None, **kwargs):
 
     torch.manual_seed(0)
@@ -43,9 +43,11 @@ def learn(env, seed, total_timesteps, log_dir, batch_size=20, n_updates=10,
           'value_model': base_lr}
     norm_grad = 0.5
     optim = 'rmsprop'
-    update_inf = agent_args['agent_type'] == 'generative'
+    # update_inf = agent_args['agent_type'] == 'generative'
+    update_inf = True
+    weight_decay = 1e-3
     optimizer = Optimizer(agent, lr=lr, norm_grad=norm_grad, optimizer=optim,
-                          update_inf_online=update_inf)
+                          update_inf_online=update_inf, weight_decay=weight_decay)
 
     # logging and plotting
     if hasattr(env, 'spec'):
@@ -57,7 +59,8 @@ def learn(env, seed, total_timesteps, log_dir, batch_size=20, n_updates=10,
                 'n_updates': n_updates, 'n_initial_batches': n_initial_batches,
                 'train_seq_len': train_seq_len, 'lr': lr, 'on_policy': on_policy,
                 'device': device, 'ckpt_path': ckpt_path, 'norm_grad': norm_grad,
-                'optimizer': optim, 'agent_args': agent_args}
+                'optimizer': optim, 'update_inf_online': update_inf,
+                'weight_decay': weight_decay, 'agent_args': agent_args}
     logger = Logger(log_dir, exp_args, agent)
     exp_args['log_str'] = logger.log_str
     plotter = Plotter(log_dir, exp_args)
@@ -70,7 +73,8 @@ def learn(env, seed, total_timesteps, log_dir, batch_size=20, n_updates=10,
         # collect an episode
         print(logger.log_str + ' -- Collecting Episode: ' + str(n_episodes + 1))
         t_start = time.time()
-        episode, episode_length = collect_episode(env, agent)
+        r = len(buffer) < n_initial_batches * batch_size
+        episode, episode_length = collect_episode(env, agent, random=r)
         t_end = time.time()
         print('Duration: ' + '{:.2f}'.format(t_end - t_start) + ' s.')
         timestep += episode_length
