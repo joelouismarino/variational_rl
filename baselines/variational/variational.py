@@ -45,7 +45,7 @@ def learn(env, seed, total_timesteps, log_dir, batch_size=64, n_updates=1,
     optim = 'rmsprop'
     # update_inf = agent_args['agent_type'] == 'generative'
     update_inf = True
-    weight_decay = 1e-3
+    weight_decay = 0
     optimizer = Optimizer(agent, lr=lr, norm_grad=norm_grad, optimizer=optim,
                           update_inf_online=update_inf, weight_decay=weight_decay)
 

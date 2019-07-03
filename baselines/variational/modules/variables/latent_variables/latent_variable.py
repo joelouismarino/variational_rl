@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.distributions.constraints as constraints
-from ....misc.delta import Delta
+from ....misc.distributions import Delta, TransformedTanh
 
 
 class LatentVariable(nn.Module):
@@ -30,12 +30,16 @@ class LatentVariable(nn.Module):
 
         if prior_dist == 'Delta':
             self.prior_dist_type = Delta
+        elif approx_post_dist == 'TransformedTanh':
+            self.prior_dist_type = TransformedTanh
         else:
             self.prior_dist_type = getattr(torch.distributions, prior_dist)
         self.approx_post_dist_type = None
         if approx_post_dist is not None:
             if approx_post_dist == 'Delta':
                 self.approx_post_dist_type = Delta
+            elif approx_post_dist == 'TransformedTanh':
+                self.approx_post_dist_type = TransformedTanh
             else:
                 self.approx_post_dist_type = getattr(torch.distributions, approx_post_dist)
 

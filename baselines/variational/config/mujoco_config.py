@@ -26,7 +26,7 @@ def get_mujoco_config(env):
                                'gae_lambda': 0.98}
 
     if agent_args['agent_type'] == 'generative':
-        agent_args['misc_args']['marginal_factor'] = 0.01
+        agent_args['misc_args']['marginal_factor'] = 1.
         agent_args['misc_args']['marginal_factor_anneal_rate'] = 1.002
 
     if agent_args['misc_args']['inference_type']['action'] == 'iterative':
@@ -48,8 +48,12 @@ def get_mujoco_config(env):
         discrete_actions = True
     elif type(action_space) == spaces.Box:
         # continuous control
-        action_prior_dist = 'Normal'
-        action_approx_post_dist = 'Normal'
+        if env.action_space.low.min() == -1 and env.action_space.high.max() == 1:
+            action_prior_dist = 'TransformedTanh'
+            action_approx_post_dist = 'TransformedTanh'
+        else:
+            action_prior_dist = 'Normal'
+            action_approx_post_dist = 'Normal'
         n_action_variables = env.action_space.shape[0]
         action_inf_n_input = 4 * n_action_variables
         discrete_actions = False
@@ -198,7 +202,7 @@ def get_mujoco_config(env):
                                              'inputs': ['state'],
                                              'n_units': 128,
                                              'connectivity': 'highway',
-                                             'batch_norm': False,
+                                             'batch_norm': True,
                                              'non_linearity': 'elu'}
 
         # reward
@@ -213,7 +217,7 @@ def get_mujoco_config(env):
                                                 'inputs': ['state'],
                                                 'n_units': 64,
                                                 'connectivity': 'highway',
-                                                'batch_norm': False,
+                                                'batch_norm': True,
                                                 'non_linearity': 'elu',
                                                 'dropout': None}
 
@@ -228,7 +232,7 @@ def get_mujoco_config(env):
                                               'n_input': n_state_variables,
                                               'n_units': 64,
                                               'connectivity': 'sequential',
-                                              'batch_norm': False,
+                                              'batch_norm': True,
                                               'non_linearity': 'tanh',
                                               'dropout': None}
 

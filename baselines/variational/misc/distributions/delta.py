@@ -24,7 +24,6 @@ class Delta(Distribution):
             batch_shape = self.loc.size()
         super(Delta, self).__init__(batch_shape, validate_args=validate_args)
 
-
     def expand(self, batch_shape, _instance=None):
         new = self._get_checked_instance(Delta, _instance)
         batch_shape = torch.Size(batch_shape)
