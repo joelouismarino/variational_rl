@@ -1,13 +1,12 @@
+from comet_ml import Experiment
 import torch
 import time
 from .config import get_agent_args
 from .agents import get_agent
 from .buffers import DataBuffer
 from .optimizers import Optimizer
-from .util.plot_util import Plotter
-from .util.log_util import Logger
-from .util.print_util import print_step_metrics, print_episode_metrics
 from .util.train_util import collect_episode, train
+from .util.comet_util import plot_episode, flatten
 
 
 def learn(env, seed, total_timesteps, log_dir, batch_size=64, n_updates=1,
@@ -61,9 +60,11 @@ def learn(env, seed, total_timesteps, log_dir, batch_size=64, n_updates=1,
                 'device': device, 'ckpt_path': ckpt_path, 'norm_grad': norm_grad,
                 'optimizer': optim, 'update_inf_online': update_inf,
                 'weight_decay': weight_decay, 'agent_args': agent_args}
-    logger = Logger(log_dir, exp_args, agent)
-    exp_args['log_str'] = logger.log_str
-    plotter = Plotter(log_dir, exp_args)
+
+    experiment = Experiment(api_key='0h5Ah9aohqLCk0c8dM9mcxFRu', project_name='vrl0', workspace="variational-rl")
+    experiment.disable_mp()
+    experiment.log_parameters(exp_args)
+    experiment.log_parameters(agent_args)
 
     # collect episodes and train
     timestep = 0
@@ -75,12 +76,11 @@ def learn(env, seed, total_timesteps, log_dir, batch_size=64, n_updates=1,
         t_start = time.time()
         r = len(buffer) < n_initial_batches * batch_size
         episode, episode_length = collect_episode(env, agent, random=r)
+    plot_episode(episode, experiment, timestep)
         t_end = time.time()
         print('Duration: ' + '{:.2f}'.format(t_end - t_start) + ' s.')
         timestep += episode_length
         n_episodes += 1
-        plotter.plot_episode(episode)
-        logger.log_episode(episode)
         buffer.append(episode)
 
         # train on samples from buffer
@@ -93,8 +93,10 @@ def learn(env, seed, total_timesteps, log_dir, batch_size=64, n_updates=1,
                 results = train(agent, batch, optimizer)
                 t_end = time.time()
                 print('Duration: ' + '{:.2f}'.format(t_end - t_start) + ' s.')
-                logger.log_train_step(results)
-                plotter.plot_train_step(results, plot=(update==n_updates-1))
+                results = flatten(results)
+                print(timestep)
+                for n, m in results.items():
+                    experiment.log_metric(n, m, timestep)
 
             if on_policy:
                 buffer.empty()
