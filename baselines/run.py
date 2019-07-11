@@ -1,3 +1,4 @@
+from comet_ml import Experiment  # needs to be the first thing imported
 import sys
 import multiprocessing
 import os.path as osp
