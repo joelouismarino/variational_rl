@@ -146,11 +146,11 @@ class ObservedVariable(nn.Module):
     def marginal_log_likelihood(self, observation, log_importance_weights):
         # estimate the marginal log likelihood
         n_samples = log_importance_weights.shape[0]
-        # cll = self._cond_log_likelihood(observation).view(n_samples, -1, 1)
-        # log_imp_weighted_cl = log_importance_weights + cll
-        # mll = log_imp_weighted_cl.logsumexp(dim=0) - torch.tensor(float(n_samples)).log()
-        # return mll
-        return self._cond_log_likelihood(observation, dist='likelihood_pred').view(n_samples, -1, 1).mean(dim=0)
+        cll = self._cond_log_likelihood(observation).view(n_samples, -1, 1)
+        log_imp_weighted_cl = log_importance_weights + cll
+        mll = log_imp_weighted_cl.logsumexp(dim=0) - torch.tensor(float(n_samples)).log()
+        return mll
+        # return self._cond_log_likelihood(observation, dist='likelihood_pred').view(n_samples, -1, 1).mean(dim=0)
 
     def info_gain(self, observation=None, log_importance_weights=None, marginal_factor=1.):
         # calculate the information gain from the conditional and marginal likelihoods

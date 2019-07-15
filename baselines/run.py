@@ -7,7 +7,7 @@ from collections import defaultdict
 import tensorflow as tf
 import numpy as np
 
-from envs import registration
+from .envs import registration
 
 import matplotlib.pyplot as plt
 

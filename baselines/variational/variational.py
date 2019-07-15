@@ -61,7 +61,7 @@ def learn(env, seed, total_timesteps, log_dir, batch_size=64, n_updates=1,
                 'optimizer': optim, 'update_inf_online': update_inf,
                 'weight_decay': weight_decay, 'agent_args': agent_args}
 
-    experiment = Experiment(api_key='0h5Ah9aohqLCk0c8dM9mcxFRu', project_name='vrl0', workspace="variational-rl")
+    experiment = Experiment(api_key='prsuXaz6RVyjfIWmbZwVjWMug', project_name='variational-rl', workspace="alexpiche")
     experiment.disable_mp()
     experiment.log_parameters(exp_args)
     experiment.log_parameters(agent_args)
@@ -72,11 +72,11 @@ def learn(env, seed, total_timesteps, log_dir, batch_size=64, n_updates=1,
     while timestep < total_timesteps:
 
         # collect an episode
-        print(logger.log_str + ' -- Collecting Episode: ' + str(n_episodes + 1))
+        # print(logger.log_str + ' -- Collecting Episode: ' + str(n_episodes + 1))
         t_start = time.time()
         r = len(buffer) < n_initial_batches * batch_size
         episode, episode_length = collect_episode(env, agent, random=r)
-    plot_episode(episode, experiment, timestep)
+        plot_episode(episode, experiment, timestep)
         t_end = time.time()
         print('Duration: ' + '{:.2f}'.format(t_end - t_start) + ' s.')
         timestep += episode_length

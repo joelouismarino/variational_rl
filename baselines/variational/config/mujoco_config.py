@@ -26,7 +26,7 @@ def get_mujoco_config(env):
                                'gae_lambda': 0.98}
 
     if agent_args['agent_type'] == 'generative':
-        agent_args['misc_args']['marginal_factor'] = 1.
+        agent_args['misc_args']['marginal_factor'] = 0.01
         agent_args['misc_args']['marginal_factor_anneal_rate'] = 1.002
 
     if agent_args['misc_args']['inference_type']['action'] == 'iterative':
