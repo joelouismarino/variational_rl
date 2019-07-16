@@ -49,5 +49,4 @@ def create_env(env_name, seed=None):
         env = observation_wrappers.ToTensor(env)
         env = reward_wrappers.ToTensor(env)
 
-
     return env

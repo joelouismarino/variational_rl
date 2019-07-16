@@ -1,19 +1,17 @@
 import torch
 import torch.nn as nn
-import torch.distributions as dist
-from abc import abstractmethod
-from modules.networks import get_network
-from modules.variables import get_variable
-from misc import clear_gradients, one_hot_to_index
-from util.normalization_util import Normalizer
 import numpy as np
+from abc import abstractmethod
+from misc import one_hot_to_index
+# from misc.collector import Collector
+from misc.normalization import Normalizer
 
 
 class Agent(nn.Module):
     """
     Variational RL Agent
     """
-    def __init__(self):
+    def __init__(self, misc_args):
         super(Agent, self).__init__()
 
         # models
@@ -34,14 +32,21 @@ class Agent(nn.Module):
         self.done_variable = None
 
         # miscellaneous
-        self.optimality_scale = 1.
-        self.kl_min = {'state': 0, 'action': 0}
-        self.kl_min_anneal_rate = {'state': 1., 'action': 1.}
-        self.kl_factor = {'state': 1., 'action': 1.}
-        self.kl_factor_anneal_rate = {'state': 1., 'action': 1.}
+        self.optimality_scale = misc_args['optimality_scale']
+        self.kl_min = {'state': misc_args['kl_min']['state'],
+                       'action': misc_args['kl_min']['action']}
+        self.kl_min_anneal_rate = {'state': misc_args['kl_min_anneal_rate']['state'],
+                                   'action': misc_args['kl_min_anneal_rate']['action']}
+        self.kl_factor = {'state': misc_args['kl_factor']['state'],
+                          'action': misc_args['kl_factor']['action']}
+        self.kl_factor_anneal_rate = {'state': misc_args['kl_factor_anneal_rate']['state'],
+                                      'action': misc_args['kl_factor_anneal_rate']['action']}
 
         # mode (either 'train' or 'eval')
         self._mode = 'train'
+
+        #
+        # self.collector = Collector(self)
 
         # stores the variables
         self.episode = {'observation': [], 'reward': [], 'done': [],
@@ -69,16 +74,21 @@ class Agent(nn.Module):
         self.valid = []
         self._prev_action = None
         self.batch_size = 1
-        self.gae_lambda = 0.
-        self.max_rollout_length = 1
-        self.marginal_factor = 1.
-        self.marginal_factor_anneal_rate = 1.
-        self.reward_discount = 0.99
+        self.gae_lambda = misc_args['gae_lambda']
+        self.reward_discount = misc_args['reward_discount']
 
         # normalizers for various quantities
         self.return_normalizer = None
-        self.obs_normalizer = None
+        if misc_args['normalize_returns']:
+            self.return_normalizer = Normalizer(shift=False, clip_value=10.)
         self.advantage_normalizer = None
+        if misc_args['normalize_advantages']:
+            self.advantage_normalizer = Normalizer(clip_value=10.)
+        self.obs_normalizer = None
+        if misc_args['normalize_observations']:
+            observation_size = state_inference_args['n_input']
+            # TODO: should set this in a better way, in case of image input
+            self.obs_normalizer = Normalizer(shape=(observation_size), clip_value=10.)
 
     def act(self, observation, reward=None, done=False, action=None, valid=None, log_prob=None, random=False):
         observation, reward, action, done, valid, log_prob = self._change_device(observation, reward, action, done, valid, log_prob)
@@ -114,6 +124,11 @@ class Agent(nn.Module):
     @abstractmethod
     def step_action(self, observation, reward, done, valid, action=None):
         pass
+
+    def generate(self):
+        self.generate_observation()
+        self.generate_reward()
+        self.generate_done()
 
     def generate_observation(self):
         # generate the conditional likelihood for the observation
@@ -164,8 +179,8 @@ class Agent(nn.Module):
         # use generalized advantage estimator
         for i in range(advantages.shape[0]-1, 0, -1):
             advantages[i-1] = advantages[i-1] + self.reward_discount * self.gae_lambda * advantages[i] * valid[i]
-        if self.advantage_normalizer and update:
-            self.advantage_normalizer.update(advantages.squeeze(-1))
+        # if self.advantage_normalizer and update:
+        #     self.advantage_normalizer.update(advantages.squeeze(-1))
         return advantages
 
     def estimate_returns(self, update=False):
@@ -183,7 +198,6 @@ class Agent(nn.Module):
         # evaluate the objective, averaged over the batch, backprop
         results = {}
         valid = torch.stack(self.valid)
-        # n_valid_steps = valid.sum(dim=0).sub(1)
         n_valid_steps = valid.sum(dim=0)
 
         # average metrics over time and batch (for reporting)
@@ -221,10 +235,6 @@ class Agent(nn.Module):
             value_loss = 0.5 * (values[:-1] - returns).pow(2)
             total_objective[:-1] = total_objective[:-1] + value_loss
             results['value'] = value_loss.sum(dim=0).div(n_valid_steps).mean(dim=0).detach().cpu().item()
-            # if self.advantage_normalizer:
-            #     # normalize advantages
-            #     advantages = self.advantage_normalizer(advantages.squeeze(-1))
-            #     advantages = advantages.unsqueeze(-1)
             advantages_mean = advantages.sum(dim=0).div(n_valid_steps).mean(dim=0)
             advantages_std = torch.sqrt((advantages - advantages_mean).pow(2).mul(valid[:-1]).sum(dim=0).div(n_valid_steps).mean(dim=0))
             advantages = (advantages - advantages_mean) / advantages_std
@@ -234,13 +244,9 @@ class Agent(nn.Module):
         action_log_probs = torch.stack(self.log_probs['action'])
         action_importance_weights = torch.stack(self.importance_weights['action']).detach()
         action_reinforce_terms = - action_importance_weights[:-1] * action_log_probs[:-1] * advantages
-        # state_log_probs = torch.stack(self.log_probs['state'])
-        # state_reinforce_terms = - state_log_probs[:-1] * advantages
-        # reinforce_terms = - log_probs[:-1] * advantages
         if not self.action_variable.inference_type == 'iterative':
             # include the policy gradients in the total objective
             total_objective[:-1] = total_objective[:-1] + action_reinforce_terms
-        # total_objective[:-1] = total_objective[:-1] + state_reinforce_terms
 
         results['importance_weights'] = action_importance_weights.sum(dim=0).div(n_valid_steps).mean(dim=0).detach().cpu().item()
         results['policy_gradients'] = action_reinforce_terms.sum(dim=0).div(n_valid_steps-1).mean(dim=0).detach().cpu().item()

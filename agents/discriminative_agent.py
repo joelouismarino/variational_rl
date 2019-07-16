@@ -3,8 +3,7 @@ import torch.nn as nn
 from .agent import Agent
 from modules.models import get_model
 from modules.variables import get_variable
-from misc import clear_gradients, one_hot_to_index
-from util.normalization_util import Normalizer
+from misc.normalization import Normalizer
 
 
 class DiscriminativeAgent(Agent):
@@ -14,7 +13,7 @@ class DiscriminativeAgent(Agent):
     def __init__(self, state_variable_args, action_variable_args,
                  state_prior_args, action_prior_args, state_inference_args,
                  action_inference_args, value_model_args, misc_args):
-        super(DiscriminativeAgent, self).__init__()
+        super(DiscriminativeAgent, self).__init__(misc_args)
 
         # models
         self.state_prior_model = get_model(state_prior_args)
@@ -40,49 +39,6 @@ class DiscriminativeAgent(Agent):
 
         if self.value_model is not None:
             self.value_variable = get_variable(type='value', args={'n_input': self.value_model.n_out})
-
-        # miscellaneous
-        self.optimality_scale = misc_args['optimality_scale']
-        self.kl_min = {'state': misc_args['kl_min']['state'],
-                       'action': misc_args['kl_min']['action']}
-        self.kl_min_anneal_rate = {'state': misc_args['kl_min_anneal_rate']['state'],
-                                   'action': misc_args['kl_min_anneal_rate']['action']}
-        self.kl_factor = {'state': misc_args['kl_factor']['state'],
-                          'action': misc_args['kl_factor']['action']}
-        self.kl_factor_anneal_rate = {'state': misc_args['kl_factor_anneal_rate']['state'],
-                                      'action': misc_args['kl_factor_anneal_rate']['action']}
-        # mode (either 'train' or 'eval')
-        self._mode = 'train'
-
-        # stores the variables during an episode
-        self.episode = {'observation': [], 'reward': [], 'done': [],
-                        'state': [], 'action': []}
-        # stores the objectives during an episode
-        self.objectives = {'optimality': [], 'state': [], 'action': []}
-        # stores inference improvement
-        self.inference_improvement = {'state': [], 'action': []}
-        # stores the log probabilities during an episode
-        self.log_probs = {'action': [], 'state': []}
-        # store the values during training
-        self.values = []
-
-        self.valid = []
-        self._prev_action = None
-        self.batch_size = 1
-        self.gae_lambda = misc_args['gae_lambda']
-        self.reward_discount = misc_args['reward_discount']
-
-        if misc_args['normalize_returns']:
-            self.return_normalizer = Normalizer(shift=False, clip_value=10.)
-        if misc_args['normalize_advantages']:
-            self.advantage_normalizer = Normalizer(clip_value=10.)
-        if misc_args['normalize_observations']:
-            if state_prior_args:
-                observation_size = state_prior_args['n_input']
-            else:
-                observation_size = state_inference_args['n_input']
-            # TODO: should set this in a better way, in case of image input
-            self.obs_normalizer = Normalizer(shape=(observation_size), clip_value=10.)
 
         self.state_variable.inference_mode()
         self.action_variable.inference_mode()
@@ -124,33 +80,33 @@ class DiscriminativeAgent(Agent):
         # observation = observation - 0.5
         # calculate the prior on the state variable
         if self.state_prior_model is not None:
-            state = self.state_variable.sample()
-            action = self._prev_action
-            if action is None:
-                action = self.action_variable.sample()
-            if self.state_variable.reinitialized:
-                # use zeros as initial state and action inputs
-                state = state.new_zeros(state.shape)
-                action = self.action_variable.sample()
-                action = action.new_zeros(action.shape)
-            if self.obs_normalizer:
-                observation = self.obs_normalizer(observation, update=self._mode=='eval')
-            prior_input = self.state_prior_model(observation=observation, reward=reward, state=state, action=action)
-            self.state_variable.step(prior_input)
+            if not self.state_variable.reinitialized:
+                state = self.state_variable.sample()
+                if self._prev_action is not None:
+                    action = self._prev_action
+                else:
+                    action = self.action_variable.sample()
+                if self.obs_normalizer:
+                    observation = self.obs_normalizer(observation, update=self._mode=='eval')
+                prior_input = self.state_prior_model(observation=observation, reward=reward, state=state, action=action)
+                self.state_variable.step(prior_input)
 
     def step_action(self, observation, reward, **kwargs):
         # observation = observation - 0.5
         # calculate the prior on the action variable
         if self.action_prior_model is not None:
-            state = self.state_variable.sample()
-            action = self._prev_action
-            if action is None:
-                action = self.action_variable.sample()
-            if self.action_variable.reinitialized:
-                action = self.action_variable.sample()
-                action = action.new_zeros(action.shape)
-            prior_input = self.action_prior_model(observation=observation, reward=reward, state=state, action=action)
-            self.action_variable.step(prior_input)
+            if not self.action_variable.reinitialized:
+                state = self.state_variable.sample()
+                if self._prev_action is not None:
+                    action = self._prev_action
+                else:
+                    action = self.action_variable.sample()
+                if self.obs_normalizer:
+                    observation = self.obs_normalizer(observation, update=self._mode=='eval')
+                prior_input = self.action_prior_model(observation=observation,
+                                                      reward=reward, state=state,
+                                                      action=action)
+                self.action_variable.step(prior_input)
 
     def estimate_value(self, done, **kwargs):
         # estimate the value of the current state

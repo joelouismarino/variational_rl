@@ -46,6 +46,29 @@ class Plotter:
                 m = pd.DataFrame(m[0].cpu().numpy())
                 self._plot_ts(m, step, n)
 
-    def log_results(self, results):
-        for n, m in results.items():
+    def log_results(self, results, timestep):
+        for n, m in flatten(results).items():
             self.experiment.log_metric(n, m, timestep)
+
+    def checkpoint_model(self):
+        # checkpoint the model by getting the state dictionary for each component
+        state_dict = {}
+        variable_names = ['state_variable', 'action_variable',
+                          'observation_variable', 'reward_variable',
+                          'done_variable', 'value_variable']
+        model_names = ['state_prior_model', 'action_prior_model',
+                       'obs_likelihood_model', 'reward_likelihood_model',
+                       'done_likelihood_model', 'value_model',
+                       'state_inference_model', 'action_inference_model']
+
+        for attr in variable_names + model_names:
+            if hasattr(self.agent, attr):
+                if hasattr(getattr(self.agent, attr), 'state_dict'):
+                     sd = getattr(self.agent, attr).state_dict()
+                     state_dict[attr] = {k: v.cpu() for k, v in sd.items()}
+
+        # save the state dictionaries
+        ckpt_path = os.path.join('./ckpt_episode_'+str(self._episode) + '.ckpt')
+        torch.save(state_dict, ckpt_path)
+        self.experiment.log_asset(ckpt_path)
+        os.remove(ckpt_path)

@@ -4,8 +4,7 @@ import torch.distributions as dist
 from .agent import Agent
 from modules.models import get_model
 from modules.variables import get_variable
-from misc import clear_gradients, one_hot_to_index
-from util.normalization_util import Normalizer
+from misc import clear_gradients
 
 
 class GenerativeAgent(Agent):
@@ -18,7 +17,7 @@ class GenerativeAgent(Agent):
                  obs_likelihood_args, reward_likelihood_args,
                  done_likelihood_args, state_inference_args,
                  action_inference_args, value_model_args, misc_args):
-        super(GenerativeAgent, self).__init__()
+        super(GenerativeAgent, self).__init__(misc_args)
 
         # models
         self.state_prior_model = get_model(state_prior_args)
@@ -58,27 +57,15 @@ class GenerativeAgent(Agent):
             self.value_variable = get_variable(type='value', args={'n_input': self.value_model.n_out})
 
         # miscellaneous
-        self.optimality_scale = misc_args['optimality_scale']
         self.n_state_samples = misc_args['n_state_samples']
         self.n_inf_iter = {'state': misc_args['n_inf_iter']['state'],
                            'action': misc_args['n_inf_iter']['action']}
-        self.kl_min = {'state': misc_args['kl_min']['state'],
-                       'action': misc_args['kl_min']['action']}
-        self.kl_min_anneal_rate = {'state': misc_args['kl_min_anneal_rate']['state'],
-                                   'action': misc_args['kl_min_anneal_rate']['action']}
-        self.kl_factor = {'state': misc_args['kl_factor']['state'],
-                          'action': misc_args['kl_factor']['action']}
-        self.kl_factor_anneal_rate = {'state': misc_args['kl_factor_anneal_rate']['state'],
-                                      'action': misc_args['kl_factor_anneal_rate']['action']}
         self.marginal_factor = misc_args['marginal_factor']
         self.marginal_factor_anneal_rate = misc_args['marginal_factor_anneal_rate']
 
         if self.action_variable.inference_type == 'iterative':
             self.n_planning_samples = misc_args['n_planning_samples']
             self.max_rollout_length = misc_args['max_rollout_length']
-
-        # mode (either 'train' or 'eval')
-        self._mode = 'train'
 
         # stores the variables during an episode
         self.episode = {'observation': [], 'reward': [], 'done': [],
@@ -91,80 +78,54 @@ class GenerativeAgent(Agent):
         self.inference_improvement = {'state': [], 'action': []}
         # stores planning rollout lengths during training
         self.rollout_lengths = []
-        # stores the log probabilities during an episode
-        self.log_probs = {'action': [], 'state': []}
-        # store the values during training
-        self.values = []
 
-        self.valid = []
-        self._prev_action = None
-        self.batch_size = 1
-        self.gae_lambda = misc_args['gae_lambda']
-        self.reward_discount = misc_args['reward_discount']
         self._planning = False
 
     def state_inference(self, observation, reward, done, valid, **kwargs):
         # infer the approx. posterior on the state
+
+        def eval_free_energy(o, r, d, v):
+            self.generate()
+            nss = self.n_state_samples
+            obs_ll = self.observation_variable.cond_log_likelihood(o).view(nss, -1, 1).mean(dim=0)
+            reward_ll = self.reward_variable.cond_log_likelihood(r).view(nss, -1, 1).mean(dim=0)
+            done_ll = self.done_variable.cond_log_likelihood(d).view(nss, -1, 1).mean(dim=0)
+            state_kl = self.state_variable.kl_divergence()
+            unclamped_state_kl = state_kl.sum(dim=1, keepdim=True)
+            clamped_state_kl = torch.clamp(state_kl, min=self.kl_min['state']).sum(dim=1, keepdim=True)
+            free_energy = v * (unclamped_state_kl - (1 - d) * obs_ll - reward_ll - done_ll)
+            clamped_free_energy = v * (clamped_state_kl - (1 - d) * obs_ll - reward_ll - done_ll)
+            return free_energy, clamped_free_energy
+
         if self.state_inference_model is not None:
             self.inference_mode()
             self.state_variable.init_approx_post()
             for inf_iter in range(self.n_inf_iter['state']):
                 # evaluate conditional log likelihood of observation and state KL divergence
-                self.generate_observation()
-                self.generate_reward()
-                self.generate_done()
-                obs_log_likelihood = self.observation_variable.cond_log_likelihood(observation)
-                obs_log_likelihood = obs_log_likelihood.view(self.n_state_samples, -1, 1).mean(dim=0)
-                reward_log_likelihood = self.reward_variable.cond_log_likelihood(reward)
-                reward_log_likelihood = reward_log_likelihood.view(self.n_state_samples, -1, 1).mean(dim=0)
-                done_log_likelihood = self.done_variable.cond_log_likelihood(done)
-                done_log_likelihood = done_log_likelihood.view(self.n_state_samples, -1, 1).mean(dim=0)
-                state_kl = self.state_variable.kl_divergence().sum(dim=1, keepdim=True)
-                state_inf_free_energy = state_kl - (1 - done) * obs_log_likelihood - reward_log_likelihood - done_log_likelihood
-                state_inf_free_energy = valid * state_inf_free_energy
+                free_energy, clamped_free_energy = eval_free_energy(observation, reward, done, valid)
                 if inf_iter == 0:
-                    initial_free_energy = state_inf_free_energy
+                    initial_free_energy = free_energy
                     #save the predictions for marginal likelihood estimation
                     self.observation_variable.save_prediction()
                     self.reward_variable.save_prediction()
                     self.done_variable.save_prediction()
-
-                clamped_state_kl = torch.clamp(self.state_variable.kl_divergence(), min=self.kl_min['state']).sum(dim=1, keepdim=True)
-                state_inf_free_energy = valid * (clamped_state_kl - (1 - done) * obs_log_likelihood - reward_log_likelihood - done_log_likelihood)
-                (state_inf_free_energy.sum()).backward(retain_graph=True)
+                (clamped_free_energy.sum()).backward(retain_graph=True)
                 # update approx. posterior
                 params, grads = self.state_variable.params_and_grads()
                 inf_input = self.state_inference_model(params=params, grads=grads)
                 self.state_variable.infer(inf_input)
             # final evaluation
-            self.generate_observation()
-            self.generate_reward()
-            self.generate_done()
-            obs_log_likelihood = self.observation_variable.cond_log_likelihood(observation)
-            obs_log_likelihood = obs_log_likelihood.view(self.n_state_samples, -1, 1).mean(dim=0)
-            reward_log_likelihood = self.reward_variable.cond_log_likelihood(reward)
-            reward_log_likelihood = reward_log_likelihood.view(self.n_state_samples, -1, 1).mean(dim=0)
-            done_log_likelihood = self.done_variable.cond_log_likelihood(done)
-            done_log_likelihood = done_log_likelihood.view(self.n_state_samples, -1, 1).mean(dim=0)
-            state_kl = self.state_variable.kl_divergence().sum(dim=1, keepdim=True)
-            state_inf_free_energy = state_kl - (1 - done) * obs_log_likelihood - reward_log_likelihood - done_log_likelihood
-            state_inf_free_energy = valid * state_inf_free_energy
-            final_free_energy = state_inf_free_energy
+            free_energy, clamped_free_energy = eval_free_energy(observation, reward, done, valid)
+            final_free_energy = free_energy
             inference_improvement = torch.zeros(initial_free_energy.shape).to(self.device)
             valid_inds = torch.nonzero(valid[:,0])
             inference_improvement[valid_inds] = initial_free_energy[valid_inds] - final_free_energy[valid_inds]
-            # inference_improvement[valid_inds] = 100 * inference_improvement[valid_inds] / initial_free_energy[valid_inds]
             self.inference_improvement['state'].append(inference_improvement)
-
-            clamped_state_kl = torch.clamp(self.state_variable.kl_divergence(), min=self.kl_min['state']).sum(dim=1, keepdim=True)
-            state_inf_free_energy = valid * (clamped_state_kl - (1 - done) * obs_log_likelihood - reward_log_likelihood - done_log_likelihood)
-            (state_inf_free_energy.sum()).backward(retain_graph=True)
+            (clamped_free_energy.sum()).backward(retain_graph=True)
             clear_gradients(self.generative_parameters())
             self.generative_mode()
 
-        self.generate_observation()
-        self.generate_reward()
-        self.generate_done()
+        self.generate()
 
     def action_inference(self, done, valid, action=None, observation=None, **kwargs):
         if self.action_inference_model is not None:
@@ -174,14 +135,12 @@ class GenerativeAgent(Agent):
             if self.action_variable.inference_type == 'direct':
                 # model-free action inference
                 state = self.state_variable.sample()
-                # hidden_state = self.state_prior_model.network.state
                 if self._prev_action is not None:
                     action = self._prev_action
                 else:
                     action = self.action_variable.sample()
-                # inf_input = self.action_inference_model(state, action, hidden_state)
-                # inf_input = self.action_inference_model(state, action, observation)
-                inf_input = self.action_inference_model(state=state, action=action)
+                inf_input = self.action_inference_model(state=state, action=action,
+                                                        observation=observation)
                 self.action_variable.infer(inf_input)
             else:
                 # model-based action inference
@@ -223,9 +182,7 @@ class GenerativeAgent(Agent):
                         # step the state
                         self.step_state()
                         # generate observation, reward, and done
-                        self.generate_observation()
-                        self.generate_reward()
-                        self.generate_done()
+                        self.generate()
                         # step the action
                         self.step_action()
 
@@ -315,45 +272,35 @@ class GenerativeAgent(Agent):
             if not self.action_variable.reinitialized:
                 self.state_variable.inference_mode()
                 state = self.state_variable.sample()
-                # hidden_state = self.state_prior_model.network.state
                 if self._prev_action is not None and not self._planning:
                     action = self._prev_action
                 else:
                     action = self.action_variable.sample()
-                # prior_input = self.action_prior_model(state, action, hidden_state)
-                # prior_input = self.action_prior_model(state, action, observation)
-                prior_input = self.action_prior_model(state=state, action=action)
+                prior_input = self.action_prior_model(state=state, action=action,
+                                                      observation=observation)
                 self.action_variable.step(prior_input)
 
     def generate_observation(self):
         # generate the conditional likelihood for the observation
         state = self.state_variable.sample(n_samples=self.n_state_samples)
-        # hidden_state = self.state_prior_model.network.state
-        # likelihood_input = self.obs_likelihood_model(state, hidden_state)
         likelihood_input = self.obs_likelihood_model(state=state)
         self.observation_variable.generate(likelihood_input)
 
     def generate_reward(self):
         # generate the conditional likelihood for the reward
         state = self.state_variable.sample(n_samples=self.n_state_samples)
-        # hidden_state = self.state_prior_model.network.state
-        # likelihood_input = self.reward_likelihood_model(state, hidden_state)
         likelihood_input = self.reward_likelihood_model(state=state)
         self.reward_variable.generate(likelihood_input)
 
     def generate_done(self):
         # generate the conditional likelihood for episode being done
         state = self.state_variable.sample(n_samples=self.n_state_samples)
-        # hidden_state = self.state_prior_model.network.state
-        # likelihood_input = self.done_likelihood_model(state, hidden_state)
         likelihood_input = self.done_likelihood_model(state=state)
         self.done_variable.generate(likelihood_input)
 
     def estimate_value(self, done, **kwargs):
         # estimate the value of the current state
         state = self.state_variable.sample()
-        # hidden_state = self.state_prior_model.network.state
-        # value = self.value_variable(self.value_model(state, hidden_state)) * (1 - done)
         value = self.value_variable(self.value_model(state=state)) * (1 - done)
         if not self._planning:
             self.values.append(value)
