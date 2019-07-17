@@ -112,5 +112,5 @@ class DiscriminativeAgent(Agent):
         # estimate the value of the current state
         state = self.state_variable.sample()
         value = self.value_variable(self.value_model(state=state)) * (1 - done)
-        self.values.append(value)
+        self.collector.values.append(value)
         return value

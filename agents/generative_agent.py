@@ -67,18 +67,6 @@ class GenerativeAgent(Agent):
             self.n_planning_samples = misc_args['n_planning_samples']
             self.max_rollout_length = misc_args['max_rollout_length']
 
-        # stores the variables during an episode
-        self.episode = {'observation': [], 'reward': [], 'done': [],
-                        'state': [], 'action': [], 'reconstruction': [],
-                        'prediction': []}
-        # stores the objectives during an episode
-        self.objectives = {'observation': [], 'reward': [], 'optimality': [],
-                           'done': [], 'state': [], 'action': [], 'value': []}
-        # stores inference improvement
-        self.inference_improvement = {'state': [], 'action': []}
-        # stores planning rollout lengths during training
-        self.rollout_lengths = []
-
         self._planning = False
 
     def state_inference(self, observation, reward, done, valid, **kwargs):
@@ -120,7 +108,7 @@ class GenerativeAgent(Agent):
             inference_improvement = torch.zeros(initial_free_energy.shape).to(self.device)
             valid_inds = torch.nonzero(valid[:,0])
             inference_improvement[valid_inds] = initial_free_energy[valid_inds] - final_free_energy[valid_inds]
-            self.inference_improvement['state'].append(inference_improvement)
+            self.collector.inference_improvement['state'].append(inference_improvement)
             (clamped_free_energy.sum()).backward(retain_graph=True)
             clear_gradients(self.generative_parameters())
             self.generative_mode()
@@ -242,11 +230,11 @@ class GenerativeAgent(Agent):
                 # save the maximum rollout length, averaged over inference iterations
                 if self._mode == 'train':
                     ave_rollout_length = sum(rollout_lengths) / len(rollout_lengths)
-                    self.rollout_lengths.append(ave_rollout_length)
+                    self.collector.rollout_lengths.append(ave_rollout_length)
                     # TODO: only collect inference improvement for valid steps
                     estimated_objectives = torch.stack(estimated_objectives)
                     inference_improvement = - estimated_objectives[0] + estimated_objectives[-1]
-                    self.inference_improvement['action'].append(inference_improvement)
+                    self.collector.inference_improvement['action'].append(inference_improvement)
 
                 self.acting_mode()
 
@@ -303,7 +291,7 @@ class GenerativeAgent(Agent):
         state = self.state_variable.sample()
         value = self.value_variable(self.value_model(state=state)) * (1 - done)
         if not self._planning:
-            self.values.append(value)
+            self.collector.values.append(value)
         return value
 
     def planning_mode(self):

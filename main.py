@@ -27,7 +27,7 @@ args = parser.parse_args()
 if args.seed is not None:
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
-    if args.device_id is not None:
+    if args.device_id is not None and torch.cuda.is_available():
         torch.cuda.manual_seed_all(args.seed)
 
 # create the environment
