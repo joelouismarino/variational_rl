@@ -63,7 +63,7 @@ class GenerativeAgent(Agent):
         self.marginal_factor = misc_args['marginal_factor']
         self.marginal_factor_anneal_rate = misc_args['marginal_factor_anneal_rate']
 
-        if self.action_variable.inference_type == 'iterative':
+        if self.action_variable.approx_post.update == 'iterative':
             self.n_planning_samples = misc_args['n_planning_samples']
             self.max_rollout_length = misc_args['max_rollout_length']
 
@@ -94,9 +94,9 @@ class GenerativeAgent(Agent):
                 if inf_iter == 0:
                     initial_free_energy = free_energy
                     #save the predictions for marginal likelihood estimation
-                    self.observation_variable.save_prediction()
-                    self.reward_variable.save_prediction()
-                    self.done_variable.save_prediction()
+                    # self.observation_variable.save_prediction()
+                    # self.reward_variable.save_prediction()
+                    # self.done_variable.save_prediction()
                 (clamped_free_energy.sum()).backward(retain_graph=True)
                 # update approx. posterior
                 params, grads = self.state_variable.params_and_grads()
@@ -120,7 +120,7 @@ class GenerativeAgent(Agent):
             self.inference_mode()
             # infer the approx. posterior on the action
             self.action_variable.init_approx_post()
-            if self.action_variable.inference_type == 'direct':
+            if self.action_variable.approx_post.update == 'direct':
                 # model-free action inference
                 state = self.state_variable.sample()
                 if self._prev_action is not None:

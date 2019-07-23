@@ -149,7 +149,7 @@ class Agent(nn.Module):
 
     def _convert_action(self, action):
         # converts categorical action from one-hot encoding to the action index
-        if self.action_variable.approx_post_dist_type == getattr(torch.distributions, 'Categorical'):
+        if self.action_variable.approx_post.dist_type == getattr(torch.distributions, 'Categorical'):
             action = one_hot_to_index(action)
         # else:
         #     action = action.detach()

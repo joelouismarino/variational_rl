@@ -194,8 +194,9 @@ def get_mujoco_config(env):
         # observation
         agent_args['observation_variable_args'] = {'type': 'fully_connected',
                                                    'likelihood_dist': 'Normal',
-                                                   'integration_window': None,
-                                                   'n_variables': observation_size}
+                                                   'n_variables': observation_size,
+                                                   'constant_scale': True,
+                                                   'sigmoid_loc': False}
 
         agent_args['obs_likelihood_args'] = {'type': 'fully_connected',
                                              'n_layers': 1,
@@ -208,8 +209,8 @@ def get_mujoco_config(env):
         # reward
         agent_args['reward_variable_args'] = {'type': 'fully_connected',
                                               'likelihood_dist': 'Normal',
-                                              'integration_window': None,
                                               'n_variables': 1,
+                                              'constant_scale': True,
                                               'sigmoid_loc': False}
 
         agent_args['reward_likelihood_args'] = {'type': 'fully_connected',

@@ -27,7 +27,7 @@ class Optimizer(object):
         # collect and apply inference parameter gradients if necessary
         if self.update_inf_online:
             if self.model.state_inference_model is not None:
-                if self.model.state_variable.inference_type == 'iterative':
+                if self.model.state_variable.approx_post.update == 'iterative':
                     params = self.parameters['state_inference_model']
                     grads = [param.grad for param in params]
                     divide_gradients_by_value(grads, self.model.batch_size)
@@ -40,7 +40,7 @@ class Optimizer(object):
                     self.opt['state_inference_model'].zero_grad()
 
             if self.model.action_inference_model is not None:
-                if self.model.action_variable.inference_type == 'iterative':
+                if self.model.action_variable.approx_post.update == 'iterative':
                     params = self.parameters['action_inference_model']
                     grads = [param.grad for param in params]
                     divide_gradients_by_value(grads, self.model.batch_size)
@@ -58,22 +58,22 @@ class Optimizer(object):
             if self.update_inf_online:
                 # do not update if we have already updated online
                 if model_name == 'state_inference_model':
-                    if self.model.state_variable.inference_type == 'iterative':
+                    if self.model.state_variable.approx_post.update == 'iterative':
                         continue
                 if model_name == 'action_inference_model':
-                    if self.model.action_variable.inference_type == 'iterative':
+                    if self.model.action_variable.approx_post.update == 'iterative':
                         continue
             else:
                 # average the gradients over batch size and inference iterations
                 if model_name == 'state_inference_model':
                     grads = [param.grad for param in params]
                     divide_gradients_by_value(grads, self.model.batch_size)
-                    if self.model.state_variable.inference_type == 'iterative':
+                    if self.model.state_variable.approx_post.update == 'iterative':
                         divide_gradients_by_value(grads, self.model.n_inf_iter['state'])
                 elif model_name == 'action_inference_model':
                     grads = [param.grad for param in params]
                     divide_gradients_by_value(grads, self.model.batch_size)
-                    if self.model.action_variable.inference_type == 'iterative':
+                    if self.model.action_variable.approx_post.update == 'iterative':
                         divide_gradients_by_value(grads, self.model.n_inf_iter['action'])
             grads += [param.grad for param in params]
         if self.clip_grad is not None:

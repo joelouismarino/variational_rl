@@ -42,13 +42,13 @@ class Collector:
         optimality = (-torch.stack(self.metrics['optimality']['cll']) + 1.) * valid
         future_terms = optimality[1:]
         # TODO: should only include these if the action distribution is not reparameterizable
-        # if self.action_prior_model is not None:
+        # if self.agent.action_prior_model is not None:
         #     action_kl = torch.stack(self.metrics['action']['kl']) * valid
         #     future_terms = future_terms - action_kl[1:]
-        # if self.state_prior_model is not None:
+        # if self.agent.state_prior_model is not None:
         #     state_kl = torch.stack(self.metrics['state']['kl']) * valid
         #     future_terms = future_terms - state_kl[1:]
-        # if self.obs_likelihood_model is not None:
+        # if self.agent.obs_likelihood_model is not None:
         #     obs_info_gain = torch.stack(self.metrics['observation']['info_gain']) * valid
         #     reward_info_gain = torch.stack(self.metrics['reward']['info_gain']) * valid
         #     done_info_gain = torch.stack(self.metrics['done']['info_gain']) * valid
@@ -86,56 +86,56 @@ class Collector:
 
     def _collect_likelihood(self, name, obs, variable, valid, done=0.):
         log_importance_weights = self.agent.state_variable.log_importance_weights().detach()
-        weighted_info_gain = variable.info_gain(obs, log_importance_weights, marginal_factor=self.agent.marginal_factor)
-        info_gain = variable.info_gain(obs, log_importance_weights, marginal_factor=1.)
+        weighted_info_gain = variable.info_gain(obs, log_importance_weights, marg_factor=self.agent.marginal_factor)
+        info_gain = variable.info_gain(obs, log_importance_weights, marg_factor=1.)
         cll = variable.cond_log_likelihood(obs).view(self.agent.n_state_samples, -1, 1).mean(dim=0)
-        mll = variable.marginal_log_likelihood(obs, log_importance_weights)
+        mll = variable.marg_log_likelihood(obs, log_importance_weights)
         if self.agent._mode == 'train':
             self.objectives[name].append(-weighted_info_gain * (1 - done) * valid)
         self.metrics[name]['cll'].append((-cll * (1 - done) * valid).detach())
         self.metrics[name]['mll'].append((-mll * (1 - done) * valid).detach())
         self.metrics[name]['info_gain'].append((-info_gain * (1 - done) * valid).detach())
-        if 'probs' in dir(variable.likelihood_dist):
-            self.distributions[name]['pred']['probs'].append(variable.likelihood_dist_pred.probs.detach())
-            self.distributions[name]['recon']['probs'].append(variable.likelihood_dist.probs.detach())
+        if 'probs' in dir(variable.cond_likelihood.dist):
+            # self.distributions[name]['pred']['probs'].append(variable.cond_likelihood.dist.probs.detach())
+            self.distributions[name]['recon']['probs'].append(variable.cond_likelihood.dist.probs.detach())
         else:
-            self.distributions[name]['pred']['loc'].append(variable.likelihood_dist_pred.loc.detach())
-            self.distributions[name]['pred']['scale'].append(variable.likelihood_dist_pred.scale.detach())
-            self.distributions[name]['recon']['loc'].append(variable.likelihood_dist.loc.detach())
-            self.distributions[name]['recon']['scale'].append(variable.likelihood_dist.scale.detach())
+            # self.distributions[name]['pred']['loc'].append(variable.cond_likelihood.dist.loc.detach())
+            # self.distributions[name]['pred']['scale'].append(variable.cond_likelihood.dist.scale.detach())
+            self.distributions[name]['recon']['loc'].append(variable.cond_likelihood.dist.loc.detach())
+            self.distributions[name]['recon']['scale'].append(variable.cond_likelihood.dist.scale.detach())
 
     def _collect_kl(self, name, variable, valid, done):
         kl = variable.kl_divergence()
         obj_kl = self.agent.kl_factor[name] * torch.clamp(kl, min=self.agent.kl_min[name]).sum(dim=1, keepdim=True)
-        if variable.approx_post_dist_type == getattr(torch.distributions, 'Categorical'):
+        if variable.approx_post.dist_type == getattr(torch.distributions, 'Categorical'):
             # discrete
             kl = kl.view(-1, 1)
             obj_kl = obj_kl.view(-1, 1)
-            self.distributions[name]['prior']['probs'].append(variable.prior_dist.probs.detach())
-            self.distributions[name]['approx_post']['probs'].append(variable.approx_post_dist.probs.detach())
+            self.distributions[name]['prior']['probs'].append(variable.prior.dist.probs.detach())
+            self.distributions[name]['approx_post']['probs'].append(variable.approx_post.dist.probs.detach())
         else:
             # continuous
             kl = kl.sum(dim=1, keepdim=True)
             obj_kl = obj_kl.sum(dim=1, keepdim=True)
-            self.distributions[name]['prior']['loc'].append(variable.prior_dist.loc.detach())
-            if hasattr(variable.prior_dist, 'scale'):
-                self.distributions[name]['prior']['scale'].append(variable.prior_dist.scale.detach())
-            self.distributions[name]['approx_post']['loc'].append(variable.approx_post_dist.loc.detach())
-            self.distributions[name]['approx_post']['scale'].append(variable.approx_post_dist.scale.detach())
+            self.distributions[name]['prior']['loc'].append(variable.prior.dist.loc.detach())
+            if hasattr(variable.prior.dist, 'scale'):
+                self.distributions[name]['prior']['scale'].append(variable.prior.dist.scale.detach())
+            self.distributions[name]['approx_post']['loc'].append(variable.approx_post.dist.loc.detach())
+            self.distributions[name]['approx_post']['scale'].append(variable.approx_post.dist.scale.detach())
         if self.agent._mode == 'train':
             self.objectives[name].append(obj_kl * (1 - done) * valid)
         self.metrics[name]['kl'].append((kl * (1 - done) * valid).detach())
 
     def _collect_log_probs(self, action, log_prob, valid):
         action = self.agent._convert_action(action)
-        action_log_prob = self.agent.action_variable.approx_post_dist.log_prob(action)
-        if self.agent.action_variable.approx_post_dist_type == getattr(torch.distributions, 'Categorical'):
+        action_log_prob = self.agent.action_variable.approx_post.dist.log_prob(action)
+        if self.agent.action_variable.approx_post.dist_type == getattr(torch.distributions, 'Categorical'):
             action_log_prob = action_log_prob.view(-1, 1)
         else:
             action_log_prob = action_log_prob.sum(dim=1, keepdim=True)
         self.log_probs['action'].append(action_log_prob * valid)
         state = self.agent.state_variable.sample()
-        state_log_prob = self.agent.state_variable.approx_post_dist.log_prob(state)
+        state_log_prob = self.agent.state_variable.approx_post.dist.log_prob(state)
         state_log_prob = state_log_prob.sum(dim=1, keepdim=True)
         self.log_probs['state'].append(state_log_prob * valid)
         importance_weight = torch.exp(action_log_prob) / torch.exp(log_prob)
@@ -148,8 +148,8 @@ class Collector:
             self.episode['action'].append(self.agent.action_variable.sample().detach())
             self.episode['state'].append(self.agent.state_variable.sample().detach())
             act = self.agent._convert_action(self.agent.action_variable.sample().detach())
-            action_log_prob = self.agent.action_variable.approx_post_dist.log_prob(act)
-            if self.agent.action_variable.approx_post_dist_type == getattr(torch.distributions, 'Categorical'):
+            action_log_prob = self.agent.action_variable.approx_post.log_prob(act)
+            if self.agent.action_variable.approx_post.dist_type == getattr(torch.distributions, 'Categorical'):
                 action_log_prob = action_log_prob.view(-1, 1)
             else:
                 action_log_prob = action_log_prob.sum(dim=1, keepdim=True)
@@ -301,7 +301,7 @@ class Collector:
         action_log_probs = torch.stack(self.log_probs['action'])
         action_importance_weights = torch.stack(self.importance_weights['action']).detach()
         action_reinforce_terms = - action_importance_weights[:-1] * action_log_probs[:-1] * advantages
-        if not self.agent.action_variable.inference_type == 'iterative':
+        if not self.agent.action_variable.approx_post.update == 'iterative':
             # include the policy gradients in the total objective
             total_objective[:-1] = total_objective[:-1] + action_reinforce_terms
 
@@ -337,7 +337,7 @@ class Collector:
                         'state': {'kl': []},
                         'action': {'kl': []}}
         self.distributions = {'state': {'prior': {'loc': [], 'scale': []}, 'approx_post': {'loc': [], 'scale': []}}}
-        if self.agent.action_variable.approx_post_dist_type == getattr(torch.distributions, 'Categorical'):
+        if self.agent.action_variable.approx_post.dist_type == getattr(torch.distributions, 'Categorical'):
             self.distributions['action'] = {'prior': {'probs': []},
                                             'approx_post': {'probs': []}}
         else:
