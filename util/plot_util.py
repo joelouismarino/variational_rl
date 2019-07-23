@@ -1,4 +1,7 @@
 from comet_ml import Experiment
+import numpy as np
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import pandas as pd
 
@@ -27,24 +30,51 @@ class Plotter:
         self.experiment.log_parameters(get_arg_dict(exp_args))
         self.experiment.log_parameters(agent_args)
 
-    def _plot_ts(self, actions, step, name):
-        nb_actions = min(9, actions.shape[1])
+    def _plot_ts(self, observations, statistics, label, color):
+        dim_obs = min(observations.shape[1], 9)
         k = 1
-        j = str(nb_actions)
-        for i in range(nb_actions):
-            plt.subplot(int(j + '1' + str(k)))
-            plt.plot(actions[i])
+        for i in range(dim_obs):
+            plt.subplot(int(str(dim_obs) + '1' + str(k)))
+            observations_i = observations[:, i].cpu().numpy()
+            plt.plot(observations_i.squeeze(), 'o', label='observation', color='k', markersize=2)
+            if len(statistics) == 1:  # Bernoulli distribution
+                probs = statistics['probs']
+                probs = probs.cpu().numpy()
+                plt.plot(probs, label=label, color=color)
+            elif len(statistics) == 2:  # Normal distribution
+                mean = statistics['loc']
+                std = statistics['scale']
+                mean = mean[:, i].cpu().numpy()
+                std = std[:, i].cpu().numpy()
+                mean = mean.squeeze()
+                std = std.squeeze()
+                plt.plot(mean, label=label, color=color)
+                plt.fill_between(np.arange(len(mean)), mean + std, mean - std, color=color, alpha=0.2, label=label)
+            else:
+                NotImplementedError
             k += 1
 
-        self.experiment.log_figure(figure=plt, figure_name=name + '_ts_'+str(step))
-        plt.close()
-
     def plot_episode(self, episode, step):
-        episode = flatten(episode)
-        for n, m in episode.items():
-            if len(m[0]) > 0:
-                m = pd.DataFrame(m[0].cpu().numpy())
-                self._plot_ts(m, step, n)
+        def merge_legends():
+            handles, labels = plt.gca().get_legend_handles_labels()
+            newLabels, newHandles = [], []
+            for handle, label in zip(handles, labels):
+                if label not in newLabels:
+                    newLabels.append(label)
+                    newHandles.append(handle)
+
+            plt.legend(newHandles, newLabels)
+
+        for k in episode['distributions'].keys():
+            i = 0  # TODO: get rid of this hack
+            for l in episode['distributions'][k].keys():
+                color = 'b' if i == 0 else 'g'
+                self._plot_ts(episode[k], episode['distributions'][k][l], l, color)
+                i += 1
+            plt.suptitle(k)
+            merge_legends()
+            self.experiment.log_figure(figure=plt, figure_name=k + '_ts_'+str(step))
+            plt.close()
 
     def log_results(self, results, timestep):
         for n, m in flatten(results).items():
