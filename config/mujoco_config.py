@@ -20,7 +20,7 @@ def get_mujoco_config(env):
                                'kl_factor': dict(state=1., action=1.),
                                'kl_factor_anneal_rate': dict(state=1., action=1.),
                                'reward_discount': 0.99,
-                               'normalize_returns': True,
+                               'normalize_returns': False,
                                'normalize_advantages': True,
                                'normalize_observations': False,
                                'gae_lambda': 0.98}

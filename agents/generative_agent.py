@@ -71,7 +71,9 @@ class GenerativeAgent(Agent):
 
     def state_inference(self, observation, reward, done, valid, **kwargs):
         # infer the approx. posterior on the state
-
+        """
+        Perform internal state inference using iterative amortized inference.
+        """
         def eval_free_energy(o, r, d, v):
             self.generate()
             nss = self.n_state_samples

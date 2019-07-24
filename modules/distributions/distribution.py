@@ -117,33 +117,28 @@ class Distribution(nn.Module):
             n_samples (int): number of samples to draw from the distribution
         """
         if (self._sample is None and not self.planning) or (self._planning_sample is None and self.planning):
-            if self.planning:
-                sampling_dist = self.planning_dist
+            # get the appropriate distribution
+            d = self.planning_dist if self.planning else self.dist
+            # perform the sampling
+            if d.has_rsample:
+                sample = d.rsample([n_samples])
+                sample = sample.view(self._batch_size * n_samples, -1)
             else:
-                sampling_dist = self.dist
-            if sampling_dist.has_rsample:
-                batch_size = sampling_dist.loc.shape[0]
-                sample = sampling_dist.rsample([n_samples])
-                sample = sample.view(batch_size * n_samples, -1)
-            else:
-                batch_size = sampling_dist.logits.shape[0]
-                sample = sampling_dist.sample([n_samples])
-                sample = sample.view(batch_size * n_samples, 1)
-            self._n_samples = n_samples
-
-            if self.dist_type == getattr(torch.distributions, 'Categorical'):
+                sample = d.sample([n_samples])
+                sample = sample.view(self._batch_size * n_samples, 1)
                 # convert to one-hot encoding
                 device = self.initial_params['logits'].device
                 one_hot_sample = torch.zeros(sample.shape[0], self.n_variables).to(device)
                 one_hot_sample.scatter_(1, sample, 1.)
                 sample = one_hot_sample
+            # update the internal sample
+            if self.planning:
+                self._planning_sample = sample
+            else:
+                self._sample = sample
+            self._n_samples = n_samples
 
-            self._sample = sample
-
-        if self.planning:
-            sample = self._planning_sample
-        else:
-            sample = self._sample
+        sample = self._planning_sample if self.planning else self._sample
 
         if self._detach:
             sample = sample.detach()
@@ -162,8 +157,6 @@ class Distribution(nn.Module):
             x (torch.Tensor): the point of evaluation [batch_size * n_x_samples, n_variables]
         """
         # get the appropriate distribution
-        # if self._batch_size > 1:
-        #     import ipdb; ipdb.set_trace()
         d = self.planning_dist if self.planning else self.dist
         n_x_samples = int(x.shape[0] / self._batch_size)
         n_d_samples = int(d.batch_shape[0] / self._batch_size)

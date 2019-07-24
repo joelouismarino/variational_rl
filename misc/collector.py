@@ -29,7 +29,7 @@ class Collector:
         # stores the log probabilities during training
         self.log_probs = {'action': [], 'state': []}
         # stores the importance weights during training
-        self.importance_weights = {'action': []}
+        self.importance_weights = {'action': [], 'state': []}
         # store the values during training
         self.values = []
 
@@ -138,8 +138,10 @@ class Collector:
         state_log_prob = self.agent.state_variable.approx_post.dist.log_prob(state)
         state_log_prob = state_log_prob.sum(dim=1, keepdim=True)
         self.log_probs['state'].append(state_log_prob * valid)
-        importance_weight = torch.exp(action_log_prob) / torch.exp(log_prob)
-        self.importance_weights['action'].append(importance_weight.detach())
+        action_importance_weight = torch.exp(action_log_prob) / torch.exp(log_prob)
+        self.importance_weights['action'].append(action_importance_weight.detach())
+        state_importance_weight = self.agent.state_variable.log_importance_weights().exp().mean(dim=0)
+        self.importance_weights['state'].append(state_importance_weight.detach())
 
     def _collect_episode(self, observation, reward, done):
         # collect the variables for this step of the episode
@@ -313,6 +315,9 @@ class Collector:
         self.metrics['policy_gradients'] = action_reinforce_terms
         self.metrics['advantages'] = advantages
 
+        state_importance_weights = torch.stack(self.importance_weights['state'])
+        self.metrics['state_importance_weights'] = state_importance_weights
+
         return total_objective
 
     def get_grads(self):
@@ -362,6 +367,6 @@ class Collector:
         self.inference_improvement = {'state': [], 'action': []}
         self.log_probs = {'action': [], 'state': []}
         self.rollout_lenghts = []
-        self.importance_weights = {'action': []}
+        self.importance_weights = {'action': [], 'state': []}
         self.values = []
         self.valid = []
