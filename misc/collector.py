@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 
 
 class Collector:
@@ -54,6 +55,28 @@ class Collector:
         #     done_info_gain = torch.stack(self.metrics['done']['info_gain']) * valid
         #     future_terms = future_terms + obs_info_gain[1:] + reward_info_gain[1:] + done_info_gain[1:]
         return future_terms
+
+    def get_v_trace(self):
+        valid = torch.stack(self.valid)
+        values = torch.stack(self.values)
+        importance_weights = torch.stack(self.importance_weights['action'])
+        # TODO: should be an argument, but everyone is using 1 anyway
+        clip_importance_weights = torch.clamp(importance_weights, 0, 1)
+        future_terms = self.get_future_terms()
+        deltas = clip_importance_weights[:-1] * (future_terms + self.agent.reward_discount * values[1:] * valid[1:] - values[:-1])
+        targets = []
+        sequence_len = len(importance_weights)
+        for i in range(sequence_len):
+            discount = self.agent.reward_discount ** torch.arange(sequence_len-i-1).view(-1, 1, 1).float()
+            cum_delta_i = torch.sum(discount * torch.cumprod(clip_importance_weights[i:-1], 0) * deltas[i:], 0)
+            assert values[i].shape == cum_delta_i.shape
+            target_i = (values[i] + cum_delta_i) * valid[i]
+            targets.append(target_i)
+        targets = torch.cat(targets, 1).t().unsqueeze(2)
+        advantadges = future_terms + targets[1:] - values[:-1]
+        assert advantadges.shape == future_terms.shape
+        # gradient should never pass here
+        return targets.detach(), advantadges.detach()
 
     def estimate_advantages(self, update=False):
         # estimate bootstrapped advantages
@@ -285,30 +308,38 @@ class Collector:
             total_objective = total_objective + torch.stack(objective)
 
         values = torch.stack(self.values)
-        advantages = self.estimate_advantages()
+        #advantages = self.estimate_advantages()
 
         # calculate value loss
-        returns = advantages + values[:-1].detach()
-        value_loss = 0.5 * (values[:-1] - returns).pow(2)
+        #returns = advantages + values[:-1].detach()
+        v_targets, advantages = self.get_v_trace()
+        value_loss = 0.5 * (v_targets[:-1] - values[:-1]).pow(2)
         total_objective[:-1] = total_objective[:-1] + value_loss
 
         # normalize the advantages
-        advantages_mean = advantages.sum(dim=0).div(n_valid_steps).mean(dim=0)
-        advantages_std = torch.sqrt((advantages - advantages_mean).pow(2).mul(valid[:-1]).sum(dim=0).div(n_valid_steps).mean(dim=0))
-        advantages = (advantages - advantages_mean) / advantages_std
+        #advantages_mean = advantages.sum(dim=0).div(n_valid_steps).mean(dim=0)
+        #advantages_std = torch.sqrt((advantages - advantages_mean).pow(2).mul(valid[:-1]).sum(dim=0).div(n_valid_steps).mean(dim=0))
+        #advantages = (advantages - advantages_mean) / advantages_std
 
         # calculate policy gradient terms and add them to the total objective
         action_log_probs = torch.stack(self.log_probs['action'])
         action_importance_weights = torch.stack(self.importance_weights['action']).detach()
-        action_reinforce_terms = - action_importance_weights[:-1] * action_log_probs[:-1] * advantages
+        #action_reinforce_terms = - action_importance_weights[:-1] * action_log_probs[:-1] * advantages
+        #clip_importance_weight = torch.clamp(action_importance_weights[:-1], 0, 1)
+        assert action_log_probs[:-1].shape == advantages.shape
+        action_reinforce_terms = - action_importance_weights[:-1] * action_log_probs[:-1] * advantages.detach()
+        entropy_term = action_log_probs[:-1]
         if not self.agent.action_variable.approx_post.update == 'iterative':
             # include the policy gradients in the total objective
-            total_objective[:-1] = total_objective[:-1] + action_reinforce_terms
+            total_objective[:-1] = total_objective[:-1] + action_reinforce_terms - 0.01 * entropy_term
 
-        total_objective = total_objective.sum(dim=0).div(n_valid_steps).mean(dim=0).sum()
+        #total_objective = total_objective.sum(dim=0).div(n_valid_steps).mean(dim=0).sum()
+        total_objective = total_objective.sum(dim=0).mean(dim=0).sum()
 
         # save value / policy gradient metrics
-        self.metrics['value'] = value_loss
+        self.metrics['value_loss'] = value_loss
+        self.metrics['value'] = values.mean()
+        self.metrics['value_target'] = v_targets.mean()
         self.metrics['importance_weights'] = action_importance_weights
         self.metrics['policy_gradients'] = action_reinforce_terms
         self.metrics['advantages'] = advantages
