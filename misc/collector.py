@@ -61,7 +61,7 @@ class Collector:
         values = torch.stack(self.values)
         importance_weights = torch.stack(self.importance_weights['action'])
         # TODO: should be an argument, but everyone is using 1 anyway
-        clip_importance_weights = torch.clamp(importance_weights, 0, 1)
+        clip_importance_weights = self.agent.v_trace['lambda']*torch.clamp(importance_weights, 0, self.agent.v_trace['iw_clip'])
         future_terms = self.get_future_terms()
         deltas = clip_importance_weights[:-1] * (future_terms + self.agent.reward_discount * values[1:] * valid[1:] - values[:-1])
         targets = []

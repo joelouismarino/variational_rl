@@ -23,7 +23,8 @@ def get_mujoco_config(env):
                                'normalize_returns': True,
                                'normalize_advantages': True,
                                'normalize_observations': False,
-                               'gae_lambda': 0.98}
+                               'gae_lambda': 0.98,
+                               'v_trace': dict(l=0.75, iw_clip=1.)}
 
     if agent_args['agent_type'] == 'generative':
         agent_args['misc_args']['marginal_factor'] = 0.01
