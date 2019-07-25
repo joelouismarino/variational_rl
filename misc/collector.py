@@ -65,15 +65,17 @@ class Collector:
         future_terms = self.get_future_terms()
         deltas = clip_importance_weights[:-1] * (future_terms + self.agent.reward_discount * values[1:] * valid[1:] - values[:-1])
         targets = []
-        sequence_len = len(importance_weights)
+        sequence_len = len(future_terms)
         for i in range(sequence_len):
-            discount = self.agent.reward_discount ** torch.arange(sequence_len-i-1).view(-1, 1, 1).float()
-            cum_delta_i = torch.sum(discount * torch.cumprod(clip_importance_weights[i:-1], 0) * deltas[i:], 0)
-            assert values[i].shape == cum_delta_i.shape
-            target_i = (values[i] + cum_delta_i) * valid[i]
+            if i < sequence_len - 1:
+                discount = self.agent.reward_discount ** torch.arange(1, sequence_len-i).view(-1, 1, 1).float()
+                cum_delta_i = torch.sum(discount * torch.cumprod(clip_importance_weights[i:-2], 0) * deltas[i+1:], 0)
+                assert values[i].shape == cum_delta_i.shape
+            target_i = (values[i] + deltas[i] + cum_delta_i) * valid[i]
             targets.append(target_i)
+        targets.append(values[-1])
         targets = torch.cat(targets, 1).t().unsqueeze(2)
-        advantadges = future_terms + targets[1:] - values[:-1]
+        advantadges = future_terms + self.agent.reward_discount * targets[1:] * valid[1:] - values[:-1]
         assert advantadges.shape == future_terms.shape
         # gradient should never pass here
         return targets.detach(), advantadges.detach()
@@ -328,9 +330,10 @@ class Collector:
         #clip_importance_weight = torch.clamp(action_importance_weights[:-1], 0, 1)
         assert action_log_probs[:-1].shape == advantages.shape
         action_reinforce_terms = - action_importance_weights[:-1] * action_log_probs[:-1] * advantages.detach()
-        entropy_term = action_log_probs[:-1]
+        entropy_term = - action_log_probs[:-1]
         if not self.agent.action_variable.approx_post.update == 'iterative':
             # include the policy gradients in the total objective
+            assert action_reinforce_terms.shape == entropy_term.shape
             total_objective[:-1] = total_objective[:-1] + action_reinforce_terms - 0.01 * entropy_term
 
         #total_objective = total_objective.sum(dim=0).div(n_valid_steps).mean(dim=0).sum()
@@ -343,6 +346,7 @@ class Collector:
         self.metrics['importance_weights'] = action_importance_weights
         self.metrics['policy_gradients'] = action_reinforce_terms
         self.metrics['advantages'] = advantages
+        self.metrics['entropy'] = entropy_term.mean()
 
         return total_objective
 
