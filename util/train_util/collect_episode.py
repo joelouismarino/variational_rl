@@ -10,11 +10,9 @@ def collect_episode(env, agent, random=False):
     n_steps = 0
 
     while not done:
-        action = agent.act(observation, reward, done, random=random)
-        if random:
-            action = env.action_space.sample()
+        action = env.action_space.sample() if random else None
+        action = agent.act(observation, reward, done, action)
         observation, reward, done, _ = env.step(action)
         n_steps += 1
-    agent.act(None, reward, done, random=random)
-
+    agent.act(None, reward, done)
     return agent.get_episode(), n_steps

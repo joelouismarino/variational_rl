@@ -70,21 +70,22 @@ class Agent(nn.Module):
             # TODO: should set this in a better way, in case of image input
             self.obs_normalizer = Normalizer(shape=(observation_size), clip_value=10.)
 
-    def act(self, observation, reward=None, done=False, action=None, valid=None, log_prob=None, random=False):
+    def act(self, observation, reward=None, done=False, action=None, valid=None, log_prob=None):
         observation, reward, action, done, valid, log_prob = self._change_device(observation, reward, action, done, valid, log_prob)
         self.step_state(observation=observation, reward=reward, done=done, valid=valid)
         self.state_inference(observation=observation, reward=reward, done=done, valid=valid)
         self.step_action(observation=observation, reward=reward, done=done, valid=valid, action=action)
-        if not random:
-            self.action_inference(observation=observation, reward=reward, done=done, valid=valid, action=action)
+        self.action_inference(observation=observation, reward=reward, done=done, valid=valid, action=action)
         value = self.estimate_value(observation=observation, reward=reward, done=done, valid=valid)
         self.collector.collect(observation, reward, done, action, value, valid, log_prob)
         if self._mode == 'train':
             self._prev_action = action
         else:
-            if observation is not None:
+            if observation is not None and action is None:
                 action = self.action_variable.sample()
                 action = self._convert_action(action).cpu().numpy()
+            elif action is not None:
+                action = action.cpu().numpy()
         return action
 
     @abstractmethod
@@ -174,6 +175,8 @@ class Agent(nn.Module):
         if reward.device != self.device:
             reward = reward.to(self.device)
         if action is not None:
+            if type(action) == np.ndarray:
+                action = torch.from_numpy(action).view(1, -1)
             if action.device != self.device:
                 action = action.to(self.device)
         if type(done) == bool:
