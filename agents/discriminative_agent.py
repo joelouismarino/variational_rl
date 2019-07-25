@@ -40,11 +40,9 @@ class DiscriminativeAgent(Agent):
         if self.value_model is not None:
             self.value_variable = get_variable(type='value', args={'n_input': self.value_model.n_out})
 
-        self.state_variable.inference_mode()
-        self.action_variable.inference_mode()
-
     def state_inference(self, observation, reward, **kwargs):
         # observation = observation - 0.5
+        self.state_variable.inference_mode()
         # infer the approx. posterior on the state
         if self.state_inference_model is not None:
             state = self.state_variable.sample()
@@ -64,6 +62,7 @@ class DiscriminativeAgent(Agent):
 
     def action_inference(self, observation, reward, action=None, **kwargs):
         # observation = observation - 0.5
+        self.action_variable.inference_mode()
         # infer the approx. posterior on the action
         if self.action_inference_model is not None:
             state = self.state_variable.sample()
@@ -78,6 +77,7 @@ class DiscriminativeAgent(Agent):
 
     def step_state(self, observation, reward, **kwargs):
         # observation = observation - 0.5
+        self.state_variable.generative_mode()
         # calculate the prior on the state variable
         if self.state_prior_model is not None:
             if not self.state_variable.reinitialized:
@@ -93,6 +93,7 @@ class DiscriminativeAgent(Agent):
 
     def step_action(self, observation, reward, **kwargs):
         # observation = observation - 0.5
+        self.action_variable.generative_mode()
         # calculate the prior on the action variable
         if self.action_prior_model is not None:
             if not self.action_variable.reinitialized:
@@ -108,9 +109,10 @@ class DiscriminativeAgent(Agent):
                                                       action=action)
                 self.action_variable.step(prior_input)
 
-    def estimate_value(self, done, **kwargs):
+    def estimate_value(self, done, observation, reward, **kwargs):
         # estimate the value of the current state
         state = self.state_variable.sample()
-        value = self.value_variable(self.value_model(state=state)) * (1 - done)
+        value_input = self.value_model(state=state, observation=observation, reward=reward)
+        value = self.value_variable(value_input) * (1 - done)
         self.collector.values.append(value)
         return value

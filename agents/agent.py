@@ -143,7 +143,8 @@ class Agent(nn.Module):
 
         results['kl_min'] = self.kl_min
         results['kl_factor'] = self.kl_factor
-        results['marginal_factor'] = self.marginal_factor
+        if self.observation_variable is not None:
+            results['marginal_factor'] = self.marginal_factor
 
         return results
 
@@ -154,8 +155,8 @@ class Agent(nn.Module):
         # converts categorical action from one-hot encoding to the action index
         if self.action_variable.approx_post.dist_type == getattr(torch.distributions, 'Categorical'):
             action = one_hot_to_index(action)
-        # else:
-        #     action = action.detach()
+        else:
+            action = action.detach()
         return action
 
     def _change_device(self, observation, reward, action, done, valid, log_prob):

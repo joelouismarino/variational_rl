@@ -30,7 +30,8 @@ class Collector:
         # stores the log probabilities during training
         self.log_probs = {'action': [], 'state': []}
         # stores the importance weights during training
-        self.importance_weights = {'action': [], 'state': []}
+        # self.importance_weights = {'action': [], 'state': []}
+        self.importance_weights = {'action': []}
         # store the values during training
         self.values = []
 
@@ -43,12 +44,12 @@ class Collector:
         optimality = (-torch.stack(self.metrics['optimality']['cll']) + 1.) * valid
         future_terms = optimality[1:]
         # TODO: should only include these if the action distribution is not reparameterizable
-        # if self.agent.action_prior_model is not None:
-        #     action_kl = torch.stack(self.metrics['action']['kl']) * valid
-        #     future_terms = future_terms - action_kl[1:]
-        # if self.agent.state_prior_model is not None:
-        #     state_kl = torch.stack(self.metrics['state']['kl']) * valid
-        #     future_terms = future_terms - state_kl[1:]
+        if self.agent.action_prior_model is not None:
+            action_kl = torch.stack(self.metrics['action']['kl']) * valid
+            future_terms = future_terms - action_kl[1:]
+        if self.agent.state_prior_model is not None:
+            state_kl = torch.stack(self.metrics['state']['kl']) * valid
+            future_terms = future_terms - state_kl[1:]
         # if self.agent.obs_likelihood_model is not None:
         #     obs_info_gain = torch.stack(self.metrics['observation']['info_gain']) * valid
         #     reward_info_gain = torch.stack(self.metrics['reward']['info_gain']) * valid
@@ -165,8 +166,8 @@ class Collector:
         self.log_probs['state'].append(state_log_prob * valid)
         action_importance_weight = torch.exp(action_log_prob) / torch.exp(log_prob)
         self.importance_weights['action'].append(action_importance_weight.detach())
-        state_importance_weight = self.agent.state_variable.log_importance_weights().exp().mean(dim=0)
-        self.importance_weights['state'].append(state_importance_weight.detach())
+        # state_importance_weight = self.agent.state_variable.log_importance_weights().exp().mean(dim=0)
+        # self.importance_weights['state'].append(state_importance_weight.detach())
 
     def _collect_episode(self, observation, reward, done):
         # collect the variables for this step of the episode
@@ -194,8 +195,9 @@ class Collector:
         self.episode['done'].append(done)
 
         if done:
-            self.agent.marginal_factor *= self.agent.marginal_factor_anneal_rate
-            self.agent.marginal_factor = min(self.agent.marginal_factor, 1.)
+            if self.agent.observation_variable is not None:
+                self.agent.marginal_factor *= self.agent.marginal_factor_anneal_rate
+                self.agent.marginal_factor = min(self.agent.marginal_factor, 1.)
             self.agent.kl_min['state'] *= self.agent.kl_min_anneal_rate['state']
             self.agent.kl_min['action'] *= self.agent.kl_min_anneal_rate['action']
             self.agent.kl_factor['state'] *= self.agent.kl_factor_anneal_rate['state']
@@ -350,8 +352,8 @@ class Collector:
         self.metrics['advantages'] = advantages
         self.metrics['entropy'] = entropy_term.mean()
 
-        state_importance_weights = torch.stack(self.importance_weights['state'])
-        self.metrics['state_importance_weights'] = state_importance_weights
+        # state_importance_weights = torch.stack(self.importance_weights['state'])
+        # self.metrics['state_importance_weights'] = state_importance_weights
 
         return total_objective
 
@@ -402,6 +404,7 @@ class Collector:
         self.inference_improvement = {'state': [], 'action': []}
         self.log_probs = {'action': [], 'state': []}
         self.rollout_lenghts = []
-        self.importance_weights = {'action': [], 'state': []}
+        # self.importance_weights = {'action': [], 'state': []}
+        self.importance_weights = {'action': []}
         self.values = []
         self.valid = []

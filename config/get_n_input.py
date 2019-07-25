@@ -20,7 +20,7 @@ def get_n_input(config_dict, discrete_actions):
             elif input_name == 'action':
                 input_size += config_dict['action_variable_args']['n_variables']
             elif input_name == 'observation':
-                input_size += config_dict['observation_variable_args']['n_variables']
+                input_size += config_dict['misc_args']['observation_size']
             elif input_name == 'reward':
                 input_size += 1
             elif input_name in ['params', 'grads']:

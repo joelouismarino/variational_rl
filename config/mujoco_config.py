@@ -9,12 +9,12 @@ def get_mujoco_config(env):
     """
     agent_args = {}
 
-    agent_args['agent_type'] = 'generative'
+    agent_args['agent_type'] = 'discriminative'
 
-    agent_args['misc_args'] = {'optimality_scale': 1,
-                               'n_state_samples': 5,
+    agent_args['misc_args'] = {'optimality_scale': 1.,
+                               'n_state_samples': 2,
                                'n_inf_iter': dict(state=1, action=1),
-                               'inference_type': dict(state='iterative', action='direct'),
+                               'inference_type': dict(state='direct', action='direct'),
                                'kl_min': dict(state=0., action=0.),
                                'kl_min_anneal_rate': dict(state=1., action=1.),
                                'kl_factor': dict(state=1., action=1.),
@@ -36,6 +36,7 @@ def get_mujoco_config(env):
         agent_args['misc_args']['max_rollout_length'] = 5
 
     observation_size = np.prod(env.observation_space.shape)
+    agent_args['misc_args']['observation_size'] = observation_size
     action_space = env.action_space
     discrete_actions = False
     if type(action_space) == spaces.Discrete:
@@ -66,19 +67,26 @@ def get_mujoco_config(env):
         # state
         n_state_variables = 64
         agent_args['state_variable_args'] = {'type': 'fully_connected',
-                                             'prior_dist': 'Delta', #'Normal' or 'Delta'
-                                             'approx_post_dist': None,
-                                             'n_variables': n_state_variables}
+                                             'prior_dist': 'Normal',
+                                             'approx_post_dist': 'Normal',
+                                             'n_variables': n_state_variables,
+                                             'inference_type': 'direct'}
 
         agent_args['state_prior_args'] = {'type': 'fully_connected',
                                           'n_layers': 1,
                                           'inputs': ['observation'],
-                                          'n_units': 64,
-                                          'connectivity': 'sequential',
-                                          'non_linearity': 'tanh',
+                                          'n_units': 128,
+                                          'connectivity': 'highway',
+                                          'non_linearity': 'elu',
                                           'dropout': None}
 
-        agent_args['state_inference_args'] = None
+        agent_args['state_inference_args'] = {'type': 'fully_connected',
+                                              'n_layers': 1,
+                                              'inputs': ['observation'],
+                                              'n_units': 128,
+                                              'connectivity': 'highway',
+                                              'non_linearity': 'elu',
+                                              'dropout': None}
 
         # action
         agent_args['action_variable_args'] = {'type': 'fully_connected',
@@ -89,31 +97,31 @@ def get_mujoco_config(env):
                                               'inference_type': 'direct'}
 
         agent_args['action_prior_args'] = {'type': 'fully_connected',
-                                               'n_layers': 1,
-                                               'inputs': ['state'],
-                                               'n_units': 64,
-                                               'connectivity': 'sequential',
-                                               'batch_norm': False,
-                                               'non_linearity': 'tanh',
-                                               'dropout': None}
+                                           'n_layers': 2,
+                                           'inputs': ['state'],
+                                           'n_units': 64,
+                                           'connectivity': 'highway',
+                                           'batch_norm': False,
+                                           'non_linearity': 'elu',
+                                           'dropout': None}
 
         # agent_args['action_prior_args'] = None
 
         agent_args['action_inference_args'] = {'type': 'fully_connected',
-                                               'n_layers': 1,
+                                               'n_layers': 2,
                                                'inputs': ['state'],
                                                'n_units': 64,
-                                               'connectivity': 'sequential',
+                                               'connectivity': 'highway',
                                                'batch_norm': False,
-                                               'non_linearity': 'tanh',
+                                               'non_linearity': 'elu',
                                                'dropout': None}
 
         agent_args['value_model_args'] = {'type': 'fully_connected',
                                           'n_layers': 2,
-                                          'inputs': ['state'],
+                                          'inputs': ['state', 'observation'],
                                           'n_units': 64,
                                           'connectivity': 'highway',
-                                          'non_linearity': 'elu',
+                                          'non_linearity': 'tanh',
                                           'dropout': None}
 
     if agent_args['agent_type'] == 'generative':
@@ -231,7 +239,6 @@ def get_mujoco_config(env):
         agent_args['done_likelihood_args'] = {'type': 'fully_connected',
                                               'n_layers': 1,
                                               'inputs': ['state'],
-                                              'n_input': n_state_variables,
                                               'n_units': 64,
                                               'connectivity': 'sequential',
                                               'batch_norm': True,
@@ -242,7 +249,6 @@ def get_mujoco_config(env):
         agent_args['value_model_args'] = {'type': 'fully_connected',
                                           'n_layers': 2,
                                           'inputs': ['state'],
-                                          'n_input': n_state_variables,
                                           'n_units': 64,
                                           'connectivity': 'highway',
                                           'non_linearity': 'tanh',

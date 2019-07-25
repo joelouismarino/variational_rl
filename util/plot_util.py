@@ -14,6 +14,17 @@ def get_arg_dict(args):
     arg_dict = {k: v for (k, v) in arg_list}
     return arg_dict
 
+def flatten_arg_dict(arg_dict):
+    flat_dict = {}
+    for k, v in arg_dict.items():
+        if type(v) == dict:
+            flat_v = flatten_arg_dict(v)
+            for kk, vv in flat_v.items():
+                flat_dict[k + '_' + kk] = vv
+        else:
+            flat_dict[k] = v
+    return flat_dict
+
 class Plotter:
     """
     Handles plotting and logging to comet.
@@ -28,7 +39,7 @@ class Plotter:
                                      workspace="joelouismarino")
         self.experiment.disable_mp()
         self.experiment.log_parameters(get_arg_dict(exp_args))
-        self.experiment.log_parameters(agent_args)
+        self.experiment.log_parameters(flatten_arg_dict(agent_args))
 
     def _plot_ts(self, observations, statistics, label, color):
         dim_obs = min(observations.shape[1], 9)
@@ -76,6 +87,8 @@ class Plotter:
             merge_legends()
             self.experiment.log_figure(figure=plt, figure_name=k + '_ts_'+str(step))
             plt.close()
+
+        self.experiment.log_metric('Episode Return', episode['reward'].sum(), step)
 
     def log_results(self, results, timestep):
         for n, m in flatten(results).items():
