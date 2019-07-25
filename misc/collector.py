@@ -61,7 +61,6 @@ class Collector:
         valid = torch.stack(self.valid)
         values = torch.stack(self.values)
         importance_weights = torch.stack(self.importance_weights['action'])
-        # TODO: should be an argument, but everyone is using 1 anyway
         clip_importance_weights = self.agent.v_trace['lambda']*torch.clamp(importance_weights, 0, self.agent.v_trace['iw_clip'])
         future_terms = self.get_future_terms()
         deltas = clip_importance_weights[:-1] * (future_terms + self.agent.reward_discount * values[1:] * valid[1:] - values[:-1])
@@ -80,35 +79,6 @@ class Collector:
         assert advantadges.shape == future_terms.shape
         # gradient should never pass here
         return targets.detach(), advantadges.detach()
-
-    def estimate_advantages(self, update=False):
-        # estimate bootstrapped advantages
-        valid = torch.stack(self.valid)
-        values = torch.stack(self.values)
-        future_terms = self.get_future_terms()
-        if self.agent.return_normalizer:
-            # normalize the future terms
-            future_terms = self.agent.return_normalizer(future_terms.squeeze(-1))
-            future_terms = future_terms.unsqueeze(-1)
-        deltas = future_terms + self.agent.reward_discount * values[1:] * valid[1:] - values[:-1]
-        advantages = deltas.detach()
-        # use generalized advantage estimator
-        for i in range(advantages.shape[0]-1, 0, -1):
-            advantages[i-1] = advantages[i-1] + self.agent.reward_discount * self.agent.gae_lambda * advantages[i] * valid[i]
-        # if self.agent.advantage_normalizer and update:
-        #     self.agent.advantage_normalizer.update(advantages.squeeze(-1))
-        return advantages
-
-    def estimate_returns(self, update=False):
-        # calculate the discounted Monte Carlo return
-        valid = torch.stack(self.valid)
-        discounted_returns = self.get_future_terms()
-        for i in range(discounted_returns.shape[0]-1, 0, -1):
-            discounted_returns[i-1] += self.agent.reward_discount * discounted_returns[i] * valid[i]
-        if self.agent.return_normalizer and update:
-            # normalize the discounted returns
-            self.agent.return_normalizer.update(discounted_returns.squeeze(-1))
-        return discounted_returns
 
     def _collect_likelihood(self, name, obs, variable, valid, done=0.):
         log_importance_weights = self.agent.state_variable.log_importance_weights().detach()
@@ -338,7 +308,7 @@ class Collector:
         if not self.agent.action_variable.approx_post.update == 'iterative':
             # include the policy gradients in the total objective
             assert action_reinforce_terms.shape == entropy_term.shape
-            total_objective[:-1] = total_objective[:-1] + action_reinforce_terms - 0.01 * entropy_term
+            total_objective[:-1] = total_objective[:-1] + action_reinforce_terms
 
         #total_objective = total_objective.sum(dim=0).div(n_valid_steps).mean(dim=0).sum()
         total_objective = total_objective.sum(dim=0).mean(dim=0).sum()
