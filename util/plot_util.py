@@ -55,6 +55,7 @@ class Plotter:
             k += 1
 
     def plot_episode(self, episode, step):
+        self.experiment.log_metric('cumulative_reward', episode['reward'].sum(), step)
         def merge_legends():
             handles, labels = plt.gca().get_legend_handles_labels()
             newLabels, newHandles = [], []

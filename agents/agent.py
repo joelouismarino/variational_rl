@@ -42,6 +42,9 @@ class Agent(nn.Module):
         self.kl_factor_anneal_rate = {'state': misc_args['kl_factor_anneal_rate']['state'],
                                       'action': misc_args['kl_factor_anneal_rate']['action']}
 
+        self.v_trace = {'lambda': misc_args['v_trace']['l'],
+                        'iw_clip': misc_args['v_trace']['iw_clip']}
+
         # mode (either 'train' or 'eval')
         self._mode = 'train'
 
