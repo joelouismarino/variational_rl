@@ -41,15 +41,15 @@ class Collector:
     def get_future_terms(self):
         # get the future terms in the objective
         valid = torch.stack(self.valid)
-        optimality = (-torch.stack(self.metrics['optimality']['cll']) + 1.) * valid
+        optimality = -torch.stack(self.objectives['optimality']) * valid
         future_terms = optimality[1:]
         # TODO: should only include these if the action distribution is not reparameterizable
-        if self.agent.action_prior_model is not None:
-            action_kl = torch.stack(self.metrics['action']['kl']) * valid
-            future_terms = future_terms - action_kl[1:]
-        if self.agent.state_prior_model is not None:
-            state_kl = torch.stack(self.metrics['state']['kl']) * valid
-            future_terms = future_terms - state_kl[1:]
+        # if self.agent.action_prior_model is not None:
+        #     action_kl = torch.stack(self.objectives['action']) * valid
+        #     future_terms = future_terms - self.agent.kl_scale['action'] * action_kl[1:]
+        # if self.agent.state_prior_model is not None:
+        #     state_kl = torch.stack(self.objectives['state']) * valid
+        #     future_terms = future_terms - self.agent.kl_scale['state'] *state_kl[1:]
         # if self.agent.obs_likelihood_model is not None:
         #     obs_info_gain = torch.stack(self.metrics['observation']['info_gain']) * valid
         #     reward_info_gain = torch.stack(self.metrics['reward']['info_gain']) * valid
@@ -69,7 +69,7 @@ class Collector:
         sequence_len = len(future_terms)
         for i in range(sequence_len):
             if i < sequence_len - 1:
-                discount = self.agent.reward_discount ** torch.arange(1, sequence_len-i).view(-1, 1, 1).float()
+                discount = self.agent.reward_discount ** torch.arange(1, sequence_len-i).view(-1, 1, 1).float().to(self.agent.device)
                 cum_delta_i = torch.sum(discount * torch.cumprod(clip_importance_weights[i:-2], 0) * deltas[i+1:], 0)
                 assert values[i].shape == cum_delta_i.shape
             target_i = (values[i] + deltas[i] + cum_delta_i) * valid[i]
@@ -206,7 +206,7 @@ class Collector:
             self.agent.kl_factor['action'] = min(self.agent.kl_factor['action'], 1.)
 
     def collect(self, observation, reward, done, action, value, valid, log_prob):
-        optimality_cll = self.agent.optimality_scale * (reward - 1.)
+        optimality_cll = reward
         if self.agent._mode == 'train':
             self.objectives['optimality'].append(-optimality_cll * valid)
         self.metrics['optimality']['cll'].append((-optimality_cll * valid).detach())

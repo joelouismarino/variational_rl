@@ -32,7 +32,8 @@ class Agent(nn.Module):
         self.done_variable = None
 
         # miscellaneous
-        self.optimality_scale = misc_args['optimality_scale']
+        self.kl_scale = {'state': misc_args['kl_scale']['state'],
+                         'action': misc_args['kl_scale']['action']}
         self.kl_min = {'state': misc_args['kl_min']['state'],
                        'action': misc_args['kl_min']['action']}
         self.kl_min_anneal_rate = {'state': misc_args['kl_min_anneal_rate']['state'],

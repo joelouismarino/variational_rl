@@ -11,7 +11,7 @@ def get_mujoco_config(env):
 
     agent_args['agent_type'] = 'discriminative'
 
-    agent_args['misc_args'] = {'optimality_scale': 1.,
+    agent_args['misc_args'] = {'kl_scale': dict(state=1., action=1.),
                                'n_state_samples': 2,
                                'n_inf_iter': dict(state=1, action=1),
                                'inference_type': dict(state='direct', action='direct'),

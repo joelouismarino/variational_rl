@@ -183,7 +183,7 @@ class GenerativeAgent(Agent):
                         reward_mi = self.reward_variable.mutual_info()
                         observation_mi = self.observation_variable.mutual_info()
                         done_mi = self.done_variable.mutual_info()
-                        optimality_log_likelihood = self.optimality_scale * reward
+                        optimality_log_likelihood = reward
                         new_objective_terms = reward_mi + observation_mi + done_mi + optimality_log_likelihood
                         # new_objective_terms = optimality_log_likelihood
                         objective_dict['reward'].append(reward.detach())
