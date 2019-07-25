@@ -139,14 +139,16 @@ class Collector:
         # state_importance_weight = self.agent.state_variable.log_importance_weights().exp().mean(dim=0)
         # self.importance_weights['state'].append(state_importance_weight.detach())
 
-    def _collect_episode(self, observation, reward, done):
+    def _collect_episode(self, observation, reward, done, action):
         # collect the variables for this step of the episode
         if not done:
             self.episode['observation'].append(observation)
-            self.episode['action'].append(self.agent.action_variable.sample().detach())
             self.episode['state'].append(self.agent.state_variable.sample().detach())
-            act = self.agent._convert_action(self.agent.action_variable.sample().detach())
-            action_log_prob = self.agent.action_variable.approx_post.log_prob(act)
+            if action is None:
+                action = self.agent.action_variable.sample().detach()
+                action = self.agent._convert_action(self.agent.action_variable.sample().detach())
+            self.episode['action'].append(action)
+            action_log_prob = self.agent.action_variable.approx_post.log_prob(action)
             if self.agent.action_variable.approx_post.dist_type == getattr(torch.distributions, 'Categorical'):
                 action_log_prob = action_log_prob.view(-1, 1)
             else:
@@ -197,9 +199,16 @@ class Collector:
         if self.agent._mode == 'train':
             self._collect_log_probs(action, log_prob, valid)
         else:
-            self._collect_episode(observation, reward, done)
+            self._collect_episode(observation, reward, done, action)
 
         self.valid.append(valid)
+
+    def overwrite_action(self, action):
+        """
+        Overwrite the most recent action (with the random action).
+        """
+        import ipdb; ipdb.set_trace()
+        self.episode['action'][-1] = action
 
     def get_episode(self):
         """
@@ -235,10 +244,10 @@ class Collector:
                     if len(vvv) > 0:
                         results['distributions'][k][kk][kkk] = torch.cat(vvv, dim=0).detach().cpu()
         # get the returns, values, advantages
-        results['return'] = self.estimate_returns(update=True).mean(dim=1).detach().cpu()
+        # results['return'] = self.estimate_returns(update=True).mean(dim=1).detach().cpu()
         results['value'] = torch.cat(self.values, dim=0).detach().cpu()
-        results['advantage'] = torch.zeros(results['value'].shape)
-        results['advantage'][:-1] = self.estimate_advantages(update=True).mean(dim=1).detach().cpu()
+        # results['advantage'] = torch.zeros(results['value'].shape)
+        # results['advantage'][:-1] = self.estimate_advantages(update=True).mean(dim=1).detach().cpu()
         return results
 
     def get_metrics(self):

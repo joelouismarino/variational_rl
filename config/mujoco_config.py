@@ -118,7 +118,7 @@ def get_mujoco_config(env):
 
         agent_args['value_model_args'] = {'type': 'fully_connected',
                                           'n_layers': 2,
-                                          'inputs': ['state', 'observation'],
+                                          'inputs': ['state'],
                                           'n_units': 64,
                                           'connectivity': 'highway',
                                           'non_linearity': 'tanh',

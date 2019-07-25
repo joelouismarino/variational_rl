@@ -18,6 +18,7 @@ class Buffer(object):
         self.capacity = int(capacity)
         self.sequence_length = int(seq_len)
         self.buffer = []
+        self.total_steps = 0
 
     def sample(self):
         """
@@ -70,12 +71,14 @@ class Buffer(object):
         if len(self.buffer) >= self.capacity:
             self.buffer = self.buffer[-self.capacity+1:-1]
         self.buffer.append(episode)
+        self.total_steps += episode['observation'].shape[0]
 
     def empty(self):
         """
         Emptys the buffer.
         """
         self.buffer = []
+        self.total_steps = 0
 
     def __len__(self):
         return len(self.buffer)
