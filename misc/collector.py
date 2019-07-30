@@ -34,6 +34,12 @@ class Collector:
         self.importance_weights = {'action': []}
         # store the values during training
         self.values = []
+        self.qvalues = []
+        self.qvalues1 = []
+        self.qvalues2 = []
+        self.new_actions = []
+        self.new_action_log_probs = []
+        self.new_q_values = []
 
         self.rollout_lenghts = []
         self.valid = []
@@ -60,25 +66,36 @@ class Collector:
     def get_v_trace(self):
         valid = torch.stack(self.valid)
         values = torch.stack(self.values)
+        qvalues = torch.stack(self.qvalues)
         importance_weights = torch.stack(self.importance_weights['action'])
         clip_importance_weights = self.agent.v_trace['lambda']*torch.clamp(importance_weights, 0, self.agent.v_trace['iw_clip'])
         future_terms = self.get_future_terms()
-        deltas = clip_importance_weights[:-1] * (future_terms + self.agent.reward_discount * values[1:] * valid[1:] - values[:-1])
+        deltas = (future_terms + self.agent.reward_discount * values[1:] * valid[1:] - qvalues[:-1])
         targets = []
         sequence_len = len(future_terms)
         for i in range(sequence_len):
             if i < sequence_len - 1:
-                discount = self.agent.reward_discount ** torch.arange(1, sequence_len-i).view(-1, 1, 1).float().to(self.agent.device)
-                cum_delta_i = torch.sum(discount * torch.cumprod(clip_importance_weights[i:-2], 0) * deltas[i+1:], 0)
+                discount = self.agent.reward_discount ** torch.arange(0, sequence_len-i).view(-1, 1, 1).float().to(self.agent.device)
+                cum_delta_i = torch.sum(discount * torch.cumprod(clip_importance_weights[i:-1], 0) * deltas[i:], 0)
                 assert values[i].shape == cum_delta_i.shape
-            target_i = (values[i] + deltas[i] + cum_delta_i) * valid[i]
+            target_i = (qvalues[i] + cum_delta_i) * valid[i]
             targets.append(target_i)
         targets.append(values[-1])
         targets = torch.cat(targets, 1).t().unsqueeze(2)
         advantadges = future_terms + self.agent.reward_discount * targets[1:] * valid[1:] - values[:-1]
+        targets = future_terms + self.agent.reward_discount * values[1:] * valid[1:]
+        q_targets = future_terms + self.agent.reward_discount * values[1:] * valid[1:]
+        #q_targets = future_terms + self.agent.reward_discount * targets[1:] * valid[1:]
         assert advantadges.shape == future_terms.shape
         # gradient should never pass here
-        return targets.detach(), advantadges.detach()
+        return (clip_importance_weights[:-1]*targets).detach(), q_targets.detach(), advantadges.detach()
+
+    def get_policy_loss(self):
+        # E step
+        # sample from current policy and reweight by the exponential of the Q function
+
+        # return weights and actions
+        return 0
 
     def _collect_likelihood(self, name, obs, variable, valid, done=0.):
         log_importance_weights = self.agent.state_variable.log_importance_weights().detach()
@@ -175,7 +192,7 @@ class Collector:
             self.agent.kl_factor['state'] = min(self.agent.kl_factor['state'], 1.)
             self.agent.kl_factor['action'] = min(self.agent.kl_factor['action'], 1.)
 
-    def collect(self, observation, reward, done, action, value, valid, log_prob):
+    def collect(self, observation, reward, done, action, valid, log_prob):
         optimality_cll = reward
         if self.agent._mode == 'train':
             self.objectives['optimality'].append(-optimality_cll * valid)
@@ -235,10 +252,7 @@ class Collector:
                     if len(vvv) > 0:
                         results['distributions'][k][kk][kkk] = torch.cat(vvv, dim=0).detach().cpu()
         # get the returns, values, advantages
-        results['return'] = self.estimate_returns(update=True).mean(dim=1).detach().cpu()
         results['value'] = torch.cat(self.values, dim=0).detach().cpu()
-        results['advantage'] = torch.zeros(results['value'].shape)
-        results['advantage'][:-1] = self.estimate_advantages(update=True).mean(dim=1).detach().cpu()
         return results
 
     def get_metrics(self):
@@ -283,14 +297,23 @@ class Collector:
         for objective_name, objective in self.objectives.items():
             total_objective = total_objective + torch.stack(objective)
 
+        new_q_values = torch.stack(self.new_q_values)
+        new_action_log_probs = torch.stack(self.new_action_log_probs)
+        # TODO: SAC potential bug
+        policy_loss = -50 * (new_q_values - 0.05*new_action_log_probs.sum(2, keepdim=True)) * valid
+        #params = list(self.agent.q_value_models.parameters())
+        #import pdb; pdb.set_trace()
+
+        assert total_objective.shape == policy_loss.shape
+        total_objective = total_objective + policy_loss
+        #self.agent.q_value_models.zero_grad()
+
         values = torch.stack(self.values)
-        #advantages = self.estimate_advantages()
+        q_values1 = torch.stack(self.qvalues1)
+        q_values2 = torch.stack(self.qvalues2)
 
         # calculate value loss
-        #returns = advantages + values[:-1].detach()
-        v_targets, advantages = self.get_v_trace()
-        value_loss = 0.5 * (v_targets[:-1] - values[:-1]).pow(2)
-        total_objective[:-1] = total_objective[:-1] + value_loss
+        v_targets, q_targets, advantages = self.get_v_trace()
 
         # normalize the advantages
         #advantages_mean = advantages.sum(dim=0).div(n_valid_steps).mean(dim=0)
@@ -299,28 +322,32 @@ class Collector:
 
         # calculate policy gradient terms and add them to the total objective
         action_log_probs = torch.stack(self.log_probs['action'])
-        action_importance_weights = torch.stack(self.importance_weights['action']).detach()
+        #action_importance_weights = torch.stack(self.importance_weights['action']).detach()
         #action_reinforce_terms = - action_importance_weights[:-1] * action_log_probs[:-1] * advantages
         #clip_importance_weight = torch.clamp(action_importance_weights[:-1], 0, 1)
-        assert action_log_probs[:-1].shape == advantages.shape
-        action_reinforce_terms = - action_importance_weights[:-1] * action_log_probs[:-1] * advantages.detach()
-        entropy_term = - action_log_probs[:-1]
-        if not self.agent.action_variable.approx_post.update == 'iterative':
-            # include the policy gradients in the total objective
-            assert action_reinforce_terms.shape == entropy_term.shape
-            total_objective[:-1] = total_objective[:-1] + action_reinforce_terms
+        #assert action_log_probs[:-1].shape == advantages.shape
+        #action_reinforce_terms = - action_importance_weights[:-1] * action_log_probs[:-1] * advantages.detach()
+        #entropy_term = - action_log_probs[:-1]
+        #if not self.agent.action_variable.approx_post.update == 'iterative':
+        #    # include the policy gradients in the total objective
+        #    assert action_reinforce_terms.shape == entropy_term.shape
+        #    total_objective[:-1] = total_objective[:-1] + action_reinforce_terms
+
+        q_loss = 0.5 * (q_values1[:-1] - q_targets).pow(2) + 0.5 * (q_values2[:-1] - q_targets).pow(2)
+        v_targets = (torch.min(q_values1, q_values2) - 0.05*action_log_probs)[:-1]
+        value_loss = 0.5 * (v_targets.detach() - values[:-1]).pow(2)
+        total_objective[:-1] = total_objective[:-1] + value_loss + q_loss
 
         #total_objective = total_objective.sum(dim=0).div(n_valid_steps).mean(dim=0).sum()
         total_objective = total_objective.sum(dim=0).mean(dim=0).sum()
 
         # save value / policy gradient metrics
+        self.metrics['q_loss'] = q_loss
         self.metrics['value_loss'] = value_loss
         self.metrics['value'] = values.mean()
         self.metrics['value_target'] = v_targets.mean()
-        self.metrics['importance_weights'] = action_importance_weights
-        self.metrics['policy_gradients'] = action_reinforce_terms
-        self.metrics['advantages'] = advantages
-        self.metrics['entropy'] = entropy_term.mean()
+        self.metrics['policy_loss'] = policy_loss.mean()
+        self.metrics['entropy_policy'] = -new_action_log_probs.mean()
 
         # state_importance_weights = torch.stack(self.importance_weights['state'])
         # self.metrics['state_importance_weights'] = state_importance_weights
@@ -377,4 +404,10 @@ class Collector:
         # self.importance_weights = {'action': [], 'state': []}
         self.importance_weights = {'action': []}
         self.values = []
+        self.qvalues = []
+        self.qvalues1 = []
+        self.qvalues2 = []
+        self.new_actions = []
+        self.new_q_values = []
+        self.new_action_log_probs = []
         self.valid = []
