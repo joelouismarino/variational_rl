@@ -334,7 +334,7 @@ class Collector:
         #    total_objective[:-1] = total_objective[:-1] + action_reinforce_terms
 
         q_loss = 0.5 * (q_values1[:-1] - q_targets).pow(2) + 0.5 * (q_values2[:-1] - q_targets).pow(2)
-        v_targets = (new_q_values - 0.05*new_action_log_probs)[:-1]
+        v_targets = (new_q_values - 0.05*new_action_log_probs.sum(2, keepdim=True))[:-1]
         value_loss = 0.5 * (v_targets.detach() - values[:-1]).pow(2)
         total_objective[:-1] = total_objective[:-1] + value_loss + q_loss
 
