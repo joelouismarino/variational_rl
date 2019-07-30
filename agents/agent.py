@@ -66,7 +66,7 @@ class Agent(nn.Module):
             self.advantage_normalizer = Normalizer(clip_value=10.)
         self.obs_normalizer = None
         if misc_args['normalize_observations']:
-            observation_size = state_inference_args['n_input']
+            observation_size = misc_args['observation_size']
             # TODO: should set this in a better way, in case of image input
             self.obs_normalizer = Normalizer(shape=(observation_size), clip_value=10.)
 

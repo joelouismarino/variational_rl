@@ -44,12 +44,12 @@ class Collector:
         optimality = -torch.stack(self.objectives['optimality']) * valid
         future_terms = optimality[1:]
         # TODO: should only include these if the action distribution is not reparameterizable
-        # if self.agent.action_prior_model is not None:
-        #     action_kl = torch.stack(self.objectives['action']) * valid
-        #     future_terms = future_terms - self.agent.kl_scale['action'] * action_kl[1:]
-        # if self.agent.state_prior_model is not None:
-        #     state_kl = torch.stack(self.objectives['state']) * valid
-        #     future_terms = future_terms - self.agent.kl_scale['state'] *state_kl[1:]
+        if self.agent.action_prior_model is not None:
+            action_kl = torch.stack(self.objectives['action']) * valid
+            future_terms = future_terms - self.agent.kl_scale['action'] * action_kl[1:]
+        if self.agent.state_prior_model is not None:
+            state_kl = torch.stack(self.objectives['state']) * valid
+            future_terms = future_terms - self.agent.kl_scale['state'] *state_kl[1:]
         # if self.agent.obs_likelihood_model is not None:
         #     obs_info_gain = torch.stack(self.metrics['observation']['info_gain']) * valid
         #     reward_info_gain = torch.stack(self.metrics['reward']['info_gain']) * valid

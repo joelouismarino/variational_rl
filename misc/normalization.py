@@ -22,6 +22,7 @@ class Normalizer(object):
 
     def __call__(self, input, update=False):
         # normalizes the inputs, updates the running mean and std. if update is True
+        self.rms._change_device(input)
         if update:
             self.update(input)
         if self.shift:
