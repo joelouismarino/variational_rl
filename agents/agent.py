@@ -78,9 +78,11 @@ class Agent(nn.Module):
         if not random:
             self.action_inference(observation=observation, reward=reward, done=done, valid=valid, action=action)
         value = self.estimate_value(observation=observation, reward=reward, done=done, valid=valid)
-        self.collector.collect(observation, reward, done, action, value, valid, log_prob)
+        self.collector.collect(observation, reward, done, action, valid, log_prob)
+
         if self._mode == 'train':
             self._prev_action = action
+            q_values = self.estimate_q_values(observation=observation, action=action, reward=reward, done=done, valid=valid)
         else:
             if observation is not None:
                 action = self.action_variable.sample()
@@ -121,6 +123,10 @@ class Agent(nn.Module):
         pass
 
     def estimate_value(self, observation, reward, done, valid):
+        # estimate the value of the current state
+        pass
+
+    def estimate_q_values(self, observation, action, reward, done, valid):
         # estimate the value of the current state
         pass
 
@@ -272,6 +278,10 @@ class Agent(nn.Module):
         if self.value_model is not None:
             param_dict['value_model'] = nn.ParameterList()
             param_dict['value_model'].extend(list(self.value_model.parameters()))
+
+        if self.q_value_models is not None:
+            param_dict['q_value_models'] = nn.ParameterList()
+            param_dict['q_value_models'].extend(list(self.q_value_models.parameters()))
 
         return param_dict
 
