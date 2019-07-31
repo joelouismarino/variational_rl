@@ -12,23 +12,21 @@ class Collector:
 
         # stores the variables
         self.episode = {'observation': [], 'reward': [], 'done': [],
-                        'state': [], 'action': [], 'log_prob': []}
+                        'action': [], 'log_prob': []}
 
         # stores the objectives during training
-        self.objectives = {'optimality': [], 'state': [], 'action': []}
+        self.objectives = {'optimality': [], 'action': []}
         # stores the metrics
         self.metrics = {'optimality': {'cll': []},
-                        'state': {'kl': []},
                         'action': {'kl': []}}
         # stores the distributions
-        self.distributions = {'state': {'prior': {'loc': [], 'scale': []}, 'approx_post': {'loc': [], 'scale': []}},
-                              'action': {'prior': {'probs': []}, 'approx_post': {'probs': []}}}
+        self.distributions = {'action': {'prior': {'probs': []}, 'approx_post': {'probs': []}}}
         # stores inference improvement during training
-        self.inference_improvement = {'state': [], 'action': []}
+        self.inference_improvement = {'action': []}
         # stores planning rollout lengths during training
         self.rollout_lengths = []
         # stores the log probabilities during training
-        self.log_probs = {'action': [], 'state': []}
+        self.log_probs = {'action': []}
         # stores the importance weights during training
         # self.importance_weights = {'action': [], 'state': []}
         self.importance_weights = {'action': []}
@@ -50,12 +48,12 @@ class Collector:
         optimality = -torch.stack(self.objectives['optimality']) * valid
         future_terms = optimality[1:]
         # TODO: should only include these if the action distribution is not reparameterizable
-        # if self.agent.action_prior_model is not None:
-        #     action_kl = torch.stack(self.objectives['action']) * valid
-        #     future_terms = future_terms - self.agent.kl_scale['action'] * action_kl[1:]
-        # if self.agent.state_prior_model is not None:
-        #     state_kl = torch.stack(self.objectives['state']) * valid
-        #     future_terms = future_terms - self.agent.kl_scale['state'] *state_kl[1:]
+        if self.agent.action_prior_model is not None:
+            action_kl = torch.stack(self.objectives['action']) * valid
+            future_terms = future_terms - self.agent.kl_scale['action'] * action_kl[1:]
+        if self.agent.state_prior_model is not None:
+            state_kl = torch.stack(self.objectives['state']) * valid
+            future_terms = future_terms - self.agent.kl_scale['state'] *state_kl[1:]
         # if self.agent.obs_likelihood_model is not None:
         #     obs_info_gain = torch.stack(self.metrics['observation']['info_gain']) * valid
         #     reward_info_gain = torch.stack(self.metrics['reward']['info_gain']) * valid
@@ -147,23 +145,27 @@ class Collector:
         else:
             action_log_prob = action_log_prob.sum(dim=1, keepdim=True)
         self.log_probs['action'].append(action_log_prob * valid)
-        state = self.agent.state_variable.sample()
-        state_log_prob = self.agent.state_variable.approx_post.dist.log_prob(state)
-        state_log_prob = state_log_prob.sum(dim=1, keepdim=True)
-        self.log_probs['state'].append(state_log_prob * valid)
+        if self.agent.state_variable is not None:
+            state = self.agent.state_variable.sample()
+            state_log_prob = self.agent.state_variable.approx_post.dist.log_prob(state)
+            state_log_prob = state_log_prob.sum(dim=1, keepdim=True)
+            self.log_probs['state'].append(state_log_prob * valid)
         action_importance_weight = torch.exp(action_log_prob) / torch.exp(log_prob)
         self.importance_weights['action'].append(action_importance_weight.detach())
         # state_importance_weight = self.agent.state_variable.log_importance_weights().exp().mean(dim=0)
         # self.importance_weights['state'].append(state_importance_weight.detach())
 
-    def _collect_episode(self, observation, reward, done):
+    def _collect_episode(self, observation, reward, done, action):
         # collect the variables for this step of the episode
         if not done:
             self.episode['observation'].append(observation)
-            self.episode['action'].append(self.agent.action_variable.sample().detach())
-            self.episode['state'].append(self.agent.state_variable.sample().detach())
-            act = self.agent._convert_action(self.agent.action_variable.sample().detach())
-            action_log_prob = self.agent.action_variable.approx_post.log_prob(act)
+            if self.agent.state_variable is not None:
+                self.episode['state'].append(self.agent.state_variable.sample().detach())
+            if action is None:
+                action = self.agent.action_variable.sample().detach()
+                action = self.agent._convert_action(self.agent.action_variable.sample().detach())
+            self.episode['action'].append(action)
+            action_log_prob = self.agent.action_variable.approx_post.log_prob(action)
             if self.agent.action_variable.approx_post.dist_type == getattr(torch.distributions, 'Categorical'):
                 action_log_prob = action_log_prob.view(-1, 1)
             else:
@@ -172,12 +174,13 @@ class Collector:
         else:
             obs = self.episode['observation'][0]
             action = self.episode['action'][0]
-            state = self.episode['state'][0]
             log_prob = self.episode['log_prob'][0]
             self.episode['observation'].append(obs.new(obs.shape).zero_())
             self.episode['action'].append(action.new(action.shape).zero_())
-            self.episode['state'].append(state.new(state.shape).zero_())
             self.episode['log_prob'].append(log_prob.new(log_prob.shape).zero_())
+            if self.agent.state_variable is not None:
+                state = self.episode['state'][0]
+                self.episode['state'].append(state.new(state.shape).zero_())
         self.episode['reward'].append(reward)
         self.episode['done'].append(done)
 
@@ -207,16 +210,24 @@ class Collector:
         if self.agent.obs_likelihood_model is not None:
             self._collect_likelihood('observation', observation, self.agent.observation_variable, valid, done)
 
-        self._collect_kl('state', self.agent.state_variable, valid, done)
+        if self.agent.state_variable is not None:
+            self._collect_kl('state', self.agent.state_variable, valid, done)
 
         self._collect_kl('action', self.agent.action_variable, valid, done)
 
         if self.agent._mode == 'train':
             self._collect_log_probs(action, log_prob, valid)
         else:
-            self._collect_episode(observation, reward, done)
+            self._collect_episode(observation, reward, done, action)
 
         self.valid.append(valid)
+
+    def overwrite_action(self, action):
+        """
+        Overwrite the most recent action (with the random action).
+        """
+        import ipdb; ipdb.set_trace()
+        self.episode['action'][-1] = action
 
     def get_episode(self):
         """
@@ -225,13 +236,19 @@ class Collector:
         results = {}
         # copy over the episode itself
         for k, v in self.episode.items():
-            results[k] = torch.cat(v, dim=0).detach().cpu()
+            if len(v) > 0:
+                results[k] = torch.cat(v, dim=0).detach().cpu()
+            else:
+                results[k] = []
         # get the metrics
         results['metrics'] = {}
         for k, v in self.metrics.items():
             results['metrics'][k] = {}
             for kk, vv in v.items():
-                results['metrics'][k][kk] = torch.cat(vv, dim=0).detach().cpu()
+                if len(vv) > 0:
+                    results['metrics'][k][kk] = torch.cat(vv, dim=0).detach().cpu()
+                else:
+                    results['metrics'][k][kk] = []
         # get the inference improvements
         results['inf_imp'] = {}
         for k, v in self.inference_improvement.items():
@@ -300,7 +317,7 @@ class Collector:
         new_q_values = torch.stack(self.new_q_values)
         new_action_log_probs = torch.stack(self.new_action_log_probs)
         # TODO: SAC potential bug
-        policy_loss = -50 * (new_q_values - 0.05*new_action_log_probs.sum(2, keepdim=True)) * valid
+        policy_loss = - (new_q_values - 0.05*new_action_log_probs.sum(2, keepdim=True)) * valid
         #params = list(self.agent.q_value_models.parameters())
         #import pdb; pdb.set_trace()
 
@@ -369,13 +386,12 @@ class Collector:
     def reset(self):
         # reset the episode, objectives, and log probs
         self.episode = {'observation': [], 'reward': [], 'done': [],
-                        'state': [], 'action': [], 'log_prob': []}
+                        'action': [], 'log_prob': []}
 
-        self.objectives = {'optimality': [], 'state': [], 'action': []}
+        self.objectives = {'optimality': [], 'action': []}
         self.metrics = {'optimality': {'cll': []},
-                        'state': {'kl': []},
                         'action': {'kl': []}}
-        self.distributions = {'state': {'prior': {'loc': [], 'scale': []}, 'approx_post': {'loc': [], 'scale': []}}}
+        self.distributions = {}
         if self.agent.action_variable.approx_post.dist_type == getattr(torch.distributions, 'Categorical'):
             self.distributions['action'] = {'prior': {'probs': []},
                                             'approx_post': {'probs': []}}
@@ -383,6 +399,17 @@ class Collector:
             self.distributions['action'] = {'prior': {'loc': [], 'scale': []},
                                             'approx_post': {'loc': [], 'scale': []}}
 
+        self.inference_improvement = {'action': []}
+        self.log_probs = {'action': []}
+
+        if self.agent.state_variable is not None:
+            self.episode['state'] = []
+            self.objectives['state'] = []
+            self.metrics['state'] = {'kl': []}
+            self.distributions['state'] = {'prior': {'loc': [], 'scale': []},
+                                           'approx_post': {'loc': [], 'scale': []}}
+            self.log_probs['state'] = []
+            self.inference_improvement['state'] = []
         if self.agent.observation_variable is not None:
             self.objectives['observation'] = []
             self.metrics['observation'] = {'cll': [], 'info_gain': [], 'mll': []}
@@ -398,8 +425,6 @@ class Collector:
             self.metrics['done'] = {'cll': [], 'info_gain': [], 'mll': []}
             self.distributions['done'] = {'pred': {'probs': []}, 'recon': {'probs': []}}
 
-        self.inference_improvement = {'state': [], 'action': []}
-        self.log_probs = {'action': [], 'state': []}
         self.rollout_lenghts = []
         # self.importance_weights = {'action': [], 'state': []}
         self.importance_weights = {'action': []}

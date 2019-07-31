@@ -1,5 +1,6 @@
 import torch
 from config import get_agent_args
+from .baseline_agent import BaselineAgent
 from .discriminative_agent import DiscriminativeAgent
 from .generative_agent import GenerativeAgent
 
@@ -9,7 +10,9 @@ def create_agent(env, ckpt_path=None, device_id=None):
     args = agent_args.copy()
     agent_type = args.pop('agent_type')
 
-    if agent_type == 'discriminative':
+    if agent_type == 'baseline':
+        agent = BaselineAgent(**args)
+    elif agent_type == 'discriminative':
         agent = DiscriminativeAgent(**args)
     elif agent_type == 'generative':
         agent = GenerativeAgent(**args)

@@ -66,17 +66,16 @@ class Agent(nn.Module):
             self.advantage_normalizer = Normalizer(clip_value=10.)
         self.obs_normalizer = None
         if misc_args['normalize_observations']:
-            observation_size = state_inference_args['n_input']
+            observation_size = misc_args['observation_size']
             # TODO: should set this in a better way, in case of image input
             self.obs_normalizer = Normalizer(shape=(observation_size), clip_value=10.)
 
-    def act(self, observation, reward=None, done=False, action=None, valid=None, log_prob=None, random=False):
+    def act(self, observation, reward=None, done=False, action=None, valid=None, log_prob=None):
         observation, reward, action, done, valid, log_prob = self._change_device(observation, reward, action, done, valid, log_prob)
         self.step_state(observation=observation, reward=reward, done=done, valid=valid)
         self.state_inference(observation=observation, reward=reward, done=done, valid=valid)
         self.step_action(observation=observation, reward=reward, done=done, valid=valid, action=action)
-        if not random:
-            self.action_inference(observation=observation, reward=reward, done=done, valid=valid, action=action)
+        self.action_inference(observation=observation, reward=reward, done=done, valid=valid, action=action)
         value = self.estimate_value(observation=observation, reward=reward, done=done, valid=valid)
         self.collector.collect(observation, reward, done, action, valid, log_prob)
 
@@ -84,9 +83,11 @@ class Agent(nn.Module):
             self._prev_action = action
             q_values = self.estimate_q_values(observation=observation, action=action, reward=reward, done=done, valid=valid)
         else:
-            if observation is not None:
+            if observation is not None and action is None:
                 action = self.action_variable.sample()
                 action = self._convert_action(action).cpu().numpy()
+            elif action is not None:
+                action = action.cpu().numpy()
         return action
 
     @abstractmethod
@@ -180,6 +181,8 @@ class Agent(nn.Module):
         if reward.device != self.device:
             reward = reward.to(self.device)
         if action is not None:
+            if type(action) == np.ndarray:
+                action = torch.from_numpy(action).view(1, -1)
             if action.device != self.device:
                 action = action.to(self.device)
         if type(done) == bool:
@@ -198,8 +201,9 @@ class Agent(nn.Module):
 
     def reset(self, batch_size=1):
         # reset the variables
-        self.state_variable.reset(batch_size)
         self.action_variable.reset(batch_size)
+        if self.state_variable is not None:
+            self.state_variable.reset(batch_size)
         if self.observation_variable is not None:
             self.observation_variable.reset(batch_size)
         if self.reward_variable is not None:
@@ -315,8 +319,9 @@ class Agent(nn.Module):
         return params
 
     def inference_mode(self):
-        self.state_variable.inference_mode()
         self.action_variable.inference_mode()
+        if self.state_variable is not None:
+            self.state_variable.inference_mode()
         if self.state_prior_model is not None:
             self.state_prior_model.detach_hidden_state()
         if self.action_prior_model is not None:
@@ -329,8 +334,9 @@ class Agent(nn.Module):
             self.done_likelihood_model.detach_hidden_state()
 
     def generative_mode(self):
-        self.state_variable.generative_mode()
         self.action_variable.generative_mode()
+        if self.state_variable is not None:
+            self.state_variable.generative_mode()
         if self.state_prior_model is not None:
             self.state_prior_model.attach_hidden_state()
         if self.action_prior_model is not None:

@@ -9,7 +9,7 @@ def get_mujoco_config(env):
     """
     agent_args = {}
 
-    agent_args['agent_type'] = 'discriminative'
+    agent_args['agent_type'] = 'baseline'
 
     agent_args['misc_args'] = {'kl_scale': dict(state=1., action=1.),
                                'n_state_samples': 2,
@@ -62,6 +62,50 @@ def get_mujoco_config(env):
     else:
         raise NotImplementedError
 
+    if agent_args['agent_type'] == 'baseline':
+        # action
+        agent_args['action_variable_args'] = {'type': 'fully_connected',
+                                              'prior_dist': action_prior_dist,
+                                              'approx_post_dist': action_approx_post_dist,
+                                              'n_variables': n_action_variables,
+                                              'constant_prior': False,
+                                              'inference_type': 'direct'}
+
+        agent_args['action_prior_args'] = {'type': 'fully_connected',
+                                           'n_layers': 2,
+                                           'inputs': ['observation'],
+                                           'n_units': 128,
+                                           'connectivity': 'highway',
+                                           'batch_norm': False,
+                                           'non_linearity': 'tanh',
+                                           'dropout': None}
+
+        # agent_args['action_prior_args'] = None
+
+        agent_args['action_inference_args'] = {'type': 'fully_connected',
+                                               'n_layers': 2,
+                                               'inputs': ['observation'],
+                                               'n_units': 128,
+                                               'connectivity': 'highway',
+                                               'batch_norm': False,
+                                               'non_linearity': 'tanh',
+                                               'dropout': None}
+
+        agent_args['value_model_args'] = {'type': 'fully_connected',
+                                          'n_layers': 2,
+                                          'inputs': ['observation'],
+                                          'n_units': 128,
+                                          'connectivity': 'highway',
+                                          'non_linearity': 'tanh',
+                                          'dropout': None}
+
+        agent_args['q_value_model_args'] = {'type': 'fully_connected',
+                                          'n_layers': 2,
+                                          'inputs': ['observation', 'action'],
+                                          'n_units': 64,
+                                          'connectivity': 'highway',
+                                          'non_linearity': 'tanh',
+                                          'dropout': None}
 
     if agent_args['agent_type'] == 'discriminative':
         # state
@@ -118,7 +162,7 @@ def get_mujoco_config(env):
 
         agent_args['value_model_args'] = {'type': 'fully_connected',
                                           'n_layers': 2,
-                                          'inputs': ['state', 'observation'],
+                                          'inputs': ['state'],
                                           'n_units': 64,
                                           'connectivity': 'highway',
                                           'non_linearity': 'tanh',
