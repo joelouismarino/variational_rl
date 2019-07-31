@@ -62,31 +62,31 @@ class Collector:
         return future_terms
 
     def get_v_trace(self):
-        valid = torch.stack(self.valid)
+        %valid = torch.stack(self.valid)
         values = torch.stack(self.values)
         qvalues = torch.stack(self.qvalues)
-        importance_weights = torch.stack(self.importance_weights['action'])
-        clip_importance_weights = self.agent.v_trace['lambda']*torch.clamp(importance_weights, 0, self.agent.v_trace['iw_clip'])
+        #importance_weights = torch.stack(self.importance_weights['action'])
+        #clip_importance_weights = self.agent.v_trace['lambda']*torch.clamp(importance_weights, 0, self.agent.v_trace['iw_clip'])
         future_terms = self.get_future_terms()
-        deltas = (future_terms + self.agent.reward_discount * values[1:] * valid[1:] - qvalues[:-1])
-        targets = []
-        sequence_len = len(future_terms)
-        for i in range(sequence_len):
-            if i < sequence_len - 1:
-                discount = self.agent.reward_discount ** torch.arange(0, sequence_len-i).view(-1, 1, 1).float().to(self.agent.device)
-                cum_delta_i = torch.sum(discount * torch.cumprod(clip_importance_weights[i:-1], 0) * deltas[i:], 0)
-                assert values[i].shape == cum_delta_i.shape
-            target_i = (qvalues[i] + cum_delta_i) * valid[i]
-            targets.append(target_i)
-        targets.append(values[-1])
-        targets = torch.cat(targets, 1).t().unsqueeze(2)
-        advantadges = future_terms + self.agent.reward_discount * targets[1:] * valid[1:] - values[:-1]
-        targets = future_terms + self.agent.reward_discount * values[1:] * valid[1:]
+        #deltas = (future_terms + self.agent.reward_discount * values[1:] * valid[1:] - qvalues[:-1])
+        #targets = []
+        #sequence_len = len(future_terms)
+        #for i in range(sequence_len):
+        #    if i < sequence_len - 1:
+        #        discount = self.agent.reward_discount ** torch.arange(0, sequence_len-i).view(-1, 1, 1).float().to(self.agent.device)
+        #        cum_delta_i = torch.sum(discount * torch.cumprod(clip_importance_weights[i:-1], 0) * deltas[i:], 0)
+        #        assert values[i].shape == cum_delta_i.shape
+        #    target_i = (qvalues[i] + cum_delta_i) * valid[i]
+        #    targets.append(target_i)
+        #targets.append(values[-1])
+        #targets = torch.cat(targets, 1).t().unsqueeze(2)
+        #advantadges = future_terms + self.agent.reward_discount * targets[1:] * valid[1:] - values[:-1]
+        #targets = future_terms + self.agent.reward_discount * values[1:] * valid[1:]
         q_targets = future_terms + self.agent.reward_discount * values[1:] * valid[1:]
         #q_targets = future_terms + self.agent.reward_discount * targets[1:] * valid[1:]
-        assert advantadges.shape == future_terms.shape
+        #assert advantadges.shape == future_terms.shape
         # gradient should never pass here
-        return (clip_importance_weights[:-1]*targets).detach(), q_targets.detach(), advantadges.detach()
+        return None, q_targets.detach(), None
 
     def get_policy_loss(self):
         # E step
@@ -351,7 +351,7 @@ class Collector:
         #    total_objective[:-1] = total_objective[:-1] + action_reinforce_terms
 
         q_loss = 0.5 * (q_values1[:-1] - q_targets).pow(2) + 0.5 * (q_values2[:-1] - q_targets).pow(2)
-        v_targets = (new_q_values - 0.05*new_action_log_probs.sum(2, keepdim=True))[:-1]
+        v_targets = (new_q_values - 0.05*new_action_log_probs.sum(2, keepdim=True))[:-1] * valid[:-1]
         value_loss = 0.5 * (v_targets.detach() - values[:-1]).pow(2)
         total_objective[:-1] = total_objective[:-1] + value_loss + q_loss
 
