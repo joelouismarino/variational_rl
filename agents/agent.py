@@ -201,8 +201,9 @@ class Agent(nn.Module):
 
     def reset(self, batch_size=1):
         # reset the variables
-        self.state_variable.reset(batch_size)
         self.action_variable.reset(batch_size)
+        if self.state_variable is not None:
+            self.state_variable.reset(batch_size)
         if self.observation_variable is not None:
             self.observation_variable.reset(batch_size)
         if self.reward_variable is not None:
@@ -318,8 +319,9 @@ class Agent(nn.Module):
         return params
 
     def inference_mode(self):
-        self.state_variable.inference_mode()
         self.action_variable.inference_mode()
+        if self.state_variable is not None:
+            self.state_variable.inference_mode()
         if self.state_prior_model is not None:
             self.state_prior_model.detach_hidden_state()
         if self.action_prior_model is not None:
@@ -332,8 +334,9 @@ class Agent(nn.Module):
             self.done_likelihood_model.detach_hidden_state()
 
     def generative_mode(self):
-        self.state_variable.generative_mode()
         self.action_variable.generative_mode()
+        if self.state_variable is not None:
+            self.state_variable.generative_mode()
         if self.state_prior_model is not None:
             self.state_prior_model.attach_hidden_state()
         if self.action_prior_model is not None:
