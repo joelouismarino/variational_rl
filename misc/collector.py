@@ -48,12 +48,12 @@ class Collector:
         optimality = -torch.stack(self.objectives['optimality']) * valid
         future_terms = optimality[1:]
         # TODO: should only include these if the action distribution is not reparameterizable
-        if self.agent.action_prior_model is not None:
-            action_kl = torch.stack(self.objectives['action']) * valid
-            future_terms = future_terms - self.agent.kl_scale['action'] * action_kl[1:]
-        if self.agent.state_prior_model is not None:
-            state_kl = torch.stack(self.objectives['state']) * valid
-            future_terms = future_terms - self.agent.kl_scale['state'] *state_kl[1:]
+        # if self.agent.action_prior_model is not None:
+        #     action_kl = torch.stack(self.objectives['action']) * valid
+        #     future_terms = future_terms - self.agent.kl_scale['action'] * action_kl[1:]
+        # if self.agent.state_prior_model is not None:
+        #     state_kl = torch.stack(self.objectives['state']) * valid
+        #     future_terms = future_terms - self.agent.kl_scale['state'] *state_kl[1:]
         # if self.agent.obs_likelihood_model is not None:
         #     obs_info_gain = torch.stack(self.metrics['observation']['info_gain']) * valid
         #     reward_info_gain = torch.stack(self.metrics['reward']['info_gain']) * valid
@@ -62,7 +62,7 @@ class Collector:
         return future_terms
 
     def get_v_trace(self):
-        %valid = torch.stack(self.valid)
+        valid = torch.stack(self.valid)
         values = torch.stack(self.values)
         qvalues = torch.stack(self.qvalues)
         #importance_weights = torch.stack(self.importance_weights['action'])
@@ -316,13 +316,16 @@ class Collector:
 
         new_q_values = torch.stack(self.new_q_values)
         new_action_log_probs = torch.stack(self.new_action_log_probs)
+        action_kl = torch.stack(self.objectives['action'])
         # TODO: SAC potential bug
-        policy_loss = - (new_q_values - 0.05*new_action_log_probs.sum(2, keepdim=True)) * valid
+        # policy_loss = - (new_q_values - 0.05*new_action_log_probs.sum(2, keepdim=True)) * valid
+        policy_loss = (self.agent.kl_scale['action'] * action_kl - new_q_values) * valid
         #params = list(self.agent.q_value_models.parameters())
         #import pdb; pdb.set_trace()
 
         assert total_objective.shape == policy_loss.shape
-        total_objective = total_objective + policy_loss
+        # total_objective = total_objective + policy_loss
+        total_objective = policy_loss
         #self.agent.q_value_models.zero_grad()
 
         values = torch.stack(self.values)
@@ -351,8 +354,9 @@ class Collector:
         #    total_objective[:-1] = total_objective[:-1] + action_reinforce_terms
 
         q_loss = 0.5 * (q_values1[:-1] - q_targets).pow(2) + 0.5 * (q_values2[:-1] - q_targets).pow(2)
-        v_targets = (new_q_values - 0.05*new_action_log_probs.sum(2, keepdim=True))[:-1] * valid[:-1]
-        value_loss = 0.5 * (v_targets.detach() - values[:-1]).pow(2)
+        # v_targets = (new_q_values - 0.05*new_action_log_probs.sum(2, keepdim=True))[:-1] * valid[:-1]
+        v_targets = ((new_q_values - self.agent.kl_scale['action'] * action_kl) * valid).detach()
+        value_loss = 0.5 * (v_targets[:-1] - values[:-1]).pow(2)
         total_objective[:-1] = total_objective[:-1] + value_loss + q_loss
 
         #total_objective = total_objective.sum(dim=0).div(n_valid_steps).mean(dim=0).sum()
@@ -365,6 +369,7 @@ class Collector:
         self.metrics['value_target'] = v_targets.mean()
         self.metrics['policy_loss'] = policy_loss.mean()
         self.metrics['entropy_policy'] = -new_action_log_probs.mean()
+        self.metrics['entropy'] = (-action_log_probs[:-1]).mean()
 
         # state_importance_weights = torch.stack(self.importance_weights['state'])
         # self.metrics['state_importance_weights'] = state_importance_weights

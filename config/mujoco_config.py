@@ -11,7 +11,7 @@ def get_mujoco_config(env):
 
     agent_args['agent_type'] = 'baseline'
 
-    agent_args['misc_args'] = {'kl_scale': dict(state=1., action=1.),
+    agent_args['misc_args'] = {'kl_scale': dict(state=1., action=0.05),
                                'n_state_samples': 2,
                                'n_inf_iter': dict(state=1, action=1),
                                'inference_type': dict(state='direct', action='direct'),
@@ -68,43 +68,43 @@ def get_mujoco_config(env):
                                               'prior_dist': action_prior_dist,
                                               'approx_post_dist': action_approx_post_dist,
                                               'n_variables': n_action_variables,
-                                              'constant_prior': False,
+                                              'constant_prior': True,
                                               'inference_type': 'direct'}
 
-        agent_args['action_prior_args'] = {'type': 'fully_connected',
-                                           'n_layers': 2,
-                                           'inputs': ['observation'],
-                                           'n_units': 128,
-                                           'connectivity': 'highway',
-                                           'batch_norm': False,
-                                           'non_linearity': 'tanh',
-                                           'dropout': None}
+        # agent_args['action_prior_args'] = {'type': 'fully_connected',
+        #                                    'n_layers': 2,
+        #                                    'inputs': ['observation'],
+        #                                    'n_units': 256,
+        #                                    'connectivity': 'sequential',
+        #                                    'batch_norm': False,
+        #                                    'non_linearity': 'relu',
+        #                                    'dropout': None}
 
-        # agent_args['action_prior_args'] = None
+        agent_args['action_prior_args'] = None
 
         agent_args['action_inference_args'] = {'type': 'fully_connected',
                                                'n_layers': 2,
                                                'inputs': ['observation'],
-                                               'n_units': 128,
-                                               'connectivity': 'highway',
+                                               'n_units': 256,
+                                               'connectivity': 'sequential',
                                                'batch_norm': False,
-                                               'non_linearity': 'tanh',
+                                               'non_linearity': 'relu',
                                                'dropout': None}
 
         agent_args['value_model_args'] = {'type': 'fully_connected',
                                           'n_layers': 2,
                                           'inputs': ['observation'],
-                                          'n_units': 128,
-                                          'connectivity': 'highway',
-                                          'non_linearity': 'tanh',
+                                          'n_units': 256,
+                                          'connectivity': 'sequential',
+                                          'non_linearity': 'relu',
                                           'dropout': None}
 
         agent_args['q_value_model_args'] = {'type': 'fully_connected',
                                           'n_layers': 2,
                                           'inputs': ['observation', 'action'],
-                                          'n_units': 64,
-                                          'connectivity': 'highway',
-                                          'non_linearity': 'tanh',
+                                          'n_units': 256,
+                                          'connectivity': 'sequential',
+                                          'non_linearity': 'relu',
                                           'dropout': None}
 
     if agent_args['agent_type'] == 'discriminative':

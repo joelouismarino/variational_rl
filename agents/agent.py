@@ -231,7 +231,8 @@ class Agent(nn.Module):
 
     @property
     def device(self):
-        return self.generative_parameters()[0].device
+        p = self.parameters()
+        return p[list(p.keys())[0]][0].device
 
     def train(self, *args):
         super(Agent, self).train(*args)
