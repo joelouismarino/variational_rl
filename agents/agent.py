@@ -1,3 +1,4 @@
+import copy
 import torch
 import torch.nn as nn
 import numpy as np
@@ -123,13 +124,37 @@ class Agent(nn.Module):
         # generate the conditional likelihood for episode being done
         pass
 
-    def estimate_value(self, observation, reward, done, valid):
+    def estimate_value(self, done, observation, reward, **kwargs):
         # estimate the value of the current state
-        pass
+        state = self.state_variable.sample()
+        value_input = self.value_model(state=state, observation=observation, reward=reward)
+        value = self.value_variable(value_input) #* (1 - done)
+        self.collector.values.append(value)
+        return value
 
-    def estimate_q_values(self, observation, action, reward, done, valid):
+    def estimate_q_values(self, done, observation, reward, action, **kwargs):
         # estimate the value of the current state
-        pass
+        # TODO: SAC potential bug
+        state = self.state_variable.sample()
+        q_value_input = [self.q_value_models[i](state=state, observation=observation, action=action, reward=reward) for i in range(2)]
+        qvalue1 = self.qvalue1_variable(q_value_input[0])
+        qvalue2 = self.qvalue2_variable(q_value_input[1])
+        self.collector.qvalues1.append(qvalue1)
+        self.collector.qvalues2.append(qvalue2)
+        self.collector.qvalues.append(torch.min(qvalue1, qvalue2))
+        new_action = self.action_variable.sample(1)
+        new_action_log_prob = self.action_variable.approx_post.log_prob(new_action)
+        self.collector.new_actions.append(new_action)
+        self.collector.new_action_log_probs.append(new_action_log_prob)
+        new_q_value_models = copy.deepcopy(self.q_value_models)
+        new_q_value_input = [new_q_value_models[i](state=state, observation=observation, action=new_action, reward=reward) for i in range(2)]
+        new_qvalue1_variable = copy.deepcopy(self.qvalue1_variable)
+        new_qvalue2_variable = copy.deepcopy(self.qvalue2_variable)
+        new_qvalue1 = new_qvalue1_variable(new_q_value_input[0])
+        new_qvalue2 = new_qvalue2_variable(new_q_value_input[1])
+        new_q_value = torch.min(new_qvalue1, new_qvalue2)
+        self.collector.new_q_values.append(new_q_value)
+        return torch.min(qvalue1, qvalue2)
 
     def evaluate(self):
         # evaluate the objective, collect various metrics for reporting
