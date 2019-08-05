@@ -1,9 +1,9 @@
-import copy
 import torch
 import torch.nn as nn
 from .agent import Agent
 from modules.models import get_model
 from modules.variables import get_variable
+import copy
 from misc.normalization import Normalizer
 
 
@@ -37,7 +37,7 @@ class BaselineAgent(Agent):
     def state_inference(self, **kwargs):
         pass
 
-    def action_inference(self, observation, reward, action=None, **kwargs):
+    def action_inference(self, observation, reward, action=None,**kwargs):
         self.action_variable.inference_mode()
         # infer the approx. posterior on the action
         if self.action_inference_model is not None:

@@ -316,13 +316,16 @@ class Collector:
 
         new_q_values = torch.stack(self.new_q_values)
         new_action_log_probs = torch.stack(self.new_action_log_probs)
+        action_kl = torch.stack(self.objectives['action'])
         # TODO: SAC potential bug
-        policy_loss = - (new_q_values - self.agent.kl_scale['action'] * new_action_log_probs.sum(2, keepdim=True)) * valid
+        # policy_loss = - (new_q_values - 0.05*new_action_log_probs.sum(2, keepdim=True)) * valid
+        policy_loss = (self.agent.kl_scale['action'] * action_kl - new_q_values) * valid
         #params = list(self.agent.q_value_models.parameters())
         #import pdb; pdb.set_trace()
-        if not self.agent.action_variable.approx_post.update == 'iterative':
-            assert total_objective.shape == policy_loss.shape
-            total_objective = total_objective + policy_loss
+
+        assert total_objective.shape == policy_loss.shape
+        # total_objective = total_objective + policy_loss
+        total_objective = policy_loss
         #self.agent.q_value_models.zero_grad()
 
         values = torch.stack(self.values)
@@ -345,15 +348,15 @@ class Collector:
         #assert action_log_probs[:-1].shape == advantages.shape
         #action_reinforce_terms = - action_importance_weights[:-1] * action_log_probs[:-1] * advantages.detach()
         #entropy_term = - action_log_probs[:-1]
+        #if not self.agent.action_variable.approx_post.update == 'iterative':
         #    # include the policy gradients in the total objective
         #    assert action_reinforce_terms.shape == entropy_term.shape
         #    total_objective[:-1] = total_objective[:-1] + action_reinforce_terms
 
         q_loss = 0.5 * (q_values1[:-1] - q_targets).pow(2) + 0.5 * (q_values2[:-1] - q_targets).pow(2)
-        #params = list(self.agent.q_value_models.parameters())
-        #import pdb; pdb.set_trace()
-        v_targets = (new_q_values - self.agent.kl_scale['action'] * new_action_log_probs.sum(2, keepdim=True))[:-1] * valid[:-1]
-        value_loss = 0.5 * (v_targets.detach() - values[:-1]).pow(2)
+        # v_targets = (new_q_values - 0.05*new_action_log_probs.sum(2, keepdim=True))[:-1] * valid[:-1]
+        v_targets = ((new_q_values - self.agent.kl_scale['action'] * action_kl) * valid).detach()
+        value_loss = 0.5 * (v_targets[:-1] - values[:-1]).pow(2)
         total_objective[:-1] = total_objective[:-1] + value_loss + q_loss
 
         #total_objective = total_objective.sum(dim=0).div(n_valid_steps).mean(dim=0).sum()

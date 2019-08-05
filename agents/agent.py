@@ -135,7 +135,10 @@ class Agent(nn.Module):
     def estimate_q_values(self, done, observation, reward, action, **kwargs):
         # estimate the value of the current state
         # TODO: SAC potential bug
-        state = self.state_variable.sample()
+        if self.state_variable is not None:
+            state = self.state_variable.sample()
+        else:
+            state = None
         q_value_input = [self.q_value_models[i](state=state, observation=observation, action=action, reward=reward) for i in range(2)]
         qvalue1 = self.qvalue1_variable(q_value_input[0])
         qvalue2 = self.qvalue2_variable(q_value_input[1])
@@ -256,7 +259,8 @@ class Agent(nn.Module):
 
     @property
     def device(self):
-        return self.generative_parameters()[0].device
+        p = self.parameters()
+        return p[list(p.keys())[0]][0].device
 
     def train(self, *args):
         super(Agent, self).train(*args)
