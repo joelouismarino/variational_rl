@@ -1,3 +1,4 @@
+import copy
 import torch
 import torch.nn as nn
 from .agent import Agent
@@ -11,13 +12,14 @@ class BaselineAgent(Agent):
     Baseline Variational RL Agent
     """
     def __init__(self, action_variable_args, action_prior_args,
-                 action_inference_args, value_model_args, misc_args):
+                 action_inference_args, value_model_args, q_value_model_args, misc_args):
         super(BaselineAgent, self).__init__(misc_args)
 
         # models
         self.action_prior_model = get_model(action_prior_args)
         self.action_inference_model = get_model(action_inference_args)
         self.value_model = get_model(value_model_args)
+        self.q_value_models = nn.ModuleList([get_model(copy.deepcopy(q_value_model_args)) for _ in range(2)])
 
         # variables
         action_variable_args['n_input'] = [None, None]
@@ -29,11 +31,13 @@ class BaselineAgent(Agent):
 
         if self.value_model is not None:
             self.value_variable = get_variable(type='value', args={'n_input': self.value_model.n_out})
+            self.qvalue1_variable = get_variable(type='value', args={'n_input': self.q_value_models[0].n_out})
+            self.qvalue2_variable = get_variable(type='value', args={'n_input': self.q_value_models[1].n_out})
 
     def state_inference(self, **kwargs):
         pass
 
-    def action_inference(self, observation, reward, action=None,**kwargs):
+    def action_inference(self, observation, reward, action=None, **kwargs):
         self.action_variable.inference_mode()
         # infer the approx. posterior on the action
         if self.action_inference_model is not None:

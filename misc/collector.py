@@ -62,7 +62,7 @@ class Collector:
         return future_terms
 
     def get_v_trace(self):
-        %valid = torch.stack(self.valid)
+        valid = torch.stack(self.valid)
         values = torch.stack(self.values)
         qvalues = torch.stack(self.qvalues)
         #importance_weights = torch.stack(self.importance_weights['action'])
@@ -317,12 +317,12 @@ class Collector:
         new_q_values = torch.stack(self.new_q_values)
         new_action_log_probs = torch.stack(self.new_action_log_probs)
         # TODO: SAC potential bug
-        policy_loss = -50 * (new_q_values - 0.05*new_action_log_probs.sum(2, keepdim=True)) * valid
+        policy_loss = - (new_q_values - self.agent.kl_scale['action'] * new_action_log_probs.sum(2, keepdim=True)) * valid
         #params = list(self.agent.q_value_models.parameters())
         #import pdb; pdb.set_trace()
-
-        assert total_objective.shape == policy_loss.shape
-        total_objective = total_objective + policy_loss
+        if not self.agent.action_variable.approx_post.update == 'iterative':
+            assert total_objective.shape == policy_loss.shape
+            total_objective = total_objective + policy_loss
         #self.agent.q_value_models.zero_grad()
 
         values = torch.stack(self.values)
@@ -338,20 +338,21 @@ class Collector:
         #advantages = (advantages - advantages_mean) / advantages_std
 
         # calculate policy gradient terms and add them to the total objective
-        action_log_probs = torch.stack(self.log_probs['action'])
+        #action_log_probs = torch.stack(self.log_probs['action'])
         #action_importance_weights = torch.stack(self.importance_weights['action']).detach()
         #action_reinforce_terms = - action_importance_weights[:-1] * action_log_probs[:-1] * advantages
         #clip_importance_weight = torch.clamp(action_importance_weights[:-1], 0, 1)
         #assert action_log_probs[:-1].shape == advantages.shape
         #action_reinforce_terms = - action_importance_weights[:-1] * action_log_probs[:-1] * advantages.detach()
         #entropy_term = - action_log_probs[:-1]
-        #if not self.agent.action_variable.approx_post.update == 'iterative':
         #    # include the policy gradients in the total objective
         #    assert action_reinforce_terms.shape == entropy_term.shape
         #    total_objective[:-1] = total_objective[:-1] + action_reinforce_terms
 
         q_loss = 0.5 * (q_values1[:-1] - q_targets).pow(2) + 0.5 * (q_values2[:-1] - q_targets).pow(2)
-        v_targets = (new_q_values - 0.05*new_action_log_probs.sum(2, keepdim=True))[:-1] * valid[:-1]
+        #params = list(self.agent.q_value_models.parameters())
+        #import pdb; pdb.set_trace()
+        v_targets = (new_q_values - self.agent.kl_scale['action'] * new_action_log_probs.sum(2, keepdim=True))[:-1] * valid[:-1]
         value_loss = 0.5 * (v_targets.detach() - values[:-1]).pow(2)
         total_objective[:-1] = total_objective[:-1] + value_loss + q_loss
 

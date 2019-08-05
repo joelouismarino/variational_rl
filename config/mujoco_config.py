@@ -11,7 +11,7 @@ def get_mujoco_config(env):
 
     agent_args['agent_type'] = 'baseline'
 
-    agent_args['misc_args'] = {'kl_scale': dict(state=1., action=1.),
+    agent_args['misc_args'] = {'kl_scale': dict(state=1., action=0.00),
                                'n_state_samples': 2,
                                'n_inf_iter': dict(state=1, action=1),
                                'inference_type': dict(state='direct', action='direct'),
@@ -99,6 +99,22 @@ def get_mujoco_config(env):
                                           'non_linearity': 'tanh',
                                           'dropout': None}
 
+        agent_args['q_value_model_args'] = {'type': 'fully_connected',
+                                          'n_layers': 2,
+                                          'inputs': ['observation', 'action'],
+                                          'n_units': 128,
+                                          'connectivity': 'highway',
+                                          'non_linearity': 'relu',
+                                          'dropout': None}
+
+        agent_args['value_model_args'] = {'type': 'fully_connected',
+                                          'n_layers': 2,
+                                          'inputs': ['observation'],
+                                          'n_units': 128,
+                                          'connectivity': 'highway',
+                                          'non_linearity': 'tanh',
+                                          'dropout': None}
+
     if agent_args['agent_type'] == 'discriminative':
         # state
         n_state_variables = 64
@@ -159,6 +175,14 @@ def get_mujoco_config(env):
                                           'connectivity': 'highway',
                                           'non_linearity': 'tanh',
                                           'dropout': None}
+
+        agent_args['q_value_model_args'] = {'type': 'fully_connected',
+                                            'n_layers': 2,
+                                            'inputs': ['state', 'action'],
+                                            'n_units': 64,
+                                            'connectivity': 'highway',
+                                            'non_linearity': 'relu',
+                                            'dropout': None}
 
     if agent_args['agent_type'] == 'generative':
         # state
@@ -289,6 +313,14 @@ def get_mujoco_config(env):
                                           'connectivity': 'highway',
                                           'non_linearity': 'tanh',
                                           'dropout': None}
+
+        agent_args['q_value_model_args'] = {'type': 'fully_connected',
+                                            'n_layers': 2,
+                                            'inputs': ['state', 'action'],
+                                            'n_units': 64,
+                                            'connectivity': 'highway',
+                                            'non_linearity': 'relu',
+                                            'dropout': None}
 
     # calculate the input sizes for all models
     agent_args = get_n_input(agent_args, discrete_actions=discrete_actions)
