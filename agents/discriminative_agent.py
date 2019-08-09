@@ -42,6 +42,7 @@ class DiscriminativeAgent(Agent):
 
         if self.value_model is not None:
             self.value_variable = get_variable(type='value', args={'n_input': self.value_model.n_out})
+            self.target_value_variable = copy.deepcopy(self.value_variable)
             self.qvalue1_variable = get_variable(type='value', args={'n_input': self.q_value_models[0].n_out})
             self.qvalue2_variable = get_variable(type='value', args={'n_input': self.q_value_models[1].n_out})
 
@@ -113,5 +114,3 @@ class DiscriminativeAgent(Agent):
                                                       reward=reward, state=state,
                                                       action=action)
                 self.action_variable.step(prior_input)
-
-

@@ -11,7 +11,8 @@ def get_mujoco_config(env):
 
     agent_args['agent_type'] = 'baseline'
 
-    agent_args['misc_args'] = {'kl_scale': dict(state=1., action=0.05),
+    agent_args['misc_args'] = {'kl_scale': dict(state=1., action=1.),
+                               'reward_scale': 1.,
                                'n_state_samples': 2,
                                'n_inf_iter': dict(state=1, action=1),
                                'inference_type': dict(state='direct', action='direct'),
@@ -21,9 +22,8 @@ def get_mujoco_config(env):
                                'kl_factor_anneal_rate': dict(state=1., action=1.),
                                'reward_discount': 0.99,
                                'normalize_returns': False,
-                               'normalize_advantages': True,
+                               'normalize_advantages': False,
                                'normalize_observations': False,
-                               'gae_lambda': 0.98,
                                'v_trace': dict(l=0.75, iw_clip=1.)}
 
     if agent_args['agent_type'] == 'generative':

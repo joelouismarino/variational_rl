@@ -23,7 +23,9 @@ class Agent(nn.Module):
         self.done_likelihood_model = None
         self.state_inference_model = None
         self.action_inference_model = None
-        self.value_model = None
+        self.q_value_models = None
+        self.target_q_value_models = None
+        # self.value_model = None
 
         # variables
         self.state_variable = None
@@ -32,7 +34,14 @@ class Agent(nn.Module):
         self.reward_variable = None
         self.done_variable = None
 
+        # self.value_variable = None
+        self.q_value_variables = None
+        self.target_q_value_variables = None
+
+        self.log_alpha = nn.Parameter(torch.zeros(1))
+
         # miscellaneous
+        self.reward_scale = misc_args['reward_scale']
         self.kl_scale = {'state': misc_args['kl_scale']['state'],
                          'action': misc_args['kl_scale']['action']}
         self.kl_min = {'state': misc_args['kl_min']['state'],
@@ -55,7 +64,7 @@ class Agent(nn.Module):
 
         self._prev_action = None
         self.batch_size = 1
-        self.gae_lambda = misc_args['gae_lambda']
+        # self.gae_lambda = misc_args['gae_lambda']
         self.reward_discount = misc_args['reward_discount']
 
         # normalizers for various quantities
@@ -77,7 +86,7 @@ class Agent(nn.Module):
         self.state_inference(observation=observation, reward=reward, done=done, valid=valid)
         self.step_action(observation=observation, reward=reward, done=done, valid=valid, action=action)
         self.action_inference(observation=observation, reward=reward, done=done, valid=valid, action=action)
-        value = self.estimate_value(observation=observation, reward=reward, done=done, valid=valid)
+        # value = self.estimate_value(observation=observation, reward=reward, done=done, valid=valid)
         self.collector.collect(observation, reward, done, action, valid, log_prob)
 
         if self._mode == 'train':
@@ -124,40 +133,48 @@ class Agent(nn.Module):
         # generate the conditional likelihood for episode being done
         pass
 
-    def estimate_value(self, done, observation, reward, **kwargs):
-        # estimate the value of the current state
-        state = self.state_variable.sample()
-        value_input = self.value_model(state=state, observation=observation, reward=reward)
-        value = self.value_variable(value_input) #* (1 - done)
-        self.collector.values.append(value)
-        return value
+    # def estimate_value(self, done, observation, reward, **kwargs):
+    #     # estimate the value of the current state
+    #     state = self.state_variable.sample() if self.state_variable is not None else None
+    #     value_input = self.value_model(state=state, observation=observation, reward=reward)
+    #     value = self.value_variable(value_input)
+    #     self.collector.values.append(value)
+    #     target_value_input = self.target_value_model(state=state, observation=observation, reward=reward)
+    #     target_value = self.target_value_variable(target_value_input)
+    #     self.collector.target_values.append(target_value.detach())
+    #     return value
 
     def estimate_q_values(self, done, observation, reward, action, **kwargs):
         # estimate the value of the current state
-        # TODO: SAC potential bug
-        if self.state_variable is not None:
-            state = self.state_variable.sample()
-        else:
-            state = None
-        q_value_input = [self.q_value_models[i](state=state, observation=observation, action=action, reward=reward) for i in range(2)]
-        qvalue1 = self.qvalue1_variable(q_value_input[0])
-        qvalue2 = self.qvalue2_variable(q_value_input[1])
-        self.collector.qvalues1.append(qvalue1)
-        self.collector.qvalues2.append(qvalue2)
-        self.collector.qvalues.append(torch.min(qvalue1, qvalue2))
-        new_action = self.action_variable.sample(1)
-        new_action_log_prob = self.action_variable.approx_post.log_prob(new_action)
+        state = self.state_variable.sample() if self.state_variable is not None else None
+        # estimate Q values for off-policy actions sample from the buffer
+        q_value_input = [model(state=state, observation=observation, action=action, reward=reward) for model in self.q_value_models]
+        q_values = [variable(inp) for variable, inp in zip(self.q_value_variables, q_value_input)]
+        self.collector.qvalues1.append(q_values[0])
+        self.collector.qvalues2.append(q_values[1])
+        # self.collector.qvalues.append(torch.min(q_values[0], q_values[1]))
+
+        # get on-policy actions and log probs
+        new_action = self.action_variable.sample()
+        new_action_log_prob = self.action_variable.approx_post.log_prob(new_action).sum(dim=1, keepdim=True)
         self.collector.new_actions.append(new_action)
         self.collector.new_action_log_probs.append(new_action_log_prob)
+
+        # estimate Q value for on-policy actions sampled from current policy
         new_q_value_models = copy.deepcopy(self.q_value_models)
-        new_q_value_input = [new_q_value_models[i](state=state, observation=observation, action=new_action, reward=reward) for i in range(2)]
-        new_qvalue1_variable = copy.deepcopy(self.qvalue1_variable)
-        new_qvalue2_variable = copy.deepcopy(self.qvalue2_variable)
-        new_qvalue1 = new_qvalue1_variable(new_q_value_input[0])
-        new_qvalue2 = new_qvalue2_variable(new_q_value_input[1])
-        new_q_value = torch.min(new_qvalue1, new_qvalue2)
+        new_q_value_variables = copy.deepcopy(self.q_value_variables)
+        new_q_value_input = [model(state=state, observation=observation, action=new_action, reward=reward) for model in new_q_value_models]
+        new_q_values = [variable(inp) for variable, inp in zip(new_q_value_variables, new_q_value_input)]
+        new_q_value = torch.min(new_q_values[0], new_q_values[1])
         self.collector.new_q_values.append(new_q_value)
-        return torch.min(qvalue1, qvalue2)
+
+        # estimate target Q value for on-policy actions sampled from current policy
+        target_q_value_input = [model(state=state, observation=observation, action=new_action, reward=reward) for model in self.target_q_value_models]
+        target_q_values = [variable(inp) for variable, inp in zip(self.target_q_value_variables, target_q_value_input)]
+        target_q_value = torch.min(target_q_values[0], target_q_values[1])
+        self.collector.target_q_values.append(target_q_value)
+
+        return torch.min(q_values[0], q_values[1])
 
     def evaluate(self):
         # evaluate the objective, collect various metrics for reporting
@@ -308,13 +325,30 @@ class Agent(nn.Module):
             param_dict['done_likelihood_model'].extend(list(self.done_likelihood_model.parameters()))
             param_dict['done_likelihood_model'].extend(list(self.done_variable.parameters()))
 
-        if self.value_model is not None:
-            param_dict['value_model'] = nn.ParameterList()
-            param_dict['value_model'].extend(list(self.value_model.parameters()))
+        # if self.value_model is not None:
+        #     param_dict['value_model'] = nn.ParameterList()
+        #     param_dict['value_model'].extend(list(self.value_model.parameters()))
+        #     param_dict['value_model'].extend(list(self.value_variable.parameters()))
+
+        # if self.target_value_model is not None:
+        #     param_dict['target_value_model'] = nn.ParameterList()
+        #     param_dict['target_value_model'].extend(list(self.target_value_model.parameters()))
+        #     param_dict['target_value_model'].extend(list(self.target_value_variable.parameters()))
 
         if self.q_value_models is not None:
             param_dict['q_value_models'] = nn.ParameterList()
             param_dict['q_value_models'].extend(list(self.q_value_models.parameters()))
+            param_dict['q_value_models'].extend(list(self.q_value_variables.parameters()))
+            # param_dict['q_value_models'].extend(list(self.qvalue1_variable.parameters()))
+            # param_dict['q_value_models'].extend(list(self.qvalue2_variable.parameters()))
+
+        if self.target_q_value_models is not None:
+            param_dict['target_q_value_models'] = nn.ParameterList()
+            param_dict['target_q_value_models'].extend(list(self.target_q_value_models.parameters()))
+            param_dict['target_q_value_models'].extend(list(self.target_q_value_variables.parameters()))
+
+        if self.log_alpha is not None:
+            param_dict['log_alpha'] = nn.ParameterList([self.log_alpha])
 
         return param_dict
 

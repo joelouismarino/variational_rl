@@ -4,7 +4,6 @@ from .agent import Agent
 from modules.models import get_model
 from modules.variables import get_variable
 import copy
-from misc.normalization import Normalizer
 
 
 class BaselineAgent(Agent):
@@ -12,14 +11,18 @@ class BaselineAgent(Agent):
     Baseline Variational RL Agent
     """
     def __init__(self, action_variable_args, action_prior_args,
-                 action_inference_args, value_model_args, q_value_model_args, misc_args):
+                 action_inference_args, value_model_args, q_value_model_args,
+                 misc_args):
         super(BaselineAgent, self).__init__(misc_args)
 
         # models
         self.action_prior_model = get_model(action_prior_args)
         self.action_inference_model = get_model(action_inference_args)
-        self.value_model = get_model(value_model_args)
+        # self.value_model = get_model(value_model_args)
+        # self.target_value_model = copy.deepcopy(self.value_model)
         self.q_value_models = nn.ModuleList([get_model(copy.deepcopy(q_value_model_args)) for _ in range(2)])
+        # self.target_q_value_models = copy.deepcopy(self.q_value_models)
+        self.target_q_value_models = nn.ModuleList([get_model(copy.deepcopy(q_value_model_args)) for _ in range(2)])
 
         # variables
         action_variable_args['n_input'] = [None, None]
@@ -29,10 +32,12 @@ class BaselineAgent(Agent):
            action_variable_args['n_input'][1] = self.action_inference_model.n_out
         self.action_variable = get_variable(type='latent', args=action_variable_args)
 
-        if self.value_model is not None:
-            self.value_variable = get_variable(type='value', args={'n_input': self.value_model.n_out})
-            self.qvalue1_variable = get_variable(type='value', args={'n_input': self.q_value_models[0].n_out})
-            self.qvalue2_variable = get_variable(type='value', args={'n_input': self.q_value_models[1].n_out})
+        if self.q_value_models is not None:
+            # self.value_variable = get_variable(type='value', args={'n_input': self.value_model.n_out})
+            # self.target_value_variable = copy.deepcopy(self.value_variable)
+            self.q_value_variables = nn.ModuleList([get_variable(type='value', args={'n_input': self.q_value_models[0].n_out}) for _ in range(2)])
+            # self.target_q_value_variables = copy.deepcopy(self.q_value_variables)
+            self.target_q_value_variables = nn.ModuleList([get_variable(type='value', args={'n_input': self.q_value_models[0].n_out}) for _ in range(2)])
 
     def state_inference(self, **kwargs):
         pass
@@ -68,10 +73,3 @@ class BaselineAgent(Agent):
                     observation = self.obs_normalizer(observation, update=self._mode=='eval')
                 prior_input = self.action_prior_model(observation=observation, reward=reward, action=action)
                 self.action_variable.step(prior_input)
-
-    def estimate_value(self, done, observation, reward, **kwargs):
-        # estimate the value of the current state
-        value_input = self.value_model(observation=observation, reward=reward)
-        value = self.value_variable(value_input) * (1 - done)
-        self.collector.values.append(value)
-        return value

@@ -1,4 +1,5 @@
 import gym
+from gym.envs.mujoco import HalfCheetahEnv
 from collections import defaultdict
 from .registration import register_env
 from .wrappers import action_wrappers, observation_wrappers, reward_wrappers
@@ -24,7 +25,8 @@ def create_env(env_name, seed=None):
     if env_name not in env_types:
         raise KeyError('Environment not found.')
     env_type = env_types[env_name]
-    env = gym.make(env_name)
+    # env = gym.make(env_name)
+    env = HalfCheetahEnv()
     env.seed(seed)
 
     # wrap the environment
@@ -39,6 +41,7 @@ def create_env(env_name, seed=None):
         env = observation_wrappers.ToTensor(env)
         env = reward_wrappers.AddBatchDim(env)
         env = reward_wrappers.ToTensor(env)
+        env = action_wrappers.NormalizeAction(env)
     elif env_type == 'robotics':
         raise NotImplementedError
     elif env_type == 'vizdoom':

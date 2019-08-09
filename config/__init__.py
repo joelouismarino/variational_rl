@@ -10,8 +10,9 @@ def get_agent_args(env):
     Return:
         dictionary containing agent configuration arguments
     """
-    env_name = env.spec.id
-    env_type = get_env_types()[env_name]
+    # env_name = env.spec.id
+    # env_type = get_env_types()[env_name]
+    env_type = 'mujoco'
 
     if env_type == 'atari':
         raise NotImplementedError

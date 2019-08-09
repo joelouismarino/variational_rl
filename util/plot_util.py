@@ -88,8 +88,6 @@ class Plotter:
             self.experiment.log_figure(figure=plt, figure_name=k + '_ts_'+str(step))
             plt.close()
 
-        self.experiment.log_metric('Episode Return', episode['reward'].sum(), step)
-
     def log_results(self, results, timestep):
         for n, m in flatten(results).items():
             self.experiment.log_metric(n, m, timestep)
