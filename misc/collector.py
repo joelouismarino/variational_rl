@@ -236,12 +236,12 @@ class Collector:
 
         self.valid.append(valid)
 
-    def overwrite_action(self, action):
-        """
-        Overwrite the most recent action (with the random action).
-        """
-        import ipdb; ipdb.set_trace()
-        self.episode['action'][-1] = action
+    # def overwrite_action(self, action):
+    #     """
+    #     Overwrite the most recent action (with the random action).
+    #     """
+    #     import ipdb; ipdb.set_trace()
+    #     self.episode['action'][-1] = action
 
     def get_episode(self):
         """
@@ -289,7 +289,7 @@ class Collector:
     def get_metrics(self):
         metrics = {}
         valid = torch.stack(self.valid)
-        n_valid_steps = valid.sum(dim=0)
+        n_valid_steps = valid.sum(dim=0) - 1
 
         # average metrics over time and batch (for reporting)
         for variable_name, metric in self.metrics.items():
@@ -336,7 +336,7 @@ class Collector:
         # policy_loss = (self.agent.kl_scale['action'] * action_kl - new_q_values) * valid
         #params = list(self.agent.q_value_models.parameters())
         # import pdb; pdb.set_trace()
-
+        # import ipdb; ipdb.set_trace()
         rewards = -torch.stack(self.objectives['optimality'])[1:]
         new_action_log_probs = torch.stack(self.new_action_log_probs)
 
@@ -400,8 +400,11 @@ class Collector:
         # self.metrics['value_loss'] = value_loss
         # self.metrics['value'] = values.mean()
         # self.metrics['value_target'] = v_targets.mean()
+        # self.metrics['target_q_parameter'] = self.agent.parameters()['target_q_value_models'][0][0, 0]
+        # print(self.agent.parameters()['target_q_value_models'][0][0, 0])
         self.metrics['q_values1'] = q_values1[:-1].mean()
         self.metrics['q_values2'] = q_values2[:-1].mean()
+        self.metrics['value_targets'] = target_values[1:].mean()
         self.metrics['q_value_targets'] = q_targets.mean()
         self.metrics['new_q_value'] = new_q_values.mean()
         self.metrics['policy_loss'] = policy_loss[:-1].mean()

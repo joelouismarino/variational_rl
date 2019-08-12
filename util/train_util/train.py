@@ -37,8 +37,9 @@ def train(agent, env, buffer, optimizer, plotter):
                 t_end = time.time()
                 # print('Duration: ' + '{:.2f}'.format(t_end - t_start) + ' s.')
                 # results = flatten(results)
-                print(timestep)
-                plotter.log_results(results, timestep)
+                # print(timestep)
+                if update == 0:
+                    plotter.log_results(results, timestep)
                 # for n, m in results.items():
                 #     experiment.log_metric(n, m, timestep)
 
