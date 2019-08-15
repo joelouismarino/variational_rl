@@ -46,7 +46,6 @@ def get_mujoco_config(env):
         action_approx_post_dist = 'Categorical'
         # n_action_variables = env.action_space.n
         n_action_variables = 3
-        action_inf_n_input = 2 * n_action_variables # not currently used
         discrete_actions = True
     elif type(action_space) == spaces.Box:
         # continuous control
@@ -57,7 +56,6 @@ def get_mujoco_config(env):
             action_prior_dist = 'Normal'
             action_approx_post_dist = 'Normal'
         n_action_variables = env.action_space.shape[0]
-        action_inf_n_input = 4 * n_action_variables
         discrete_actions = False
     else:
         raise NotImplementedError

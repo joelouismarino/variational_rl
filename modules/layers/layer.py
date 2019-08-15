@@ -1,4 +1,5 @@
 import torch.nn as nn
+from misc.initialization import fanin_init
 
 
 class Layer(nn.Module):
@@ -17,7 +18,8 @@ class Layer(nn.Module):
     def initialize(self):
         if type(self.linear) == nn.Module:
             # nn.init.xavier_normal_(self.linear.weight, gain=self.init_gain)
-            nn.init.kaiming_uniform_(self.linear.weight, gain=self.init_gain)
+            # nn.init.kaiming_uniform_(self.linear.weight, gain=self.init_gain)
+            fanin_init(self.linear.weight)
             nn.init.constant_(self.linear.bias, self.bias_init)
         if type(self.batch_norm) == nn.Module:
             nn.init.normal_(self.batch_norm.weight, 1, 0.02)

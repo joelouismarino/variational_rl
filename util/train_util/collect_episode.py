@@ -11,6 +11,7 @@ def collect_episode(env, agent, random=False):
 
     while not done:
         if n_steps > 1000:
+            done = True
             break
         action = env.action_space.sample() if random else None
         action = agent.act(observation, reward, done, action)

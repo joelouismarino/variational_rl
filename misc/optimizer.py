@@ -76,16 +76,17 @@ class Optimizer(object):
             #         model_grads = [param.grad for param in params]
             #         divide_gradients_by_value(model_grads, self.model.batch_size)
             #         divide_gradients_by_value(model_grads, self.model.n_inf_iter['action'])
-            if 'target' in model_name:
-                # clear_gradients(params)
-                continue
+            # if 'target' in model_name or 'alpha' in model_name:
+            #     # clear_gradients(params)
+            #     continue
             grads += [param.grad for param in params]
         if self.clip_grad is not None:
             clip_gradients(grads, self.clip_grad)
         if self.norm_grad is not None:
             norm_gradients(grads, self.norm_grad)
-        for _, opt in self.opt.items():
-            opt.step()
+        for model_name, opt in self.opt.items():
+            if 'target' not in model_name and 'alpha' not in model_name:
+                opt.step()
 
         if self.model.target_q_value_models is not None:
             # exponential moving update of the target q value model parameters

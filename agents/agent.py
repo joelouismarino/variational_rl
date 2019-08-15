@@ -38,7 +38,7 @@ class Agent(nn.Module):
         self.q_value_variables = None
         self.target_q_value_variables = None
 
-        self.log_alpha = nn.Parameter(torch.zeros(1))
+        self.log_alpha = nn.ParameterDict({'action': nn.Parameter(torch.zeros(1))})
 
         # miscellaneous
         self.reward_scale = misc_args['reward_scale']
@@ -279,6 +279,10 @@ class Agent(nn.Module):
         p = self.parameters()
         return p[list(p.keys())[0]][0].device
 
+    @property
+    def alpha(self):
+        return {name: self.log_alpha[name].exp().detach() for name in self.log_alpha}
+
     def train(self, *args):
         super(Agent, self).train(*args)
         self._mode = 'train'
@@ -348,7 +352,9 @@ class Agent(nn.Module):
             param_dict['target_q_value_models'].extend(list(self.target_q_value_variables.parameters()))
 
         if self.log_alpha is not None:
-            param_dict['log_alpha'] = nn.ParameterList([self.log_alpha])
+            param_dict['log_alpha'] = nn.ParameterList()
+            for variable_name in self.log_alpha:
+                param_dict['log_alpha'].append(self.log_alpha[variable_name])
 
         return param_dict
 

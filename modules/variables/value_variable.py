@@ -1,7 +1,7 @@
 import torch.nn as nn
 from ..layers import FullyConnectedLayer
 
-INIT_W = 1e-3
+INIT_W = 3e-3
 
 class ValueVariable(nn.Module):
 

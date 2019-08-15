@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import numpy as np
+from torch import optim
 
 
 class Collector:
@@ -42,10 +43,11 @@ class Collector:
         self.new_q_values = []
         self.target_q_values = []
 
-        self.rollout_lenghts = []
         self.valid = []
+        self.dones = []
 
         self.q_criterion = nn.MSELoss()
+        self.alpha_optimizer = optim.Adam([self.agent.log_alpha['action']], lr=3e-4)
 
     # def get_future_terms(self):
     #     # get the future terms in the objective
@@ -148,7 +150,7 @@ class Collector:
             self.distributions[name]['approx_post']['loc'].append(variable.approx_post.dist.loc.detach())
             self.distributions[name]['approx_post']['scale'].append(variable.approx_post.dist.scale.detach())
         if self.agent._mode == 'train':
-            self.objectives[name].append(obj_kl * (1 - done) * valid)
+            self.objectives[name].append(self.agent.alpha[name] * obj_kl * (1 - done) * valid)
         self.metrics[name]['kl'].append((kl * (1 - done) * valid).detach())
 
     def _collect_log_probs(self, action, log_prob, valid):
@@ -170,7 +172,9 @@ class Collector:
         # self.importance_weights['state'].append(state_importance_weight.detach())
 
     def _collect_episode(self, observation, reward, done, action):
-        # collect the variables for this step of the episode
+        """
+        Collect the variables for this step of the episode.
+        """
         if not done:
             self.episode['observation'].append(observation)
             if self.agent.state_variable is not None:
@@ -189,7 +193,8 @@ class Collector:
             obs = self.episode['observation'][0]
             action = self.episode['action'][0]
             log_prob = self.episode['log_prob'][0]
-            self.episode['observation'].append(obs.new(obs.shape).zero_())
+            # self.episode['observation'].append(obs.new(obs.shape).zero_())
+            self.episode['observation'].append(observation)
             self.episode['action'].append(action.new(action.shape).zero_())
             self.episode['log_prob'].append(log_prob.new(log_prob.shape).zero_())
             if self.agent.state_variable is not None:
@@ -231,17 +236,27 @@ class Collector:
 
         if self.agent._mode == 'train':
             self._collect_log_probs(action, log_prob, valid)
+            # self._get_policy_loss(valid, done)
+            # self._get_alpha_losses(valid, done)
         else:
             self._collect_episode(observation, reward, done, action)
 
         self.valid.append(valid)
+        self.dones.append(done)
 
-    # def overwrite_action(self, action):
-    #     """
-    #     Overwrite the most recent action (with the random action).
-    #     """
-    #     import ipdb; ipdb.set_trace()
-    #     self.episode['action'][-1] = action
+    # def _get_policy_loss(self, valid, done):
+    #     policy_loss = -self.new_q_values[-1] * valid * (1 - done)
+    #     self.objectives['policy_loss'].append(policy_loss)
+    #     self.metrics['policy_loss'].append(policy_loss.detach())
+    #     self.metrics['new_q_value'].append(self.new_q_values[-1].detach())
+    #
+    # def _get_alpha_losses(self, valid, done):
+    #     new_action_log_probs = torch.stack(self.new_action_log_probs)
+    #     target_entropy = -self.agent.action_variable.n_variables
+    #     alpha_loss = - (self.agent.log_alpha['action'] * (self.new_action_log_probs[-1] + target_entropy).detach()) * valid * (1 - done)
+    #     self.objectives['alpha_loss'].append(alpha_loss)
+    #     self.metrics['alpha_loss'].append(alpha_loss.detach())
+    #     self.metrics['alpha'].append(self.agent.alpha['action'])
 
     def get_episode(self):
         """
@@ -287,6 +302,9 @@ class Collector:
         return results
 
     def get_metrics(self):
+        """
+        Collect the metrics into a dictionary.
+        """
         metrics = {}
         valid = torch.stack(self.valid)
         n_valid_steps = valid.sum(dim=0) - 1
@@ -307,6 +325,9 @@ class Collector:
         return metrics
 
     def get_inf_imp(self):
+        """
+        Collect the inference improvement into a dictionary.
+        """
         inf_imp = {}
         valid = torch.stack(self.valid)
         n_valid_steps = valid.sum(dim=0)
@@ -318,58 +339,80 @@ class Collector:
 
         return inf_imp
 
-    def evaluate(self):
-        # import ipdb; ipdb.set_trace()
-        valid = torch.stack(self.valid)
-        # n_valid_steps = valid.sum(dim=0)
+    # def get_q_targets(self):
+    #     """
+    #     Get the targets for the Q-value estimator.
+    #     """
+    #     valid = torch.stack(self.valid)
+    #     rewards = -torch.stack(self.objectives['optimality'])[1:]
+    #     new_action_log_probs = torch.stack(self.new_action_log_probs)
+    #     alpha = self.agent.log_alpha.exp().detach()
+    #     # TODO: incorporate V-trace here
+    #     target_values = torch.stack(self.target_q_values) - alpha * new_action_log_probs
+    #     q_targets = self.agent.reward_scale * rewards + self.agent.reward_discount * target_values[1:] * valid[1:]
+    #     return q_targets.detach()
 
-        # sum the objectives (for training)
+    # def evaluate_q_loss(self):
+    #     """
+    #     Get the loss for the Q networks.
+    #     """
+    #     valid = torch.stack(self.valid)
+    #     q_values1 = torch.stack(self.qvalues1)
+    #     q_values2 = torch.stack(self.qvalues2)
+    #     q_targets = self.get_q_targets()
+    #     q_loss1 = 0.5 * (q_values1[:-1] - q_targets).pow(2) * valid
+    #     q_loss2 = 0.5 * (q_values2[:-1] - q_targets).pow(2) * valid
+    #     self.objectives['q_loss'] = q_loss1 + q_loss2
+    #     self.metrics['q_loss1'] = q_loss1.mean()
+    #     self.metrics['q_loss2'] = q_loss2.mean()
+    #     self.metrics['q_values1'] = q_values1[:-1].mean()
+    #     self.metrics['q_values2'] = q_values2[:-1].mean()
+    #     self.metrics['q_value_targets'] = q_targets.mean()
+
+    def evaluate(self):
+        """
+        Combines the objectives for training.
+        """
+        # self.evaluate_q_loss()
         # n_steps = len(self.objectives['optimality'])
+        # n_valid_steps = torch.stack(self.valid).sum(dim=0) - 1
         # total_objective = torch.zeros(n_steps, self.agent.batch_size, 1).to(self.agent.device)
         # for objective_name, objective in self.objectives.items():
-        #     total_objective = total_objective + torch.stack(objective)
+        #     obj = torch.stack(objective) if type(objective) == list else objective
+        #     total_objective = total_objective + obj
+        # total_objective = total_objective.sum(dim=0).div(n_valid_steps).mean(dim=0).sum()
+        # return total_objective
 
-
-        # action_kl = torch.stack(self.objectives['action'])
-        # TODO: SAC potential bug
-        # policy_loss = - (new_q_values - self.agent.kl_scale['action'] * new_action_log_probs) * valid
-        # policy_loss = (self.agent.kl_scale['action'] * action_kl - new_q_values) * valid
-        #params = list(self.agent.q_value_models.parameters())
-        # import pdb; pdb.set_trace()
-        # import ipdb; ipdb.set_trace()
+        valid = torch.stack(self.valid)
+        dones = torch.stack(self.dones)
         rewards = -torch.stack(self.objectives['optimality'])[1:]
         new_action_log_probs = torch.stack(self.new_action_log_probs)
 
         # ALPHA LOSS
         target_entropy = -self.agent.action_variable.n_variables
-        alpha_loss = - (self.agent.log_alpha * (new_action_log_probs + target_entropy).detach())
-        alpha = self.agent.log_alpha.exp().detach()
-        total_objective = alpha_loss[:-1].mean()
+        alpha_loss = -self.agent.log_alpha['action'] * (new_action_log_probs + target_entropy).detach()
+        self.alpha_optimizer.zero_grad()
+        alpha_loss[:-1].mean().backward()
+        self.alpha_optimizer.step()
+        alpha = self.agent.log_alpha['action'].exp().detach()
+
+        # total_objective = alpha_loss[:-1].mean()
+        total_objective = 0
 
         # POLICY LOSS
         new_q_values = torch.stack(self.new_q_values)
         policy_loss = (alpha * new_action_log_probs - new_q_values) * valid
         total_objective = total_objective + policy_loss[:-1].mean()
 
-        # Q LOSS
+        # VALUE LOSS
         q_values1 = torch.stack(self.qvalues1)
         q_values2 = torch.stack(self.qvalues2)
+        # q_targets = self.get_q_targets()
         target_values = torch.stack(self.target_q_values) - alpha * new_action_log_probs
-        q_targets = self.agent.reward_scale * rewards + self.agent.reward_discount * target_values[1:] * valid[1:]
+        q_targets = self.agent.reward_scale * rewards + self.agent.reward_discount * target_values[1:] * valid[1:] * (1. - dones[1:])
         q_loss1 = self.q_criterion(q_values1[:-1], q_targets.detach())
         q_loss2 = self.q_criterion(q_values2[:-1], q_targets.detach())
         total_objective = total_objective + q_loss1 + q_loss2
-
-        # calculate value loss
-        # v_targets, q_targets, advantages = self.get_v_trace()
-
-
-        # values = torch.stack(self.values)
-
-        # normalize the advantages
-        #advantages_mean = advantages.sum(dim=0).div(n_valid_steps).mean(dim=0)
-        #advantages_std = torch.sqrt((advantages - advantages_mean).pow(2).mul(valid[:-1]).sum(dim=0).div(n_valid_steps).mean(dim=0))
-        #advantages = (advantages - advantages_mean) / advantages_std
 
         # calculate policy gradient terms and add them to the total objective
         #action_log_probs = torch.stack(self.log_probs['action'])
@@ -418,7 +461,9 @@ class Collector:
         return total_objective
 
     def get_grads(self):
-        # calculate the average gradient for each model (for reporting)
+        """
+        Calculate the average gradient for each model.
+        """
         grads_dict = {}
         grad_norm_dict = {}
         for model_name, params in self.agent.parameters().items():
@@ -430,7 +475,9 @@ class Collector:
         return {'grads': grads_dict, 'grad_norms': grad_norm_dict}
 
     def reset(self):
-        # reset the episode, objectives, and log probs
+        """
+        Reset the episode, objectives, and log probs.
+        """
         self.episode = {'observation': [], 'reward': [], 'done': [],
                         'action': [], 'log_prob': []}
 
@@ -471,7 +518,7 @@ class Collector:
             self.metrics['done'] = {'cll': [], 'info_gain': [], 'mll': []}
             self.distributions['done'] = {'pred': {'probs': []}, 'recon': {'probs': []}}
 
-        self.rollout_lenghts = []
+        self.rollout_lengths = []
         # self.importance_weights = {'action': [], 'state': []}
         self.importance_weights = {'action': []}
         # self.values = []
@@ -484,3 +531,4 @@ class Collector:
         self.new_q_values = []
         self.new_action_log_probs = []
         self.valid = []
+        self.dones = []
