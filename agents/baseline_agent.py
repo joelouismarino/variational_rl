@@ -47,8 +47,8 @@ class BaselineAgent(Agent):
         # infer the approx. posterior on the action
         if self.action_inference_model is not None:
             action = self._prev_action
-            if action is None:
-                action = self.action_variable.sample()
+            # if action is None:
+            #     action = self.action_variable.sample()
             if self.action_variable.reinitialized:
                 action = self.action_variable.sample()
                 action = action.new_zeros(action.shape)

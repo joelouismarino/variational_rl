@@ -87,18 +87,16 @@ class Agent(nn.Module):
         self.step_action(observation=observation, reward=reward, done=done, valid=valid, action=action)
         self.action_inference(observation=observation, reward=reward, done=done, valid=valid, action=action)
         # value = self.estimate_value(observation=observation, reward=reward, done=done, valid=valid)
-        self.collector.collect(observation, reward, done, action, valid, log_prob)
-
         if self._mode == 'train':
             self._prev_action = action
             q_values = self.estimate_q_values(observation=observation, action=action, reward=reward, done=done, valid=valid)
         else:
             if observation is not None and action is None:
                 action = self.action_variable.sample()
-                action = self._convert_action(action).cpu().numpy()
-            elif action is not None:
-                action = action.cpu().numpy()
-        return action
+                # action = self._convert_action(action).cpu().numpy()
+                action = self._convert_action(action)
+        self.collector.collect(observation, reward, done, action, valid, log_prob)
+        return action.cpu().numpy()
 
     @abstractmethod
     def state_inference(self, observation, reward, done, valid):
@@ -208,9 +206,7 @@ class Agent(nn.Module):
         # converts categorical action from one-hot encoding to the action index
         if self.action_variable.approx_post.dist_type == getattr(torch.distributions, 'Categorical'):
             action = one_hot_to_index(action)
-        else:
-            action = action.detach()
-        return action
+        return action.detach()
 
     def _change_device(self, observation, reward, action, done, valid, log_prob):
         if observation is None:

@@ -48,6 +48,10 @@ class Distribution(nn.Module):
             constraint = self.dist_type.arg_constraints[param]
             if type(constraint) == constraints.greater_than and constraint.lower_bound == 0:
                 self.initial_params[param] = nn.Parameter(torch.ones(1, n_variables))
+            elif constraint == constraints.dependent and param == 'low':
+                self.initial_params[param] = nn.Parameter(-torch.ones(1, n_variables), requires_grad=False)
+            elif constraint == constraints.dependent and param == 'high':
+                self.initial_params[param] = nn.Parameter(torch.ones(1, n_variables), requires_grad=False)
             else:
                 self.initial_params[param] = nn.Parameter(torch.zeros(1, n_variables))
 

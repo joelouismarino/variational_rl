@@ -85,7 +85,8 @@ class Optimizer(object):
         if self.norm_grad is not None:
             norm_gradients(grads, self.norm_grad)
         for model_name, opt in self.opt.items():
-            if 'target' not in model_name and 'alpha' not in model_name:
+            # if 'target' not in model_name and 'alpha' not in model_name:
+            if 'target' not in model_name:
                 opt.step()
 
         if self.model.target_q_value_models is not None:

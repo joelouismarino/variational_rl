@@ -77,16 +77,16 @@ class Plotter:
 
             plt.legend(newHandles, newLabels)
 
-        for k in episode['distributions'].keys():
-            i = 0  # TODO: get rid of this hack
-            for l in episode['distributions'][k].keys():
-                color = 'b' if i == 0 else 'g'
-                self._plot_ts(episode[k], episode['distributions'][k][l], l, color)
-                i += 1
-            plt.suptitle(k)
-            merge_legends()
-            self.experiment.log_figure(figure=plt, figure_name=k + '_ts_'+str(step))
-            plt.close()
+        # for k in episode['distributions'].keys():
+        #     i = 0  # TODO: get rid of this hack
+        #     for l in episode['distributions'][k].keys():
+        #         color = 'b' if i == 0 else 'g'
+        #         self._plot_ts(episode[k], episode['distributions'][k][l], l, color)
+        #         i += 1
+        #     plt.suptitle(k)
+        #     merge_legends()
+        #     self.experiment.log_figure(figure=plt, figure_name=k + '_ts_'+str(step))
+        #     plt.close()
 
     def log_results(self, results, timestep):
         for n, m in flatten(results).items():

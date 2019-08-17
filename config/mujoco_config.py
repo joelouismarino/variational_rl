@@ -50,7 +50,8 @@ def get_mujoco_config(env):
     elif type(action_space) == spaces.Box:
         # continuous control
         if env.action_space.low.min() == -1 and env.action_space.high.max() == 1:
-            action_prior_dist = 'TransformedTanh'
+            # action_prior_dist = 'TransformedTanh'
+            action_prior_dist = 'Uniform'
             action_approx_post_dist = 'TransformedTanh'
         else:
             action_prior_dist = 'Normal'

@@ -17,12 +17,17 @@ class Collector:
                         'action': [], 'log_prob': []}
 
         # stores the objectives during training
-        self.objectives = {'optimality': [], 'action': []}
+        self.objectives = {'optimality': [], 'action': [], 'policy_loss': [],
+                           'alpha_loss': [], 'q_loss': []}
         # stores the metrics
         self.metrics = {'optimality': {'cll': []},
-                        'action': {'kl': []}}
+                        'action': {'kl': []},
+                        'policy_loss': [],
+                        'new_q_value': [],
+                        'alpha_loss':[],
+                        'alpha': []}
         # stores the distributions
-        self.distributions = {'action': {'prior': {'probs': []}, 'approx_post': {'probs': []}}}
+        # self.distributions = {'action': {'prior': {'probs': []}, 'approx_post': {'probs': []}}}
         # stores inference improvement during training
         self.inference_improvement = {'action': []}
         # stores planning rollout lengths during training
@@ -46,8 +51,12 @@ class Collector:
         self.valid = []
         self.dones = []
 
-        self.q_criterion = nn.MSELoss()
-        self.alpha_optimizer = optim.Adam([self.agent.log_alpha['action']], lr=3e-4)
+        # self.q_criterion = nn.MSELoss()
+
+    # def create_optimizers(self):
+    #     self.alpha_optimizer = optim.Adam([self.agent.log_alpha['action']], lr=3e-4)
+    #     self.policy_optimizer = optim.Adam(self.agent.parameters()['action_inference_model'], lr=3e-4)
+    #     self.q_value_model_optimizer = optim.Adam(self.agent.parameters()['q_value_models'], lr=3e-4)
 
     # def get_future_terms(self):
     #     # get the future terms in the objective
@@ -122,14 +131,14 @@ class Collector:
         self.metrics[name]['cll'].append((-cll * (1 - done) * valid).detach())
         self.metrics[name]['mll'].append((-mll * (1 - done) * valid).detach())
         self.metrics[name]['info_gain'].append((-info_gain * (1 - done) * valid).detach())
-        if 'probs' in dir(variable.cond_likelihood.dist):
-            # self.distributions[name]['pred']['probs'].append(variable.cond_likelihood.dist.probs.detach())
-            self.distributions[name]['recon']['probs'].append(variable.cond_likelihood.dist.probs.detach())
-        else:
-            # self.distributions[name]['pred']['loc'].append(variable.cond_likelihood.dist.loc.detach())
-            # self.distributions[name]['pred']['scale'].append(variable.cond_likelihood.dist.scale.detach())
-            self.distributions[name]['recon']['loc'].append(variable.cond_likelihood.dist.loc.detach())
-            self.distributions[name]['recon']['scale'].append(variable.cond_likelihood.dist.scale.detach())
+        # if 'probs' in dir(variable.cond_likelihood.dist):
+        #     # self.distributions[name]['pred']['probs'].append(variable.cond_likelihood.dist.probs.detach())
+        #     self.distributions[name]['recon']['probs'].append(variable.cond_likelihood.dist.probs.detach())
+        # else:
+        #     # self.distributions[name]['pred']['loc'].append(variable.cond_likelihood.dist.loc.detach())
+        #     # self.distributions[name]['pred']['scale'].append(variable.cond_likelihood.dist.scale.detach())
+        #     self.distributions[name]['recon']['loc'].append(variable.cond_likelihood.dist.loc.detach())
+        #     self.distributions[name]['recon']['scale'].append(variable.cond_likelihood.dist.scale.detach())
 
     def _collect_kl(self, name, variable, valid, done):
         kl = variable.kl_divergence()
@@ -138,17 +147,22 @@ class Collector:
             # discrete
             kl = kl.view(-1, 1)
             obj_kl = obj_kl.view(-1, 1)
-            self.distributions[name]['prior']['probs'].append(variable.prior.dist.probs.detach())
-            self.distributions[name]['approx_post']['probs'].append(variable.approx_post.dist.probs.detach())
+            # self.distributions[name]['prior']['probs'].append(variable.prior.dist.probs.detach())
+            # self.distributions[name]['approx_post']['probs'].append(variable.approx_post.dist.probs.detach())
         else:
             # continuous
             kl = kl.sum(dim=1, keepdim=True)
             obj_kl = obj_kl.sum(dim=1, keepdim=True)
-            self.distributions[name]['prior']['loc'].append(variable.prior.dist.loc.detach())
-            if hasattr(variable.prior.dist, 'scale'):
-                self.distributions[name]['prior']['scale'].append(variable.prior.dist.scale.detach())
-            self.distributions[name]['approx_post']['loc'].append(variable.approx_post.dist.loc.detach())
-            self.distributions[name]['approx_post']['scale'].append(variable.approx_post.dist.scale.detach())
+            # for dist_name in ['prior', 'approx_post']:
+            #     dist = getattr(variable, dist_name)
+            #     for param_name in dist.initial_params:
+            #         param = getattr(dist.dist, param_name)
+            #         self.distributions[name][dist_name][param_name].append(param.detach())
+            # self.distributions[name]['prior']['loc'].append(variable.prior.dist.loc.detach())
+            # if hasattr(variable.prior.dist, 'scale'):
+            #     self.distributions[name]['prior']['scale'].append(variable.prior.dist.scale.detach())
+            # self.distributions[name]['approx_post']['loc'].append(variable.approx_post.dist.loc.detach())
+            # self.distributions[name]['approx_post']['scale'].append(variable.approx_post.dist.scale.detach())
         if self.agent._mode == 'train':
             self.objectives[name].append(self.agent.alpha[name] * obj_kl * (1 - done) * valid)
         self.metrics[name]['kl'].append((kl * (1 - done) * valid).detach())
@@ -236,27 +250,27 @@ class Collector:
 
         if self.agent._mode == 'train':
             self._collect_log_probs(action, log_prob, valid)
-            # self._get_policy_loss(valid, done)
-            # self._get_alpha_losses(valid, done)
+            self._get_policy_loss(valid, done)
+            self._get_alpha_losses(valid, done)
         else:
             self._collect_episode(observation, reward, done, action)
 
         self.valid.append(valid)
         self.dones.append(done)
 
-    # def _get_policy_loss(self, valid, done):
-    #     policy_loss = -self.new_q_values[-1] * valid * (1 - done)
-    #     self.objectives['policy_loss'].append(policy_loss)
-    #     self.metrics['policy_loss'].append(policy_loss.detach())
-    #     self.metrics['new_q_value'].append(self.new_q_values[-1].detach())
+    def _get_policy_loss(self, valid, done):
+        policy_loss = -self.new_q_values[-1] * valid * (1 - done)
+        self.objectives['policy_loss'].append(policy_loss)
+        self.metrics['policy_loss'].append(policy_loss.detach())
+        self.metrics['new_q_value'].append(self.new_q_values[-1].detach())
     #
-    # def _get_alpha_losses(self, valid, done):
-    #     new_action_log_probs = torch.stack(self.new_action_log_probs)
-    #     target_entropy = -self.agent.action_variable.n_variables
-    #     alpha_loss = - (self.agent.log_alpha['action'] * (self.new_action_log_probs[-1] + target_entropy).detach()) * valid * (1 - done)
-    #     self.objectives['alpha_loss'].append(alpha_loss)
-    #     self.metrics['alpha_loss'].append(alpha_loss.detach())
-    #     self.metrics['alpha'].append(self.agent.alpha['action'])
+    def _get_alpha_losses(self, valid, done):
+        new_action_log_probs = torch.stack(self.new_action_log_probs)
+        target_entropy = -self.agent.action_variable.n_variables
+        alpha_loss = - (self.agent.log_alpha['action'] * (self.new_action_log_probs[-1] + target_entropy).detach()) * valid * (1 - done)
+        self.objectives['alpha_loss'].append(alpha_loss)
+        self.metrics['alpha_loss'].append(alpha_loss.detach())
+        self.metrics['alpha'].append(self.agent.alpha['action'])
 
     def get_episode(self):
         """
@@ -272,12 +286,13 @@ class Collector:
         # get the metrics
         results['metrics'] = {}
         for k, v in self.metrics.items():
-            results['metrics'][k] = {}
-            for kk, vv in v.items():
-                if len(vv) > 0:
-                    results['metrics'][k][kk] = torch.cat(vv, dim=0).detach().cpu()
-                else:
-                    results['metrics'][k][kk] = []
+            if type(v) == dict:
+                results['metrics'][k] = {}
+                for kk, vv in v.items():
+                    if len(vv) > 0:
+                        results['metrics'][k][kk] = torch.cat(vv, dim=0).detach().cpu()
+                    else:
+                        results['metrics'][k][kk] = []
         # get the inference improvements
         results['inf_imp'] = {}
         for k, v in self.inference_improvement.items():
@@ -286,17 +301,17 @@ class Collector:
             else:
                 results['inf_imp'][k] = []
         # get the distribution parameters
-        results['distributions'] = {}
-        for k, v in self.distributions.items():
-            # variable
-            results['distributions'][k] = {}
-            for kk, vv in v.items():
-                # distribution
-                results['distributions'][k][kk] = {}
-                for kkk, vvv in vv.items():
-                    # parameters
-                    if len(vvv) > 0:
-                        results['distributions'][k][kk][kkk] = torch.cat(vvv, dim=0).detach().cpu()
+        # results['distributions'] = {}
+        # for k, v in self.distributions.items():
+        #     # variable
+        #     results['distributions'][k] = {}
+        #     for kk, vv in v.items():
+        #         # distribution
+        #         results['distributions'][k][kk] = {}
+        #         for kkk, vvv in vv.items():
+        #             # parameters
+        #             if len(vvv) > 0:
+        #                 results['distributions'][k][kk][kkk] = torch.cat(vvv, dim=0).detach().cpu()
         # get the returns, values, advantages
         # results['value'] = torch.cat(self.values, dim=0).detach().cpu()
         return results
@@ -313,12 +328,14 @@ class Collector:
         for variable_name, metric in self.metrics.items():
             if type(metric) == dict:
                 for metric_name, met in metric.items():
-                    m = torch.stack(met).sum(dim=0).div(n_valid_steps).mean(dim=0)
+                    m = torch.stack(met[:-1]).sum(dim=0).div(n_valid_steps).mean(dim=0)
                     if metric_name in ['cll', 'mll', 'info_gain']:
                         # negate for plotting
                         m = m * -1
                     metrics[variable_name + '_' + metric_name] = m.detach().cpu().item()
             else:
+                if type(metric) == list:
+                    metric = torch.stack(metric[:-1])
                 m = metric.sum(dim=0).div(n_valid_steps).mean(dim=0)
                 metrics[variable_name] = m.detach().cpu().item()
 
@@ -339,80 +356,89 @@ class Collector:
 
         return inf_imp
 
-    # def get_q_targets(self):
-    #     """
-    #     Get the targets for the Q-value estimator.
-    #     """
-    #     valid = torch.stack(self.valid)
-    #     rewards = -torch.stack(self.objectives['optimality'])[1:]
-    #     new_action_log_probs = torch.stack(self.new_action_log_probs)
-    #     alpha = self.agent.log_alpha.exp().detach()
-    #     # TODO: incorporate V-trace here
-    #     target_values = torch.stack(self.target_q_values) - alpha * new_action_log_probs
-    #     q_targets = self.agent.reward_scale * rewards + self.agent.reward_discount * target_values[1:] * valid[1:]
-    #     return q_targets.detach()
+    def _get_q_targets(self):
+        """
+        Get the targets for the Q-value estimator.
+        """
+        dones = torch.stack(self.dones)
+        valid = torch.stack(self.valid)
+        rewards = -torch.stack(self.objectives['optimality'])[1:]
+        # new_action_log_probs = torch.stack(self.new_action_log_probs)
+        action_kl = torch.stack(self.objectives['action'])
+        # alpha = self.agent.alpha['action']
+        # TODO: incorporate V-trace here
+        # target_values = torch.stack(self.target_q_values) - alpha * new_action_log_probs
+        target_values = torch.stack(self.target_q_values) - action_kl
+        q_targets = self.agent.reward_scale * rewards + self.agent.reward_discount * target_values[1:] * valid[1:] * (1. - dones[1:])
+        return q_targets.detach()
 
-    # def evaluate_q_loss(self):
-    #     """
-    #     Get the loss for the Q networks.
-    #     """
-    #     valid = torch.stack(self.valid)
-    #     q_values1 = torch.stack(self.qvalues1)
-    #     q_values2 = torch.stack(self.qvalues2)
-    #     q_targets = self.get_q_targets()
-    #     q_loss1 = 0.5 * (q_values1[:-1] - q_targets).pow(2) * valid
-    #     q_loss2 = 0.5 * (q_values2[:-1] - q_targets).pow(2) * valid
-    #     self.objectives['q_loss'] = q_loss1 + q_loss2
-    #     self.metrics['q_loss1'] = q_loss1.mean()
-    #     self.metrics['q_loss2'] = q_loss2.mean()
-    #     self.metrics['q_values1'] = q_values1[:-1].mean()
-    #     self.metrics['q_values2'] = q_values2[:-1].mean()
-    #     self.metrics['q_value_targets'] = q_targets.mean()
+    def evaluate_q_loss(self):
+        """
+        Get the loss for the Q networks.
+        """
+        valid = torch.stack(self.valid)
+        q_values1 = torch.stack(self.qvalues1)
+        q_values2 = torch.stack(self.qvalues2)
+        q_targets = self._get_q_targets()
+        q_loss1 = 0.5 * (q_values1[:-1] - q_targets).pow(2) * valid[:-1]
+        q_loss2 = 0.5 * (q_values2[:-1] - q_targets).pow(2) * valid[:-1]
+        self.objectives['q_loss'] = q_loss1 + q_loss2
+        self.metrics['q_loss1'] = q_loss1.mean()
+        self.metrics['q_loss2'] = q_loss2.mean()
+        self.metrics['q_values1'] = q_values1[:-1].mean()
+        self.metrics['q_values2'] = q_values2[:-1].mean()
+        self.metrics['q_value_targets'] = q_targets.mean()
 
     def evaluate(self):
         """
         Combines the objectives for training.
         """
-        # self.evaluate_q_loss()
-        # n_steps = len(self.objectives['optimality'])
-        # n_valid_steps = torch.stack(self.valid).sum(dim=0) - 1
-        # total_objective = torch.zeros(n_steps, self.agent.batch_size, 1).to(self.agent.device)
-        # for objective_name, objective in self.objectives.items():
-        #     obj = torch.stack(objective) if type(objective) == list else objective
-        #     total_objective = total_objective + obj
-        # total_objective = total_objective.sum(dim=0).div(n_valid_steps).mean(dim=0).sum()
-        # return total_objective
+        self.evaluate_q_loss()
+        n_steps = len(self.objectives['optimality'])
+        n_valid_steps = torch.stack(self.valid).sum(dim=0) - 1
+        total_objective = torch.zeros(n_steps, self.agent.batch_size, 1).to(self.agent.device)
+        for objective_name, objective in self.objectives.items():
+            obj = torch.stack(objective[:-1]) if type(objective) == list else objective
+            total_objective = total_objective + obj
+        total_objective = total_objective.sum(dim=0).div(n_valid_steps).mean(dim=0).sum()
+        return total_objective
 
-        valid = torch.stack(self.valid)
-        dones = torch.stack(self.dones)
-        rewards = -torch.stack(self.objectives['optimality'])[1:]
-        new_action_log_probs = torch.stack(self.new_action_log_probs)
-
-        # ALPHA LOSS
-        target_entropy = -self.agent.action_variable.n_variables
-        alpha_loss = -self.agent.log_alpha['action'] * (new_action_log_probs + target_entropy).detach()
-        self.alpha_optimizer.zero_grad()
-        alpha_loss[:-1].mean().backward()
-        self.alpha_optimizer.step()
-        alpha = self.agent.log_alpha['action'].exp().detach()
-
-        # total_objective = alpha_loss[:-1].mean()
-        total_objective = 0
-
-        # POLICY LOSS
-        new_q_values = torch.stack(self.new_q_values)
-        policy_loss = (alpha * new_action_log_probs - new_q_values) * valid
-        total_objective = total_objective + policy_loss[:-1].mean()
-
-        # VALUE LOSS
-        q_values1 = torch.stack(self.qvalues1)
-        q_values2 = torch.stack(self.qvalues2)
-        # q_targets = self.get_q_targets()
-        target_values = torch.stack(self.target_q_values) - alpha * new_action_log_probs
-        q_targets = self.agent.reward_scale * rewards + self.agent.reward_discount * target_values[1:] * valid[1:] * (1. - dones[1:])
-        q_loss1 = self.q_criterion(q_values1[:-1], q_targets.detach())
-        q_loss2 = self.q_criterion(q_values2[:-1], q_targets.detach())
-        total_objective = total_objective + q_loss1 + q_loss2
+        # valid = torch.stack(self.valid)
+        # dones = torch.stack(self.dones)
+        # rewards = -torch.stack(self.objectives['optimality'])[1:]
+        # new_action_log_probs = torch.stack(self.new_action_log_probs)
+        #
+        # # ALPHA LOSS
+        # target_entropy = -self.agent.action_variable.n_variables
+        # alpha_loss = -self.agent.log_alpha['action'] * (new_action_log_probs + target_entropy).detach()
+        # self.alpha_optimizer.zero_grad()
+        # alpha_loss[:-1].mean().backward()
+        # self.alpha_optimizer.step()
+        # alpha = self.agent.log_alpha['action'].exp().detach()
+        #
+        # # total_objective = alpha_loss[:-1].mean()
+        # total_objective = 0
+        #
+        # # POLICY LOSS
+        # new_q_values = torch.stack(self.new_q_values)
+        # policy_loss = (alpha * new_action_log_probs - new_q_values) * valid
+        # # total_objective = total_objective + policy_loss[:-1].mean()
+        # self.policy_optimizer.zero_grad()
+        # policy_loss[:-1].mean().backward()
+        # self.policy_optimizer.step()
+        #
+        # # VALUE LOSS
+        # q_values1 = torch.stack(self.qvalues1)
+        # q_values2 = torch.stack(self.qvalues2)
+        # # q_targets = self.get_q_targets()
+        # target_values = torch.stack(self.target_q_values) - alpha * new_action_log_probs
+        # q_targets = self.agent.reward_scale * rewards + self.agent.reward_discount * target_values[1:] * valid[1:] * (1. - dones[1:])
+        # q_loss1 = self.q_criterion(q_values1[:-1], q_targets.detach())
+        # q_loss2 = self.q_criterion(q_values2[:-1], q_targets.detach())
+        # # total_objective = total_objective + q_loss1 + q_loss2
+        # self.q_value_model_optimizer.zero_grad()
+        # (q_loss1 + q_loss2).backward()
+        # self.q_value_model_optimizer.step()
 
         # calculate policy gradient terms and add them to the total objective
         #action_log_probs = torch.stack(self.log_probs['action'])
@@ -437,24 +463,28 @@ class Collector:
         # total_objective = total_objective.sum(dim=0).div(n_valid_steps).mean(dim=0).sum()
         # total_objective = total_objective.sum(dim=0).mean(dim=0).sum()
 
+        # if q_loss1 > 200 or q_loss2 > 200:
+        #     import ipdb; ipdb.set_trace()
+
         # save value / policy gradient metrics
-        self.metrics['q_loss1'] = q_loss1
-        self.metrics['q_loss2'] = q_loss2
+        # self.metrics['q_loss1'] = q_loss1
+        # self.metrics['q_loss2'] = q_loss2
         # self.metrics['value_loss'] = value_loss
         # self.metrics['value'] = values.mean()
         # self.metrics['value_target'] = v_targets.mean()
         # self.metrics['target_q_parameter'] = self.agent.parameters()['target_q_value_models'][0][0, 0]
         # print(self.agent.parameters()['target_q_value_models'][0][0, 0])
-        self.metrics['q_values1'] = q_values1[:-1].mean()
-        self.metrics['q_values2'] = q_values2[:-1].mean()
-        self.metrics['value_targets'] = target_values[1:].mean()
-        self.metrics['q_value_targets'] = q_targets.mean()
-        self.metrics['new_q_value'] = new_q_values.mean()
-        self.metrics['policy_loss'] = policy_loss[:-1].mean()
-        self.metrics['entropy_policy'] = -new_action_log_probs[:-1].mean()
-        self.metrics['alpha_loss'] = alpha_loss[:-1].mean()
-        self.metrics['alpha'] = alpha.mean()
-        self.metrics['rewards'] = rewards.mean()
+        # self.metrics['q_values1'] = q_values1[:-1].mean()
+        # self.metrics['q_values2'] = q_values2[:-1].mean()
+        # self.metrics['value_targets'] = target_values[1:].mean()
+        # self.metrics['q_value_targets'] = q_targets.mean()
+        # self.metrics['new_q_value'] = new_q_values.mean()
+        # self.metrics['policy_loss'] = policy_loss[:-1].mean()
+        # self.metrics['entropy_policy'] = -new_action_log_probs[:-1].mean()
+        # self.metrics['next_action_log_prob'] = new_action_log_probs[1:].mean()
+        # self.metrics['alpha_loss'] = alpha_loss[:-1].mean()
+        # self.metrics['alpha'] = alpha.mean()
+        # self.metrics['rewards'] = rewards.mean()
         # state_importance_weights = torch.stack(self.importance_weights['state'])
         # self.metrics['state_importance_weights'] = state_importance_weights
 
@@ -481,16 +511,21 @@ class Collector:
         self.episode = {'observation': [], 'reward': [], 'done': [],
                         'action': [], 'log_prob': []}
 
-        self.objectives = {'optimality': [], 'action': []}
+        self.objectives = {'optimality': [], 'action': [], 'policy_loss': [],
+                           'alpha_loss': [], 'q_loss': []}
         self.metrics = {'optimality': {'cll': []},
-                        'action': {'kl': []}}
-        self.distributions = {}
-        if self.agent.action_variable.approx_post.dist_type == getattr(torch.distributions, 'Categorical'):
-            self.distributions['action'] = {'prior': {'probs': []},
-                                            'approx_post': {'probs': []}}
-        else:
-            self.distributions['action'] = {'prior': {'loc': [], 'scale': []},
-                                            'approx_post': {'loc': [], 'scale': []}}
+                        'action': {'kl': []},
+                        'policy_loss': [],
+                        'new_q_value': [],
+                        'alpha_loss':[],
+                        'alpha': []}
+        # self.distributions = {}
+        # if self.agent.action_variable.approx_post.dist_type == getattr(torch.distributions, 'Categorical'):
+        #     self.distributions['action'] = {'prior': {'probs': []},
+        #                                     'approx_post': {'probs': []}}
+        # else:
+        #     self.distributions['action'] = {'prior': {'loc': [], 'scale': []},
+        #                                     'approx_post': {'loc': [], 'scale': []}}
 
         self.inference_improvement = {'action': []}
         self.log_probs = {'action': []}
@@ -499,24 +534,24 @@ class Collector:
             self.episode['state'] = []
             self.objectives['state'] = []
             self.metrics['state'] = {'kl': []}
-            self.distributions['state'] = {'prior': {'loc': [], 'scale': []},
-                                           'approx_post': {'loc': [], 'scale': []}}
+            # self.distributions['state'] = {'prior': {'loc': [], 'scale': []},
+            #                                'approx_post': {'loc': [], 'scale': []}}
             self.log_probs['state'] = []
             self.inference_improvement['state'] = []
         if self.agent.observation_variable is not None:
             self.objectives['observation'] = []
             self.metrics['observation'] = {'cll': [], 'info_gain': [], 'mll': []}
-            self.distributions['observation'] = {'pred': {'loc': [], 'scale': []},
-                                                 'recon': {'loc': [], 'scale': []}}
+            # self.distributions['observation'] = {'pred': {'loc': [], 'scale': []},
+            #                                      'recon': {'loc': [], 'scale': []}}
         if self.agent.reward_variable is not None:
             self.objectives['reward'] = []
             self.metrics['reward'] = {'cll': [], 'info_gain': [], 'mll': []}
-            self.distributions['reward'] = {'pred': {'loc': [], 'scale': []},
-                                            'recon': {'loc': [], 'scale': []}}
+            # self.distributions['reward'] = {'pred': {'loc': [], 'scale': []},
+            #                                 'recon': {'loc': [], 'scale': []}}
         if self.agent.done_variable is not None:
             self.objectives['done'] = []
             self.metrics['done'] = {'cll': [], 'info_gain': [], 'mll': []}
-            self.distributions['done'] = {'pred': {'probs': []}, 'recon': {'probs': []}}
+            # self.distributions['done'] = {'pred': {'probs': []}, 'recon': {'probs': []}}
 
         self.rollout_lengths = []
         # self.importance_weights = {'action': [], 'state': []}
