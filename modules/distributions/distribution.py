@@ -36,7 +36,7 @@ class Distribution(nn.Module):
         # models, initial_params, and update gates
         param_names = ['logits'] if dist_type in ['Categorical', 'Bernoulli'] else self.dist_type.arg_constraints.keys()
         if 'scale' in param_names:
-            self._log_scale_lim = [-15, 0]
+            self._log_scale_lim = [-20, 2]
             if self.const_scale:
                 self.log_scale = nn.Parameter(torch.ones(1, self.n_variables))
                 param_names = ['loc']
@@ -48,6 +48,10 @@ class Distribution(nn.Module):
             constraint = self.dist_type.arg_constraints[param]
             if type(constraint) == constraints.greater_than and constraint.lower_bound == 0:
                 self.initial_params[param] = nn.Parameter(torch.ones(1, n_variables))
+            elif constraint == constraints.dependent and param == 'low':
+                self.initial_params[param] = nn.Parameter(-torch.ones(1, n_variables), requires_grad=False)
+            elif constraint == constraints.dependent and param == 'high':
+                self.initial_params[param] = nn.Parameter(torch.ones(1, n_variables), requires_grad=False)
             else:
                 self.initial_params[param] = nn.Parameter(torch.zeros(1, n_variables))
 

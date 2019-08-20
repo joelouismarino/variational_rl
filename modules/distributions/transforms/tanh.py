@@ -11,18 +11,28 @@ class TanhTransform(Transform):
     codomain = constraints.interval(-1., 1.)
     bijective = True
 
+    def __init__(self):
+        super(TanhTransform, self).__init__()
+        self._pretanh_value = None
+
     def __eq__(self, other):
         return isinstance(other, TanhTransform)
 
     def _call(self, x):
+        self._pretanh_value = x
         finfo = torch.finfo(x.dtype)
         return torch.clamp(torch.tanh(x), min=-1 + finfo.eps, max=1. - finfo.eps)
+        # return torch.tanh(x)
 
     def _inverse(self, y):
-        finfo = torch.finfo(y.dtype)
-        y = y.clamp(min=-1 + finfo.eps, max=1. - finfo.eps)
-        return 0.5 * torch.log((1 + y) / (1 - y) + finfo.eps)
+        # finfo = torch.finfo(y.dtype)
+        # y = y.clamp(min=-1 + finfo.eps, max=1. - finfo.eps)
+        # return 0.5 * torch.log((1 + y) / (1 - y) + finfo.eps)
+        if self._pretanh_value is not None:
+            return self._pretanh_value.view(y.shape)
+        return 0.5 * torch.log((1 + y) / (1 - y) + 1e-6)
 
     def log_abs_det_jacobian(self, x, y):
-        finfo = torch.finfo(x.dtype)
-        return torch.log(1. - torch.tanh(x) ** 2 + finfo.eps)
+        # finfo = torch.finfo(x.dtype)
+        # return torch.log(1. - torch.tanh(x) ** 2 + finfo.eps)
+        return torch.log(1. - torch.tanh(x) ** 2 + 1e-6)

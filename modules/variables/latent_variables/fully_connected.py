@@ -2,6 +2,7 @@ import torch.nn as nn
 from .latent_variable import LatentVariable
 from ...layers import FullyConnectedLayer
 
+INIT_W = 1e-3
 
 class FullyConnectedLatentVariable(LatentVariable):
 
@@ -19,10 +20,18 @@ class FullyConnectedLatentVariable(LatentVariable):
             for model_name in self.prior.models:
                 self.prior.models[model_name] = FullyConnectedLayer(n_input[0],
                                                                     n_variables)
+
+                nn.init.uniform_(self.prior.models[model_name].linear.weight, -INIT_W, INIT_W)
+                nn.init.uniform_(self.prior.models[model_name].linear.bias, -INIT_W, INIT_W)
+
         if approx_post_dist is not None:
             for model_name in self.approx_post.models:
                 self.approx_post.models[model_name] = FullyConnectedLayer(n_input[1],
                                                                           n_variables)
+
+                nn.init.uniform_(self.approx_post.models[model_name].linear.weight, -INIT_W, INIT_W)
+                nn.init.uniform_(self.approx_post.models[model_name].linear.bias, -INIT_W, INIT_W)
+
                 if self.approx_post.update != 'direct':
                     self.approx_post.gates[model_name] = FullyConnectedLayer(n_input[1],
                                                                              n_variables,

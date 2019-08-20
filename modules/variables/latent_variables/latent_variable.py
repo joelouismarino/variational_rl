@@ -79,11 +79,15 @@ class LatentVariable(nn.Module):
         Initialize the approximate posterior from the prior.
         """
         if self.approx_post is not None:
-            parameters = self.prior.get_dist_params()
-            for param_name, param in parameters.items():
-                parameters[param_name] = param.detach().requires_grad_()
-            self.approx_post.reset(batch_size=self.prior._batch_size,
-                                   dist_params=parameters)
+            if self.approx_post.update != 'direct':
+                parameters = self.prior.get_dist_params()
+                for param_name, param in parameters.items():
+                    parameters[param_name] = param.detach().requires_grad_()
+                self.approx_post.reset(batch_size=self.prior._batch_size,
+                                       dist_params=parameters)
+            else:
+                self.approx_post.reset(batch_size=self.prior._batch_size)
+
 
     def kl_divergence(self, analytical=True):
         """
@@ -92,13 +96,19 @@ class LatentVariable(nn.Module):
         Args:
             analytical (bool): whether to analytically evaluate the KL.
         """
+        def _numerical_approx():
+            # numerical approximation
+            sample = self.approx_post.sample()
+            return self.approx_post.log_prob(sample) - self.prior.log_prob(sample)
+
         if self.approx_post is not None:
             if analytical:
-                return torch.distributions.kl_divergence(self.approx_post.dist, self.prior.dist)
+                try:
+                    return torch.distributions.kl_divergence(self.approx_post.dist, self.prior.dist)
+                except NotImplementedError:
+                    return _numerical_approx()
             else:
-                # numerical approximation
-                sample = self.approx_post.sample()
-                return self.approx_post.log_prob(sample) - self.prior.log_prob(sample)
+                return _numerical_approx()
         else:
             sample = self.prior.sample()
             return sample.new_zeros(sample.shape)
