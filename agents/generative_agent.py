@@ -288,13 +288,13 @@ class GenerativeAgent(Agent):
         likelihood_input = self.done_likelihood_model(state=state)
         self.done_variable.generate(likelihood_input)
 
-    def estimate_value(self, done, **kwargs):
-        # estimate the value of the current state
-        state = self.state_variable.sample()
-        value = self.value_variable(self.value_model(state=state)) * (1 - done)
-        if not self._planning:
-            self.collector.values.append(value)
-        return value
+    # def estimate_value(self, done, **kwargs):
+    #     # estimate the value of the current state
+    #     state = self.state_variable.sample()
+    #     value = self.value_variable(self.value_model(state=state)) * (1 - done)
+    #     if not self._planning:
+    #         self.collector.values.append(value)
+    #     return value
 
     def planning_mode(self):
         self._planning = True

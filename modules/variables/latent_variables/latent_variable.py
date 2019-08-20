@@ -174,7 +174,7 @@ class LatentVariable(nn.Module):
     def planning_mode(self, n_planning_samples):
         self.planning = True
         parameters = self.approx_post.get_dist_params()
-        for param_name, param in parameters:
+        for param_name, param in parameters.items():
             param = param.requires_grad_()
             parameters[param_name] = param.repeat(n_planning_samples, 1)
         self.prior.planning_mode(parameters)

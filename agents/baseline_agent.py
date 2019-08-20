@@ -18,10 +18,7 @@ class BaselineAgent(Agent):
         # models
         self.action_prior_model = get_model(action_prior_args)
         self.action_inference_model = get_model(action_inference_args)
-        # self.value_model = get_model(value_model_args)
-        # self.target_value_model = copy.deepcopy(self.value_model)
         self.q_value_models = nn.ModuleList([get_model(copy.deepcopy(q_value_model_args)) for _ in range(2)])
-        # self.target_q_value_models = copy.deepcopy(self.q_value_models)
         self.target_q_value_models = nn.ModuleList([get_model(copy.deepcopy(q_value_model_args)) for _ in range(2)])
 
         # variables
@@ -33,18 +30,17 @@ class BaselineAgent(Agent):
         self.action_variable = get_variable(type='latent', args=action_variable_args)
 
         if self.q_value_models is not None:
-            # self.value_variable = get_variable(type='value', args={'n_input': self.value_model.n_out})
-            # self.target_value_variable = copy.deepcopy(self.value_variable)
             self.q_value_variables = nn.ModuleList([get_variable(type='value', args={'n_input': self.q_value_models[0].n_out}) for _ in range(2)])
-            # self.target_q_value_variables = copy.deepcopy(self.q_value_variables)
             self.target_q_value_variables = nn.ModuleList([get_variable(type='value', args={'n_input': self.q_value_models[0].n_out}) for _ in range(2)])
 
     def state_inference(self, **kwargs):
         pass
 
     def action_inference(self, observation, reward, action=None,**kwargs):
+        """
+        Infer the approximate posterior on the action.
+        """
         self.action_variable.inference_mode()
-        # infer the approx. posterior on the action
         if self.action_inference_model is not None:
             action = self._prev_action
             # if action is None:
@@ -61,8 +57,10 @@ class BaselineAgent(Agent):
         pass
 
     def step_action(self, observation, reward, **kwargs):
+        """
+        Generate the prior on the action.
+        """
         self.action_variable.generative_mode()
-        # calculate the prior on the action variable
         if self.action_prior_model is not None:
             if not self.action_variable.reinitialized:
                 if self._prev_action is not None:

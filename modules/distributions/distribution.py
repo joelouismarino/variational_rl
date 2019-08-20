@@ -125,8 +125,10 @@ class Distribution(nn.Module):
             d = self.planning_dist if self.planning else self.dist
             # perform the sampling
             if d.has_rsample:
+                # sample is of size [batch_size x n_samples x n_variables]
                 sample = d.rsample([n_samples])
-                sample = sample.view(self._batch_size * n_samples, -1)
+                # sample = sample.view(self._batch_size * n_samples, -1)
+                sample = sample.view(-1, self.n_variables)
             else:
                 sample = d.sample([n_samples])
                 sample = sample.view(self._batch_size * n_samples, 1)

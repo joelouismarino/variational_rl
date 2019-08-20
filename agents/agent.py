@@ -99,19 +99,17 @@ class Agent(nn.Module):
         return action.cpu().numpy()
 
     @abstractmethod
-    def state_inference(self, observation, reward, done, valid):
+    def step_action(self, observation, reward, done, valid, action=None):
         pass
 
     @abstractmethod
     def action_inference(self, observation, reward, done, valid, action=None):
         pass
 
-    @abstractmethod
     def step_state(self, observation, reward, done, valid):
         pass
 
-    @abstractmethod
-    def step_action(self, observation, reward, done, valid, action=None):
+    def state_inference(self, observation, reward, done, valid):
         pass
 
     def generate(self):

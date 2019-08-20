@@ -4,8 +4,10 @@ def get_n_input(config_dict, discrete_actions):
     Calculate the number of inputs for each model using the inputs list.
     """
 
-    model_names = ['action_prior', 'action_inference', 'value_model', 'q_value_model']
+    model_names = ['action_prior', 'action_inference', 'q_value_model']
 
+    if config_dict['agent_type'] == 'model_based':
+        model_names += ['obs_likelihood', 'reward_likelihood']
     if config_dict['agent_type'] in ['discriminative', 'generative']:
         model_names += ['state_prior', 'state_inference']
     if config_dict['agent_type'] == 'generative':
