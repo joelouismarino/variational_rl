@@ -19,10 +19,10 @@ class TanhTransform(Transform):
         return isinstance(other, TanhTransform)
 
     def _call(self, x):
-        # finfo = torch.finfo(x.dtype)
-        # return torch.clamp(torch.tanh(x), min=-1 + finfo.eps, max=1. - finfo.eps)
         self._pretanh_value = x
-        return torch.tanh(x)
+        finfo = torch.finfo(x.dtype)
+        return torch.clamp(torch.tanh(x), min=-1 + finfo.eps, max=1. - finfo.eps)
+        # return torch.tanh(x)
 
     def _inverse(self, y):
         # finfo = torch.finfo(y.dtype)

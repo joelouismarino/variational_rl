@@ -396,7 +396,7 @@ class Collector:
         self.evaluate_q_loss()
         n_steps = len(self.objectives['optimality'])
         n_valid_steps = torch.stack(self.valid).sum(dim=0) - 1
-        total_objective = torch.zeros(n_steps, self.agent.batch_size, 1).to(self.agent.device)
+        total_objective = torch.zeros(n_steps-1, self.agent.batch_size, 1).to(self.agent.device)
         for objective_name, objective in self.objectives.items():
             obj = torch.stack(objective[:-1]) if type(objective) == list else objective
             total_objective = total_objective + obj
