@@ -119,7 +119,7 @@ def get_mujoco_config(env):
 
         agent_args['action_inference_args'] = {'type': 'fully_connected',
                                                'n_layers': 2,
-                                               'inputs': ['observation'],
+                                               'inputs': ['params', 'grads'],
                                                'n_units': 256,
                                                'connectivity': 'sequential',
                                                'batch_norm': False,

@@ -3,6 +3,7 @@ import torch.nn as nn
 from .agent import Agent
 from modules.models import get_model
 from modules.variables import get_variable
+from misc import clear_gradients
 import copy
 
 
@@ -60,7 +61,7 @@ class ModelBasedAgent(Agent):
                     action = self.action_variable.sample()
                 if self.obs_normalizer:
                     observation = self.obs_normalizer(observation, update=self._mode=='eval')
-                prior_input = self.action_prior_model(observation=observation, reward=reward, action=action)
+                prior_input = self.action_prior_model(observation=observation, action=action)
                 self.action_variable.step(prior_input)
 
     def action_inference(self, observation, action=None,**kwargs):
@@ -82,11 +83,13 @@ class ModelBasedAgent(Agent):
                 # sample and evaluate log probs of initial actions
                 action = self.action_variable.sample()
                 obs = observation.repeat(self.n_planning_samples, 1)
-                estimated_objective = 0.
+                # TODO: this should be the KL divergence at the first step
+                kl = self.alpha['action'] * self.action_variable.kl_divergence().sum(dim=1, keepdim=True)
+                estimated_objective = - kl.view(-1, 1, 1).repeat(1, self.n_planning_samples, 1)
                 # estimate the initial Q-value
-                q_value_input = [model(observation=obs, action=action) for model in q_value_models]
-                q_values = [variable(inp) for variable, inp in zip(q_value_variables, q_value_input)]
-                q_value = torch.min(q_values[0], q_values[1])
+                # q_value_input = [model(observation=obs, action=action) for model in q_value_models]
+                # q_values = [variable(inp) for variable, inp in zip(q_value_variables, q_value_input)]
+                # q_value = torch.min(q_values[0], q_values[1])
                 # roll out the model
                 for rollout_iter in range(self.rollout_length):
                     # generate state and reward
@@ -99,12 +102,18 @@ class ModelBasedAgent(Agent):
                     action = self.action_variable.sample()
 
                     # estimate the Q-value
-                    q_value_input = [model(observation=obs, action=action) for model in q_value_models]
-                    q_values = [variable(inp) for variable, inp in zip(q_value_variables, q_value_input)]
-                    q_value = torch.min(q_values[0], q_values[1])
+                    # q_value_input = [model(observation=obs, action=action) for model in q_value_models]
+                    # q_values = [variable(inp) for variable, inp in zip(q_value_variables, q_value_input)]
+                    # q_value = torch.min(q_values[0], q_values[1])
 
                     # add new terms to the total estimate
-                    # estimated_objective = estimated_objective + new_objective_terms
+                    estimated_objective = estimated_objective + (self.reward_discount ** rollout_iter) * reward.view(-1, self.n_planning_samples, 1)
+
+                # estimate the final Q-value
+                q_value_input = [model(observation=obs, action=action) for model in q_value_models]
+                q_values = [variable(inp) for variable, inp in zip(q_value_variables, q_value_input)]
+                q_value = torch.min(q_values[0], q_values[1])
+                estimated_objective = estimated_objective + (self.reward_discount ** self.n_inf_iter['action']) * q_value.view(-1, self.n_planning_samples, 1)
 
                 # estimate and apply the gradients
                 objective = - estimated_objective
@@ -119,14 +128,10 @@ class ModelBasedAgent(Agent):
 
                 # store the length of the planning rollout and objective estimate
                 if self._mode == 'train':
-                    rollout_lengths.append(rollout_iter)
                     estimated_objectives.append(estimated_objective.detach().mean(dim=1))
 
             # save the maximum rollout length, averaged over inference iterations
             if self._mode == 'train':
-                ave_rollout_length = sum(rollout_lengths) / len(rollout_lengths)
-                self.collector.rollout_lengths.append(ave_rollout_length)
-                # TODO: only collect inference improvement for valid steps
                 estimated_objectives = torch.stack(estimated_objectives)
                 inference_improvement = - estimated_objectives[0] + estimated_objectives[-1]
                 self.collector.inference_improvement['action'].append(inference_improvement)

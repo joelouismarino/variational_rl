@@ -31,6 +31,8 @@ def get_n_input(config_dict, discrete_actions):
                 elif input_name in ['params', 'grads']:
                     if 'state' in model_name:
                         input_size += 2 * config_dict['state_variable_args']['n_variables']
+                    elif 'action' in model_name:
+                        input_size += 2 * config_dict['action_variable_args']['n_variables']
                     else:
                         if discrete_actions:
                             input_size += config_dict['state_variable_args']['n_variables']

@@ -30,8 +30,6 @@ class Collector:
         # self.distributions = {'action': {'prior': {'probs': []}, 'approx_post': {'probs': []}}}
         # stores inference improvement during training
         self.inference_improvement = {'action': []}
-        # stores planning rollout lengths during training
-        self.rollout_lengths = []
         # stores the log probabilities during training
         self.log_probs = {'action': []}
         # stores the importance weights during training
@@ -121,16 +119,18 @@ class Collector:
     #     return 0
 
     def _collect_likelihood(self, name, obs, variable, valid, done=0.):
-        log_importance_weights = self.agent.state_variable.log_importance_weights().detach()
-        weighted_info_gain = variable.info_gain(obs, log_importance_weights, marg_factor=self.agent.marginal_factor)
-        info_gain = variable.info_gain(obs, log_importance_weights, marg_factor=1.)
-        cll = variable.cond_log_likelihood(obs).view(self.agent.n_state_samples, -1, 1).mean(dim=0)
-        mll = variable.marg_log_likelihood(obs, log_importance_weights)
+        # log_importance_weights = self.agent.state_variable.log_importance_weights().detach()
+        # weighted_info_gain = variable.info_gain(obs, log_importance_weights, marg_factor=self.agent.marginal_factor)
+        # info_gain = variable.info_gain(obs, log_importance_weights, marg_factor=1.)
+        # cll = variable.cond_log_likelihood(obs).view(self.agent.n_state_samples, -1, 1).mean(dim=0)
+        cll = variable.cond_log_likelihood(obs).view(-1, 1)
+        # mll = variable.marg_log_likelihood(obs, log_importance_weights)
         if self.agent._mode == 'train':
-            self.objectives[name].append(-weighted_info_gain * (1 - done) * valid)
+            # self.objectives[name].append(-weighted_info_gain * (1 - done) * valid)
+            self.objectives[name].append(-cll * (1 - done) * valid)
         self.metrics[name]['cll'].append((-cll * (1 - done) * valid).detach())
-        self.metrics[name]['mll'].append((-mll * (1 - done) * valid).detach())
-        self.metrics[name]['info_gain'].append((-info_gain * (1 - done) * valid).detach())
+        # self.metrics[name]['mll'].append((-mll * (1 - done) * valid).detach())
+        # self.metrics[name]['info_gain'].append((-info_gain * (1 - done) * valid).detach())
         # if 'probs' in dir(variable.cond_likelihood.dist):
         #     # self.distributions[name]['pred']['probs'].append(variable.cond_likelihood.dist.probs.detach())
         #     self.distributions[name]['recon']['probs'].append(variable.cond_likelihood.dist.probs.detach())
@@ -265,6 +265,7 @@ class Collector:
         self.metrics['new_q_value'].append(self.new_q_values[-1].detach())
     #
     def _get_alpha_losses(self, valid, done):
+        # TODO: change this to use KL divergence and different target value
         new_action_log_probs = torch.stack(self.new_action_log_probs)
         target_entropy = -self.agent.action_variable.n_variables
         alpha_loss = - (self.agent.log_alpha['action'] * (self.new_action_log_probs[-1] + target_entropy).detach()) * valid * (1 - done)
@@ -540,12 +541,14 @@ class Collector:
             self.inference_improvement['state'] = []
         if self.agent.observation_variable is not None:
             self.objectives['observation'] = []
-            self.metrics['observation'] = {'cll': [], 'info_gain': [], 'mll': []}
+            self.metrics['observation'] = {'cll': []}
+            # self.metrics['observation'] = {'cll': [], 'info_gain': [], 'mll': []}
             # self.distributions['observation'] = {'pred': {'loc': [], 'scale': []},
             #                                      'recon': {'loc': [], 'scale': []}}
         if self.agent.reward_variable is not None:
             self.objectives['reward'] = []
-            self.metrics['reward'] = {'cll': [], 'info_gain': [], 'mll': []}
+            self.metrics['reward'] = {'cll': []}
+            # self.metrics['reward'] = {'cll': [], 'info_gain': [], 'mll': []}
             # self.distributions['reward'] = {'pred': {'loc': [], 'scale': []},
             #                                 'recon': {'loc': [], 'scale': []}}
         if self.agent.done_variable is not None:
@@ -553,7 +556,6 @@ class Collector:
             self.metrics['done'] = {'cll': [], 'info_gain': [], 'mll': []}
             # self.distributions['done'] = {'pred': {'probs': []}, 'recon': {'probs': []}}
 
-        self.rollout_lengths = []
         # self.importance_weights = {'action': [], 'state': []}
         self.importance_weights = {'action': []}
         # self.values = []

@@ -185,15 +185,10 @@ class Agent(nn.Module):
         for k, v in self.collector.get_grads().items():
             results[k] = v
 
-        # report the average planning rollout lengths
-        rollout_lengths = self.collector.rollout_lengths
-        if len(rollout_lengths) > 0:
-            results['rollout_length'] = sum(rollout_lengths) / len(rollout_lengths)
-
         results['kl_min'] = self.kl_min
         results['kl_factor'] = self.kl_factor
-        if self.observation_variable is not None:
-            results['marginal_factor'] = self.marginal_factor
+        # if self.observation_variable is not None:
+        #     results['marginal_factor'] = self.marginal_factor
 
         return results
 

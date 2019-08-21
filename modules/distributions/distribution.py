@@ -146,7 +146,7 @@ class Distribution(nn.Module):
 
         sample = self._planning_sample if self.planning else self._sample
 
-        if self._detach:
+        if self._detach and not self.planning:
             sample = sample.detach()
 
         if n_samples < self._n_samples:
