@@ -16,7 +16,7 @@ class FullyConnectedLatentVariable(LatentVariable):
                                                            inference_type,
                                                            norm_samples)
         # initialize the models
-        if not constant_prior:
+        if not constant_prior and n_input[0] is not None:
             for model_name in self.prior.models:
                 self.prior.models[model_name] = FullyConnectedLayer(n_input[0],
                                                                     n_variables)
@@ -24,7 +24,7 @@ class FullyConnectedLatentVariable(LatentVariable):
                 nn.init.uniform_(self.prior.models[model_name].linear.weight, -INIT_W, INIT_W)
                 nn.init.uniform_(self.prior.models[model_name].linear.bias, -INIT_W, INIT_W)
 
-        if approx_post_dist is not None:
+        if approx_post_dist is not None and n_input[1] is not None:
             for model_name in self.approx_post.models:
                 self.approx_post.models[model_name] = FullyConnectedLayer(n_input[1],
                                                                           n_variables)

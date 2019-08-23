@@ -86,8 +86,11 @@ class Optimizer(object):
             norm_gradients(grads, self.norm_grad)
         for model_name, opt in self.opt.items():
             # if 'target' not in model_name and 'alpha' not in model_name:
-            if 'target' not in model_name:
-                opt.step()
+            if 'target' in model_name:
+                continue
+            if model_name == 'action_inference_model' and self.model.action_variable.approx_post.update == 'iterative':
+                continue
+            opt.step()
 
         if self.model.target_q_value_models is not None:
             # exponential moving update of the target q value model parameters

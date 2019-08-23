@@ -260,15 +260,19 @@ class Collector:
 
     def _get_policy_loss(self, valid, done):
         policy_loss = -self.new_q_values[-1] * valid * (1 - done)
-        self.objectives['policy_loss'].append(policy_loss)
+        if self.agent.action_variable.approx_post.update == 'direct':
+            self.objectives['policy_loss'].append(policy_loss)
+        else:
+            self.objectives['policy_loss'].append(policy_loss * 0.)
         self.metrics['policy_loss'].append(policy_loss.detach())
         self.metrics['new_q_value'].append(self.new_q_values[-1].detach())
-    #
+
     def _get_alpha_losses(self, valid, done):
-        # TODO: change this to use KL divergence and different target value
-        new_action_log_probs = torch.stack(self.new_action_log_probs)
-        target_entropy = -self.agent.action_variable.n_variables
-        alpha_loss = - (self.agent.log_alpha['action'] * (self.new_action_log_probs[-1] + target_entropy).detach()) * valid * (1 - done)
+        # new_action_log_probs = torch.stack(self.new_action_log_probs)
+        # target_entropy = -self.agent.action_variable.n_variables
+        # alpha_loss = - (self.agent.log_alpha['action'] * (self.new_action_log_probs[-1] + target_entropy).detach()) * valid * (1 - done)
+        target_kl = 0.1
+        alpha_loss = - (self.agent.log_alpha['action'] * (self.metrics['action']['kl'][-1] - target_kl).detach()) * valid * (1 - done)
         self.objectives['alpha_loss'].append(alpha_loss)
         self.metrics['alpha_loss'].append(alpha_loss.detach())
         self.metrics['alpha'].append(self.agent.alpha['action'])

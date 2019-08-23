@@ -38,7 +38,7 @@ class Agent(nn.Module):
         self.q_value_variables = None
         self.target_q_value_variables = None
 
-        self.log_alpha = nn.ParameterDict({'action': nn.Parameter(torch.zeros(1))})
+        self.log_alpha = nn.ParameterDict({'action': nn.Parameter(-torch.ones(1))})
 
         # miscellaneous
         self.reward_scale = misc_args['reward_scale']

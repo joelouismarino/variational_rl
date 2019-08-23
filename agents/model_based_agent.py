@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from torch import optim
 from .agent import Agent
 from modules.models import get_model
 from modules.variables import get_variable
@@ -69,7 +70,8 @@ class ModelBasedAgent(Agent):
         Infer the approximate posterior on the action.
         """
         self.action_variable.inference_mode()
-        if self.action_inference_model is not None:
+        # if self.action_inference_model is not None or self._mode == 'eval':
+        if True:
             # initialize the planning distributions
             self.planning_mode()
             # copy the Q-value models
@@ -77,32 +79,37 @@ class ModelBasedAgent(Agent):
             q_value_variables = copy.deepcopy(self.q_value_variables)
             # keep track of estimated objective
             estimated_objectives = []
+            if self.action_inference_model is None:
+                # use gradient-based optimizer
+                dist_params = self.action_variable.approx_post.get_dist_params()
+                params = [param for _, param in dist_params.items()]
+                act_opt = optim.Adam(params, lr=1e-4)
+                act_opt.zero_grad()
             # inference iterations
             for inf_iter in range(self.n_inf_iter['action'] + 1):
                 self.planning_mode()
                 # sample and evaluate log probs of initial actions
-                action = self.action_variable.sample()
+                act = self.action_variable.sample()
                 obs = observation.repeat(self.n_planning_samples, 1)
-                # TODO: this should be the KL divergence at the first step
                 kl = self.alpha['action'] * self.action_variable.kl_divergence().sum(dim=1, keepdim=True)
                 estimated_objective = - kl.view(-1, 1, 1).repeat(1, self.n_planning_samples, 1)
                 # estimate the initial Q-value
-                # q_value_input = [model(observation=obs, action=action) for model in q_value_models]
+                # q_value_input = [model(observation=obs, action=act) for model in q_value_models]
                 # q_values = [variable(inp) for variable, inp in zip(q_value_variables, q_value_input)]
                 # q_value = torch.min(q_values[0], q_values[1])
                 # roll out the model
                 for rollout_iter in range(self.rollout_length):
                     # generate state and reward
-                    self.generate_observation(obs, action)
-                    self.generate_reward(obs, action)
+                    self.generate_observation(obs, act)
+                    self.generate_reward(obs, act)
                     # step the action
                     obs = self.observation_variable.sample()
                     reward = self.reward_variable.sample()
                     self.step_action(obs)
-                    action = self.action_variable.sample()
+                    act = self.action_variable.sample()
 
                     # estimate the Q-value
-                    # q_value_input = [model(observation=obs, action=action) for model in q_value_models]
+                    # q_value_input = [model(observation=obs, action=act) for model in q_value_models]
                     # q_values = [variable(inp) for variable, inp in zip(q_value_variables, q_value_input)]
                     # q_value = torch.min(q_values[0], q_values[1])
 
@@ -110,7 +117,7 @@ class ModelBasedAgent(Agent):
                     estimated_objective = estimated_objective + (self.reward_discount ** rollout_iter) * reward.view(-1, self.n_planning_samples, 1)
 
                 # estimate the final Q-value
-                q_value_input = [model(observation=obs, action=action) for model in q_value_models]
+                q_value_input = [model(observation=obs, action=act) for model in q_value_models]
                 q_values = [variable(inp) for variable, inp in zip(q_value_variables, q_value_input)]
                 q_value = torch.min(q_values[0], q_values[1])
                 estimated_objective = estimated_objective + (self.reward_discount ** self.n_inf_iter['action']) * q_value.view(-1, self.n_planning_samples, 1)
@@ -121,10 +128,14 @@ class ModelBasedAgent(Agent):
                 objective.mean(dim=1).sum().backward(retain_graph=True)
 
                 if inf_iter < self.n_inf_iter['action']:
-                    # update the approximate posterior using the inference model
-                    params, grads = self.action_variable.params_and_grads()
-                    inf_input = self.action_inference_model(params=params, grads=grads)
-                    self.action_variable.infer(inf_input)
+                    if self.action_inference_model is not None:
+                        # update the approximate posterior using the inference model
+                        params, grads = self.action_variable.params_and_grads()
+                        inf_input = self.action_inference_model(params=params, grads=grads)
+                        self.action_variable.infer(inf_input)
+                    else:
+                        # update the approximate posterior using gradient-based optimizer
+                        act_opt.step()
 
                 # store the length of the planning rollout and objective estimate
                 if self._mode == 'train':
@@ -141,7 +152,8 @@ class ModelBasedAgent(Agent):
         clear_gradients(self.generative_parameters())
         self.generative_mode()
         # predict next observation and reward
-        action = self.action_variable.sample()
+        if action is None:
+            action = self.action_variable.sample()
         self.generate_observation(observation, action)
         self.generate_reward(observation, action)
 
