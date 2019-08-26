@@ -14,11 +14,12 @@ class ObservedVariable(nn.Module):
         n_variables (int): number of observed variables
         n_input (int): input size to the output models
         constant_scale (bool): whether to use a constant scale
+        residual_loc (bool): whether to use a residual mapping for loc parameter
     """
-    def __init__(self, likelihood_dist, n_variables, n_input, constant_scale):
+    def __init__(self, likelihood_dist, n_variables, n_input, constant_scale, residual_loc):
         super(ObservedVariable, self).__init__()
         self.cond_likelihood = Distribution(likelihood_dist, n_variables, n_input,
-                                            constant_scale=constant_scale)
+                                            constant_scale=constant_scale, residual_loc=residual_loc)
         self.n_variables = n_variables
         self.planning = False
         self._n_planning_samples = 1
@@ -125,8 +126,8 @@ class ObservedVariable(nn.Module):
         self.cond_likelihood.acting_mode()
         self._n_planning_samples = 1
 
-    def reset(self, batch_size=1):
-        self.cond_likelihood.reset(batch_size)
+    def reset(self, batch_size=1, prev_obs=None):
+        self.cond_likelihood.reset(batch_size, prev_obs=prev_obs)
         self.planning = False
         self._batch_size = batch_size
 

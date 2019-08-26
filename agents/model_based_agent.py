@@ -93,6 +93,7 @@ class ModelBasedAgent(Agent):
                 obs = observation.repeat(self.n_planning_samples, 1)
                 kl = self.alpha['action'] * self.action_variable.kl_divergence().sum(dim=1, keepdim=True)
                 estimated_objective = - kl.view(-1, 1, 1).repeat(1, self.n_planning_samples, 1)
+                self.observation_variable.cond_likelihood.set_prev_obs(obs)
                 # estimate the initial Q-value
                 # q_value_input = [model(observation=obs, action=act) for model in q_value_models]
                 # q_values = [variable(inp) for variable, inp in zip(q_value_variables, q_value_input)]
@@ -131,7 +132,7 @@ class ModelBasedAgent(Agent):
                     if self.action_inference_model is not None:
                         # update the approximate posterior using the inference model
                         params, grads = self.action_variable.params_and_grads()
-                        inf_input = self.action_inference_model(params=params, grads=grads)
+                        inf_input = self.action_inference_model(params=params, grads=grads, observation=observation)
                         self.action_variable.infer(inf_input)
                     else:
                         # update the approximate posterior using gradient-based optimizer
@@ -152,10 +153,9 @@ class ModelBasedAgent(Agent):
         clear_gradients(self.generative_parameters())
         self.generative_mode()
         # predict next observation and reward
-        if action is None:
-            action = self.action_variable.sample()
-        self.generate_observation(observation, action)
-        self.generate_reward(observation, action)
+        self.generate_observation(self._prev_obs, self._prev_action)
+        self.generate_reward(self._prev_obs, self._prev_action)
+        self.observation_variable.cond_likelihood.set_prev_obs(observation)
 
     def generate_reward(self, observation, action, **kwargs):
         """

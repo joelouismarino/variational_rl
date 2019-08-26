@@ -10,10 +10,11 @@ class Distribution(nn.Module):
     Wrapper around PyTorch distributions.
     """
     def __init__(self, dist_type, n_variables, n_input, constant=False,
-                 constant_scale=False, update='direct'):
+                 constant_scale=False, residual_loc=False, update='direct'):
         super(Distribution, self).__init__()
         self.n_variables = n_variables
         self.const_scale = constant_scale
+        self.residual_loc = residual_loc
         self.update = update
         self.dist = None
         self.planning_dist = None
@@ -24,6 +25,8 @@ class Distribution(nn.Module):
         self._planning_sample = None
         self._detach = True
         self._batch_size = 1
+        self._prev_obs = None
+        self._planning_prev_obs = None
 
         # distribution type
         if dist_type == 'Delta':
@@ -81,6 +84,11 @@ class Distribution(nn.Module):
                         param = torch.log(param)
                     gate = self.gates[param_name](input)
                     param = gate * param + (1. - gate) * param_update
+
+                if param_name == 'loc' and self.residual_loc:
+                    # residual estimation of location parameter
+                    prev_obs = self._planning_prev_obs if self.planning else self._prev_obs
+                    param = param + prev_obs
 
                 # satisfy any constraints on the parameter value
                 if type(constraint) == constraints.greater_than and constraint.lower_bound == 0:
@@ -140,6 +148,8 @@ class Distribution(nn.Module):
             # update the internal sample
             if self.planning:
                 self._planning_sample = sample
+                if self.residual_loc:
+                    self._planning_prev_obs = sample
             else:
                 self._sample = sample
             self._n_samples = n_samples
@@ -184,7 +194,7 @@ class Distribution(nn.Module):
         d = self.planning_dist if self.planning else self.dist
         return d.entropy()
 
-    def reset(self, batch_size=1, dist_params=None):
+    def reset(self, batch_size=1, dist_params=None, prev_obs=None):
         """
         Reset the distribution parameters.
 
@@ -193,14 +203,35 @@ class Distribution(nn.Module):
             dist_params (dict): dictionary of distribution parameters for initialization
         """
         if dist_params is None:
+            # initialize distribution parameters from initial parameters
             dist_params = {k: v.repeat(batch_size, 1) for k, v in self.initial_params.items()}
             if self.const_scale:
                 dist_params['scale'] = self.log_scale.repeat(batch_size, 1).exp()
+        # initialize the distribution
         self.dist = self.dist_type(**dist_params)
         if self.dist_type == getattr(torch.distributions, 'Categorical'):
             self.dist.logits = dist_params['logits']
+        # reset other quantities
         self._sample = None
         self._batch_size = batch_size
+        if self.residual_loc:
+            if prev_obs is not None:
+                device = self.initial_params[list(self.initial_params.keys())[0]].device
+                self._prev_obs = prev_obs.to(device)
+            else:
+                obs = self.sample()
+                self._prev_obs = obs.new(obs.shape).zero_()
+            self._planning_prev_obs = None
+
+    def set_prev_obs(self, prev_obs):
+        """
+        Sets the previous observation (for residual loc).
+        """
+        if self.residual_loc:
+            if not self.planning:
+                self._prev_obs = prev_obs
+            else:
+                self._planning_prev_obs = prev_obs
 
     def planning_mode(self, dist_params=None):
         """
@@ -222,6 +253,7 @@ class Distribution(nn.Module):
         self.planning = False
         self._planning_sample = None
         self.planning_dist = None
+        self._planning_prev_obs = None
 
     def parameters(self):
         """

@@ -63,8 +63,8 @@ class Agent(nn.Module):
         self.collector = Collector(self)
 
         self._prev_action = None
+        self._prev_obs = None
         self.batch_size = 1
-        # self.gae_lambda = misc_args['gae_lambda']
         self.reward_discount = misc_args['reward_discount']
 
         # normalizers for various quantities
@@ -86,14 +86,14 @@ class Agent(nn.Module):
         self.state_inference(observation=observation, reward=reward, done=done, valid=valid)
         self.step_action(observation=observation, reward=reward, done=done, valid=valid, action=action)
         self.action_inference(observation=observation, reward=reward, done=done, valid=valid, action=action)
-        # value = self.estimate_value(observation=observation, reward=reward, done=done, valid=valid)
+        self._prev_obs = observation
         if self._mode == 'train':
             self._prev_action = action
             q_values = self.estimate_q_values(observation=observation, action=action, reward=reward, done=done, valid=valid)
         else:
             if observation is not None and action is None:
                 action = self.action_variable.sample()
-                # action = self._convert_action(action).cpu().numpy()
+                self._prev_action = action
                 action = self._convert_action(action)
         self.collector.collect(observation, reward, done, action, valid, log_prob)
         return action.cpu().numpy()
@@ -233,13 +233,13 @@ class Agent(nn.Module):
             log_prob = log_prob.to(self.device)
         return observation, reward, action, done, valid, log_prob
 
-    def reset(self, batch_size=1):
+    def reset(self, batch_size=1, prev_action=None, prev_obs=None):
         # reset the variables
         self.action_variable.reset(batch_size)
         if self.state_variable is not None:
             self.state_variable.reset(batch_size)
         if self.observation_variable is not None:
-            self.observation_variable.reset(batch_size)
+            self.observation_variable.reset(batch_size, prev_obs=prev_obs)
         if self.reward_variable is not None:
             self.reward_variable.reset(batch_size)
         if self.done_variable is not None:
@@ -260,8 +260,17 @@ class Agent(nn.Module):
         # reset the collector
         self.collector.reset()
 
-        self._prev_action = None
         self.batch_size = batch_size
+        if prev_action is not None:
+            self._prev_action = prev_action.to(self.device)
+        else:
+            act = self.action_variable.sample()
+            self._prev_action = act.new(act.shape).zero_()
+        if prev_obs is not None:
+            self._prev_obs = prev_obs.to(self.device)
+        else:
+            obs = self.observation_variable.sample()
+            self._prev_obs = obs.new(obs.shape).zero_()
 
     @property
     def device(self):
@@ -318,22 +327,10 @@ class Agent(nn.Module):
             param_dict['done_likelihood_model'].extend(list(self.done_likelihood_model.parameters()))
             param_dict['done_likelihood_model'].extend(list(self.done_variable.parameters()))
 
-        # if self.value_model is not None:
-        #     param_dict['value_model'] = nn.ParameterList()
-        #     param_dict['value_model'].extend(list(self.value_model.parameters()))
-        #     param_dict['value_model'].extend(list(self.value_variable.parameters()))
-
-        # if self.target_value_model is not None:
-        #     param_dict['target_value_model'] = nn.ParameterList()
-        #     param_dict['target_value_model'].extend(list(self.target_value_model.parameters()))
-        #     param_dict['target_value_model'].extend(list(self.target_value_variable.parameters()))
-
         if self.q_value_models is not None:
             param_dict['q_value_models'] = nn.ParameterList()
             param_dict['q_value_models'].extend(list(self.q_value_models.parameters()))
             param_dict['q_value_models'].extend(list(self.q_value_variables.parameters()))
-            # param_dict['q_value_models'].extend(list(self.qvalue1_variable.parameters()))
-            # param_dict['q_value_models'].extend(list(self.qvalue2_variable.parameters()))
 
         if self.target_q_value_models is not None:
             param_dict['target_q_value_models'] = nn.ParameterList()

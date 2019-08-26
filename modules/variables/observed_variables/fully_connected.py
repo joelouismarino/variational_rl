@@ -4,11 +4,13 @@ from ...layers import FullyConnectedLayer
 
 class FullyConnectedObservedVariable(ObservedVariable):
 
-    def __init__(self, likelihood_dist, n_variables, n_input, constant_scale=False, sigmoid_loc=False):
+    def __init__(self, likelihood_dist, n_variables, n_input,
+                 constant_scale=False, sigmoid_loc=False, residual_loc=False):
         super(FullyConnectedObservedVariable, self).__init__(likelihood_dist,
                                                              n_variables,
                                                              n_input,
-                                                             constant_scale)
+                                                             constant_scale,
+                                                             residual_loc)
         for model_name in self.cond_likelihood.models:
             non_linearity = None
             if model_name == 'loc' and sigmoid_loc:

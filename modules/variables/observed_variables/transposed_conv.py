@@ -1,15 +1,17 @@
-import torch
-import torch.nn as nn
 from .observed_variable import ObservedVariable
 from ...layers import TransposedConvLayer
 
 
 class TransposedConvObservedVariable(ObservedVariable):
 
-    def __init__(self, likelihood_dist, n_variables, n_input, filter_size, padding, stride, integration_window=None, sigmoid_loc=False):
-        super(TransposedConvObservedVariable, self).__init__(likelihood_dist=likelihood_dist,
-                                                             n_variables=n_variables,
-                                                             integration_window=integration_window)
+    def __init__(self, likelihood_dist, n_variables, n_input, filter_size,
+                 padding, stride, constant_scale=False, sigmoid_loc=False,
+                 residual_loc=False):
+        super(TransposedConvObservedVariable, self).__init__(likelihood_dist,
+                                                             n_variables,
+                                                             n_input,
+                                                             constant_scale,
+                                                             residual_loc)
         for model_name in self.likelihood_models:
             non_linearity = None
             if model_name == 'loc' and sigmoid_loc:
@@ -21,5 +23,3 @@ class TransposedConvObservedVariable(ObservedVariable):
                                                                      padding,
                                                                      stride,
                                                                      non_linearity=non_linearity)
-
-        # self.likelihood_log_scale = nn.Parameter(torch.zeros(1), requires_grad=False)

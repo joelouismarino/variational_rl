@@ -5,7 +5,8 @@ def train_batch(agent, data, optimizer):
     """
     optimizer.zero_grad()
     n_steps, batch_size = data['observation'].shape[:2]
-    agent.reset(batch_size); agent.train()
+    agent.reset(batch_size, prev_action=data['prev_action'], prev_obs=data['prev_obs'])
+    agent.train()
 
     observation = data['observation']
     reward = data['reward']

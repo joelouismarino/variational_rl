@@ -37,6 +37,8 @@ class Plotter:
         self.experiment = Experiment(api_key='prsuXaz6RVyjfIWmbZwVjWMug',
                                      project_name='variational-rl',
                                      workspace="joelouismarino")
+        self.exp_args = exp_args
+        self.agent_args = agent_args
         self.experiment.disable_mp()
         self.experiment.log_parameters(get_arg_dict(exp_args))
         self.experiment.log_parameters(flatten_arg_dict(agent_args))
@@ -59,8 +61,11 @@ class Plotter:
                 std = std[:, i].cpu().numpy()
                 mean = mean.squeeze()
                 std = std.squeeze()
-                plt.plot(mean, label=label, color=color)
-                plt.fill_between(np.arange(len(mean)), mean + std, mean - std, color=color, alpha=0.2, label=label)
+                x, plus, minus = mean, mean + std, mean - std
+                if self.agent_args['action_variable_args']['approx_post_dist'] == 'TransformedTanh':
+                    x, plus, minus = np.tanh(x), np.tanh(plus), np.tanh(minus)
+                plt.plot(x, label=label, color=color)
+                plt.fill_between(np.arange(len(mean)), plus, minus, color=color, alpha=0.2, label=label)
             else:
                 NotImplementedError
             k += 1
@@ -77,16 +82,16 @@ class Plotter:
 
             plt.legend(newHandles, newLabels)
 
-        # for k in episode['distributions'].keys():
-        #     i = 0  # TODO: get rid of this hack
-        #     for l in episode['distributions'][k].keys():
-        #         color = 'b' if i == 0 else 'g'
-        #         self._plot_ts(episode[k], episode['distributions'][k][l], l, color)
-        #         i += 1
-        #     plt.suptitle(k)
-        #     merge_legends()
-        #     self.experiment.log_figure(figure=plt, figure_name=k + '_ts_'+str(step))
-        #     plt.close()
+        for k in episode['distributions'].keys():
+            i = 0  # TODO: get rid of this hack
+            for l in episode['distributions'][k].keys():
+                color = 'b' if i == 0 else 'g'
+                self._plot_ts(episode[k], episode['distributions'][k][l], l, color)
+                i += 1
+            plt.suptitle(k)
+            merge_legends()
+            self.experiment.log_figure(figure=plt, figure_name=k + '_ts_'+str(step))
+            plt.close()
 
     def log_results(self, results, timestep):
         for n, m in flatten(results).items():

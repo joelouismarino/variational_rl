@@ -27,7 +27,7 @@ class Collector:
                         'alpha_loss':[],
                         'alpha': []}
         # stores the distributions
-        # self.distributions = {'action': {'prior': {'probs': []}, 'approx_post': {'probs': []}}}
+        self.distributions = {'action': {'prior': {'probs': []}, 'approx_post': {'probs': []}}}
         # stores inference improvement during training
         self.inference_improvement = {'action': []}
         # stores the log probabilities during training
@@ -36,8 +36,6 @@ class Collector:
         # self.importance_weights = {'action': [], 'state': []}
         self.importance_weights = {'action': []}
         # store the values during training
-        # self.values = []
-        # self.target_values = []
         self.qvalues = []
         self.qvalues1 = []
         self.qvalues2 = []
@@ -131,14 +129,14 @@ class Collector:
         self.metrics[name]['cll'].append((-cll * (1 - done) * valid).detach())
         # self.metrics[name]['mll'].append((-mll * (1 - done) * valid).detach())
         # self.metrics[name]['info_gain'].append((-info_gain * (1 - done) * valid).detach())
-        # if 'probs' in dir(variable.cond_likelihood.dist):
-        #     # self.distributions[name]['pred']['probs'].append(variable.cond_likelihood.dist.probs.detach())
-        #     self.distributions[name]['recon']['probs'].append(variable.cond_likelihood.dist.probs.detach())
-        # else:
-        #     # self.distributions[name]['pred']['loc'].append(variable.cond_likelihood.dist.loc.detach())
-        #     # self.distributions[name]['pred']['scale'].append(variable.cond_likelihood.dist.scale.detach())
-        #     self.distributions[name]['recon']['loc'].append(variable.cond_likelihood.dist.loc.detach())
-        #     self.distributions[name]['recon']['scale'].append(variable.cond_likelihood.dist.scale.detach())
+        if 'probs' in dir(variable.cond_likelihood.dist):
+            # self.distributions[name]['pred']['probs'].append(variable.cond_likelihood.dist.probs.detach())
+            self.distributions[name]['recon']['probs'].append(variable.cond_likelihood.dist.probs.detach())
+        else:
+            # self.distributions[name]['pred']['loc'].append(variable.cond_likelihood.dist.loc.detach())
+            # self.distributions[name]['pred']['scale'].append(variable.cond_likelihood.dist.scale.detach())
+            self.distributions[name]['recon']['loc'].append(variable.cond_likelihood.dist.loc.detach())
+            self.distributions[name]['recon']['scale'].append(variable.cond_likelihood.dist.scale.detach())
 
     def _collect_kl(self, name, variable, valid, done):
         kl = variable.kl_divergence()
@@ -147,17 +145,17 @@ class Collector:
             # discrete
             kl = kl.view(-1, 1)
             obj_kl = obj_kl.view(-1, 1)
-            # self.distributions[name]['prior']['probs'].append(variable.prior.dist.probs.detach())
-            # self.distributions[name]['approx_post']['probs'].append(variable.approx_post.dist.probs.detach())
+            self.distributions[name]['prior']['probs'].append(variable.prior.dist.probs.detach())
+            self.distributions[name]['approx_post']['probs'].append(variable.approx_post.dist.probs.detach())
         else:
             # continuous
             kl = kl.sum(dim=1, keepdim=True)
             obj_kl = obj_kl.sum(dim=1, keepdim=True)
-            # for dist_name in ['prior', 'approx_post']:
-            #     dist = getattr(variable, dist_name)
-            #     for param_name in dist.initial_params:
-            #         param = getattr(dist.dist, param_name)
-            #         self.distributions[name][dist_name][param_name].append(param.detach())
+            for dist_name in ['prior', 'approx_post']:
+                dist = getattr(variable, dist_name)
+                for param_name in dist.initial_params:
+                    param = getattr(dist.dist, param_name)
+                    self.distributions[name][dist_name][param_name].append(param.detach())
             # self.distributions[name]['prior']['loc'].append(variable.prior.dist.loc.detach())
             # if hasattr(variable.prior.dist, 'scale'):
             #     self.distributions[name]['prior']['scale'].append(variable.prior.dist.scale.detach())
@@ -207,8 +205,8 @@ class Collector:
             obs = self.episode['observation'][0]
             action = self.episode['action'][0]
             log_prob = self.episode['log_prob'][0]
-            # self.episode['observation'].append(obs.new(obs.shape).zero_())
-            self.episode['observation'].append(observation)
+            self.episode['observation'].append(obs.new(obs.shape).zero_())
+            # self.episode['observation'].append(observation)
             self.episode['action'].append(action.new(action.shape).zero_())
             self.episode['log_prob'].append(log_prob.new(log_prob.shape).zero_())
             if self.agent.state_variable is not None:
@@ -306,17 +304,17 @@ class Collector:
             else:
                 results['inf_imp'][k] = []
         # get the distribution parameters
-        # results['distributions'] = {}
-        # for k, v in self.distributions.items():
-        #     # variable
-        #     results['distributions'][k] = {}
-        #     for kk, vv in v.items():
-        #         # distribution
-        #         results['distributions'][k][kk] = {}
-        #         for kkk, vvv in vv.items():
-        #             # parameters
-        #             if len(vvv) > 0:
-        #                 results['distributions'][k][kk][kkk] = torch.cat(vvv, dim=0).detach().cpu()
+        results['distributions'] = {}
+        for k, v in self.distributions.items():
+            # variable
+            results['distributions'][k] = {}
+            for kk, vv in v.items():
+                # distribution
+                results['distributions'][k][kk] = {}
+                for kkk, vvv in vv.items():
+                    # parameters
+                    if len(vvv) > 0:
+                        results['distributions'][k][kk][kkk] = torch.cat(vvv, dim=0).detach().cpu()
         # get the returns, values, advantages
         # results['value'] = torch.cat(self.values, dim=0).detach().cpu()
         return results
@@ -524,13 +522,13 @@ class Collector:
                         'new_q_value': [],
                         'alpha_loss':[],
                         'alpha': []}
-        # self.distributions = {}
-        # if self.agent.action_variable.approx_post.dist_type == getattr(torch.distributions, 'Categorical'):
-        #     self.distributions['action'] = {'prior': {'probs': []},
-        #                                     'approx_post': {'probs': []}}
-        # else:
-        #     self.distributions['action'] = {'prior': {'loc': [], 'scale': []},
-        #                                     'approx_post': {'loc': [], 'scale': []}}
+        self.distributions = {}
+        if self.agent.action_variable.approx_post.dist_type == getattr(torch.distributions, 'Categorical'):
+            self.distributions['action'] = {'prior': {'probs': []},
+                                            'approx_post': {'probs': []}}
+        else:
+            self.distributions['action'] = {'prior': {'loc': [], 'scale': []},
+                                            'approx_post': {'loc': [], 'scale': []}}
 
         self.inference_improvement = {'action': []}
         self.log_probs = {'action': []}
@@ -539,31 +537,29 @@ class Collector:
             self.episode['state'] = []
             self.objectives['state'] = []
             self.metrics['state'] = {'kl': []}
-            # self.distributions['state'] = {'prior': {'loc': [], 'scale': []},
-            #                                'approx_post': {'loc': [], 'scale': []}}
+            self.distributions['state'] = {'prior': {'loc': [], 'scale': []},
+                                           'approx_post': {'loc': [], 'scale': []}}
             self.log_probs['state'] = []
             self.inference_improvement['state'] = []
         if self.agent.observation_variable is not None:
             self.objectives['observation'] = []
             self.metrics['observation'] = {'cll': []}
             # self.metrics['observation'] = {'cll': [], 'info_gain': [], 'mll': []}
-            # self.distributions['observation'] = {'pred': {'loc': [], 'scale': []},
-            #                                      'recon': {'loc': [], 'scale': []}}
+            self.distributions['observation'] = {'pred': {'loc': [], 'scale': []},
+                                                 'recon': {'loc': [], 'scale': []}}
         if self.agent.reward_variable is not None:
             self.objectives['reward'] = []
             self.metrics['reward'] = {'cll': []}
             # self.metrics['reward'] = {'cll': [], 'info_gain': [], 'mll': []}
-            # self.distributions['reward'] = {'pred': {'loc': [], 'scale': []},
-            #                                 'recon': {'loc': [], 'scale': []}}
+            self.distributions['reward'] = {'pred': {'loc': [], 'scale': []},
+                                            'recon': {'loc': [], 'scale': []}}
         if self.agent.done_variable is not None:
             self.objectives['done'] = []
             self.metrics['done'] = {'cll': [], 'info_gain': [], 'mll': []}
-            # self.distributions['done'] = {'pred': {'probs': []}, 'recon': {'probs': []}}
+            self.distributions['done'] = {'pred': {'probs': []}, 'recon': {'probs': []}}
 
         # self.importance_weights = {'action': [], 'state': []}
         self.importance_weights = {'action': []}
-        # self.values = []
-        # self.target_values = []
         self.target_q_values = []
         self.qvalues = []
         self.qvalues1 = []
