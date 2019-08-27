@@ -5,9 +5,9 @@ def retrace(q_values, rewards, importance_weights=None, discount=0.9, l=0.9):
     # RETRACE: equation 3
     assert len(q_values.shape) == 2
     assert len(rewards.shape) == 2
-    if q_values.shape[1] == 1:
+    if q_values.shape[1] == 1 or l == -1:
         # degenerate case
-        return q_values
+        return q_values[:, :1]
 
     if importance_weights is None:
         # On-policy
@@ -15,7 +15,7 @@ def retrace(q_values, rewards, importance_weights=None, discount=0.9, l=0.9):
 
     deltas = rewards[:, :-1] + discount*q_values[:, 1:] - q_values[:, :-1]
     importance_weights = l * torch.clamp(importance_weights, 0, 1)[:, :-2]
-    importance_weights = torch.cat([l*torch.ones_like(importance_weights[:, :1]), importance_weights], 1)
+    importance_weights = torch.cat([torch.ones_like(importance_weights[:, :1]), importance_weights], 1)
     discounts = torch.cat([(discount*torch.ones_like(q_values[:, :1]))**i for i in range(q_values.shape[1])], 1)
     q_estimates = q_values[:, :1] + torch.sum(discounts[:, :-1] * torch.cumprod(importance_weights, 1) * deltas, 1, keepdim=True)
 
@@ -31,7 +31,7 @@ if __name__ == '__main__':
 
     print('Test degenerate case lambda is 0 and discount is 0')
     print('The target should be equal to the first q value')
-    one_target = retrace(q_values, rewards, importance_weights, l=0., discount=0.)
+    one_target = retrace(q_values, rewards, importance_weights, l=-1, discount=0.)
     assert torch.all(one_target == q_values[:, :1])
 
     print('Test degenerate case lambda is 1 and discount is 0')
@@ -56,11 +56,10 @@ if __name__ == '__main__':
     LAMBDA = 0.25
     total_return = q_values[:, 0]
     for i in range(q_values.shape[1]-1):
-        total_return = total_return + LAMBDA**(i+1) * (rewards[:, i] + q_values[:, i+1] - q_values[:, i])
+        total_return = total_return + LAMBDA**i * (rewards[:, i] + q_values[:, i+1] - q_values[:, i])
 
     one_target = retrace(q_values, rewards, None, discount=1., l=LAMBDA)
     lambda_target = total_return.view(-1, 1)
-    import pdb; pdb.set_trace()
     assert torch.all(torch.isclose(one_target, lambda_target))
 
     # TODO: importance weights test
