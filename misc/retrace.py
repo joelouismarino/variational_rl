@@ -11,7 +11,7 @@ def retrace(q_values, rewards, importance_weights=None, discount=0.9, l=0.9):
     deltas = q_values[:, :-1] - (rewards[:, 1:] + discount*q_values[:, 1:])
     importance_weights = discount * l * torch.clamp(importance_weights, 0, 1)[:, :-2]
     importance_weights = torch.cat([torch.ones_like(importance_weights[:, :1]), importance_weights], 1)
-    q_estimates = q_values[:, :1] + discount*torch.sum(torch.cumprod(importance_weights, 1) * deltas, 1, keepdim=True)
+    q_estimates = q_values[:, :1] + torch.sum(torch.cumprod(importance_weights, 1) * deltas, 1, keepdim=True)
 
     return q_estimates
 
