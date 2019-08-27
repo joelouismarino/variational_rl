@@ -52,14 +52,22 @@ if __name__ == '__main__':
     disc_mc_rollouts = torch.sum((discounts*rewards)[:, :-1], 1, keepdim=True) + 0.99**(q_values.shape[1]-1)*q_values[:, -1:]
     assert torch.all(torch.isclose(one_target, disc_mc_rollouts))
 
-    #print('Test changing lambda')
-    #print('Should be a weighted sum of the estimators')
-    #LAMBDA = 0.25
+    print('Test changing lambda')
+    LAMBDA = 0.25
+    total_return = q_values[:, 0]
+    for i in range(q_values.shape[1]-1):
+        total_return = total_return + LAMBDA**(i+1) * (rewards[:, i] + q_values[:, i+1] - q_values[:, i])
+
+    one_target = retrace(q_values, rewards, None, discount=1., l=LAMBDA)
+    lambda_target = total_return.view(-1, 1)
+    import pdb; pdb.set_trace()
+    assert torch.all(torch.isclose(one_target, lambda_target))
+
+    # TODO: importance weights test
     #multiple_targets = torch.cat([retrace(q_values[:, :i+1], rewards[:, :i+1], None, discount=1., l=1.) for i in range(q_values.shape[1])], 1)
     #lambda_discounts = torch.cat([(LAMBDA*torch.ones_like(q_values[:, :1]))**(i) for i in range(q_values.shape[1])], 1)
     #lambda_target = torch.sum(lambda_discounts*multiple_targets, 1, keepdim=True)
     #one_target = retrace(q_values, rewards, None, discount=1., l=LAMBDA)
     #import pdb; pdb.set_trace()
-    #assert torch.all(torch.isclose(one_target, lambda_target))
 
 
