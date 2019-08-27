@@ -2,10 +2,15 @@ import torch
 
 
 def retrace(q_values, rewards, importance_weights=None, discount=0.9, l=0.9):
+    # RETRACE: equation 3
+    assert len(q_values.shape) == 2
+    assert len(rewards.shape) == 2
     if q_values.shape[0] == 1:
+        # degenerate case
         return q_values
 
     if importance_weights is None:
+        # On-policy
         importance_weights = torch.ones_like(q_values)
 
     deltas = q_values[:, :-1] - (rewards[:, 1:] + discount*q_values[:, 1:])
