@@ -48,7 +48,6 @@ class Collector:
         self.valid = []
         self.dones = []
 
-
     def _collect_likelihood(self, name, obs, variable, valid, done=0.):
         # log_importance_weights = self.agent.state_variable.log_importance_weights().detach()
         # weighted_info_gain = variable.info_gain(obs, log_importance_weights, marg_factor=self.agent.marginal_factor)
@@ -312,8 +311,8 @@ class Collector:
         #print(old_q_targets)
 
         rewards *= self.agent.reward_scale
-        # TODO: need importance weights for multi-step estimation
-        q_targets = retrace(future_q, rewards, discount=self.agent.reward_discount, l=LAMBDA)
+        importance_weights = torch.stack(self.importance_weights['action'])
+        q_targets = retrace(future_q, rewards, importance_weights, discount=self.agent.reward_discount, l=LAMBDA)
         #q_targets = self.agent.reward_scale * rewards + self.agent.reward_discount * target_values[1:] * valid[1:] * (1. - dones[1:])
         return q_targets.detach()
 
