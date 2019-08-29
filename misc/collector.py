@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 from torch import optim
+from misc import retrace
 
 
 class Collector:
@@ -46,75 +47,6 @@ class Collector:
 
         self.valid = []
         self.dones = []
-
-        # self.q_criterion = nn.MSELoss()
-
-    # def create_optimizers(self):
-    #     self.alpha_optimizer = optim.Adam([self.agent.log_alpha['action']], lr=3e-4)
-    #     self.policy_optimizer = optim.Adam(self.agent.parameters()['action_inference_model'], lr=3e-4)
-    #     self.q_value_model_optimizer = optim.Adam(self.agent.parameters()['q_value_models'], lr=3e-4)
-
-    # def get_future_terms(self):
-    #     # get the future terms in the objective
-    #     valid = torch.stack(self.valid)
-    #     optimality = -self.agent.reward_scale * torch.stack(self.objectives['optimality'])
-    #     future_terms = optimality[1:]
-    #     # TODO: should only include these if the action distribution is not reparameterizable
-    #     # if self.agent.action_prior_model is not None:
-    #     #     action_kl = torch.stack(self.objectives['action']) * valid
-    #     #     future_terms = future_terms - self.agent.kl_scale['action'] * action_kl[1:]
-    #     # if self.agent.state_prior_model is not None:
-    #     #     state_kl = torch.stack(self.objectives['state']) * valid
-    #     #     future_terms = future_terms - self.agent.kl_scale['state'] *state_kl[1:]
-    #     # if self.agent.obs_likelihood_model is not None:
-    #     #     obs_info_gain = torch.stack(self.metrics['observation']['info_gain']) * valid
-    #     #     reward_info_gain = torch.stack(self.metrics['reward']['info_gain']) * valid
-    #     #     done_info_gain = torch.stack(self.metrics['done']['info_gain']) * valid
-    #     #     future_terms = future_terms + obs_info_gain[1:] + reward_info_gain[1:] + done_info_gain[1:]
-    #     return future_terms
-    #
-    # def get_v_trace(self):
-    #     valid = torch.stack(self.valid)
-    #     # target_values = torch.stack(self.target_values)
-    #     # import ipdb; ipdb.set_trace()
-    #     new_action_log_probs = torch.stack(self.new_action_log_probs)
-    #     # tqv = torch.stack(self.target_q_values)
-    #     # alpha = self.agent.log_alpha.exp()
-    #     # print('TQV', tqv.shape)
-    #     # print('new_action_log_probs', new_action_log_probs.shape)
-    #     # print('alpha', alpha.shape)
-    #     target_values = torch.stack(self.target_q_values) - self.agent.log_alpha.exp() * new_action_log_probs
-    #     # values = torch.stack(self.values)
-    #     # qvalues = torch.stack(self.qvalues)
-    #     #importance_weights = torch.stack(self.importance_weights['action'])
-    #     #clip_importance_weights = self.agent.v_trace['lambda']*torch.clamp(importance_weights, 0, self.agent.v_trace['iw_clip'])
-    #     future_terms = self.get_future_terms()
-    #     #deltas = (future_terms + self.agent.reward_discount * values[1:] * valid[1:] - qvalues[:-1])
-    #     #targets = []
-    #     #sequence_len = len(future_terms)
-    #     #for i in range(sequence_len):
-    #     #    if i < sequence_len - 1:
-    #     #        discount = self.agent.reward_discount ** torch.arange(0, sequence_len-i).view(-1, 1, 1).float().to(self.agent.device)
-    #     #        cum_delta_i = torch.sum(discount * torch.cumprod(clip_importance_weights[i:-1], 0) * deltas[i:], 0)
-    #     #        assert values[i].shape == cum_delta_i.shape
-    #     #    target_i = (qvalues[i] + cum_delta_i) * valid[i]
-    #     #    targets.append(target_i)
-    #     #targets.append(values[-1])
-    #     #targets = torch.cat(targets, 1).t().unsqueeze(2)
-    #     #advantadges = future_terms + self.agent.reward_discount * targets[1:] * valid[1:] - values[:-1]
-    #     #targets = future_terms + self.agent.reward_discount * values[1:] * valid[1:]
-    #     q_targets = future_terms + self.agent.reward_discount * target_values[1:] * valid[1:]
-    #     #q_targets = future_terms + self.agent.reward_discount * targets[1:] * valid[1:]
-    #     #assert advantadges.shape == future_terms.shape
-    #     # gradient should never pass here
-    #     return None, q_targets.detach(), None
-    #
-    # def get_policy_loss(self):
-    #     # E step
-    #     # sample from current policy and reweight by the exponential of the Q function
-    #
-    #     # return weights and actions
-    #     return 0
 
     def _collect_likelihood(self, name, obs, variable, valid, done=0.):
         # log_importance_weights = self.agent.state_variable.log_importance_weights().detach()
@@ -369,10 +301,19 @@ class Collector:
         # new_action_log_probs = torch.stack(self.new_action_log_probs)
         action_kl = torch.stack(self.objectives['action'])
         # alpha = self.agent.alpha['action']
-        # TODO: incorporate V-trace here
         # target_values = torch.stack(self.target_q_values) - alpha * new_action_log_probs
-        target_values = torch.stack(self.target_q_values) - action_kl
-        q_targets = self.agent.reward_scale * rewards + self.agent.reward_discount * target_values[1:] * valid[1:] * (1. - dones[1:])
+        future_q = torch.stack(self.target_q_values) - action_kl
+        future_q = future_q * valid
+        # TODO: should be an hyper-parameter
+        LAMBDA = 0.
+        #target_values = torch.stack(self.target_q_values) - action_kl
+        #old_q_targets = self.agent.reward_scale * rewards + self.agent.reward_discount * target_values[1:] * valid[1:] * (1. - dones[1:])
+        #print(old_q_targets)
+
+        rewards *= self.agent.reward_scale
+        importance_weights = torch.stack(self.importance_weights['action'])
+        q_targets = retrace(future_q, rewards, importance_weights, discount=self.agent.reward_discount, l=LAMBDA)
+        #q_targets = self.agent.reward_scale * rewards + self.agent.reward_discount * target_values[1:] * valid[1:] * (1. - dones[1:])
         return q_targets.detach()
 
     def evaluate_q_loss(self):
