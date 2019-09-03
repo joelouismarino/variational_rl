@@ -43,7 +43,7 @@ class Plotter:
         self.experiment.log_parameters(get_arg_dict(exp_args))
         self.experiment.log_parameters(flatten_arg_dict(agent_args))
 
-    def _plot_ts(self, observations, statistics, label, color):
+    def _plot_ts(self, key, observations, statistics, label, color):
         dim_obs = min(observations.shape[1], 9)
         k = 1
         for i in range(dim_obs):
@@ -62,7 +62,7 @@ class Plotter:
                 mean = mean.squeeze()
                 std = std.squeeze()
                 x, plus, minus = mean, mean + std, mean - std
-                if self.agent_args['action_variable_args']['approx_post_dist'] == 'TransformedTanh':
+                if key == 'action' and self.agent_args['action_variable_args']['approx_post_dist'] == 'TransformedTanh':
                     x, plus, minus = np.tanh(x), np.tanh(plus), np.tanh(minus)
                 plt.plot(x, label=label, color=color)
                 plt.fill_between(np.arange(len(mean)), plus, minus, color=color, alpha=0.2, label=label)
@@ -86,7 +86,7 @@ class Plotter:
             i = 0  # TODO: get rid of this hack
             for l in episode['distributions'][k].keys():
                 color = 'b' if i == 0 else 'g'
-                self._plot_ts(episode[k], episode['distributions'][k][l], l, color)
+                self._plot_ts(k, episode[k], episode['distributions'][k][l], l, color)
                 i += 1
             plt.suptitle(k)
             merge_legends()

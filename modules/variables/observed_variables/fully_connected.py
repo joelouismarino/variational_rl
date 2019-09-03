@@ -5,12 +5,15 @@ from ...layers import FullyConnectedLayer
 class FullyConnectedObservedVariable(ObservedVariable):
 
     def __init__(self, likelihood_dist, n_variables, n_input,
-                 constant_scale=False, sigmoid_loc=False, residual_loc=False):
+                 constant_scale=False, sigmoid_loc=False, residual_loc=False,
+                 manual_loc=False, manual_loc_alpha=0.):
         super(FullyConnectedObservedVariable, self).__init__(likelihood_dist,
                                                              n_variables,
                                                              n_input,
                                                              constant_scale,
-                                                             residual_loc)
+                                                             residual_loc,
+                                                             manual_loc,
+                                                             manual_loc_alpha)
         for model_name in self.cond_likelihood.models:
             non_linearity = None
             if model_name == 'loc' and sigmoid_loc:

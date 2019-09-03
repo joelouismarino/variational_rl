@@ -198,11 +198,11 @@ class Collector:
         self.metrics['new_q_value'].append(self.new_q_values[-1].detach())
 
     def _get_alpha_losses(self, valid, done):
-        # new_action_log_probs = torch.stack(self.new_action_log_probs)
-        # target_entropy = -self.agent.action_variable.n_variables
-        # alpha_loss = - (self.agent.log_alpha['action'] * (self.new_action_log_probs[-1] + target_entropy).detach()) * valid * (1 - done)
-        target_kl = 0.1
-        alpha_loss = - (self.agent.log_alpha['action'] * (self.metrics['action']['kl'][-1] - target_kl).detach()) * valid * (1 - done)
+        new_action_log_probs = torch.stack(self.new_action_log_probs)
+        target_entropy = -self.agent.action_variable.n_variables
+        alpha_loss = - (self.agent.log_alpha['action'] * (self.new_action_log_probs[-1] + target_entropy).detach()) * valid * (1 - done)
+        # target_kl = 0.1
+        # alpha_loss = - (self.agent.log_alpha['action'] * (self.metrics['action']['kl'][-1] - target_kl).detach()) * valid * (1 - done)
         self.objectives['alpha_loss'].append(alpha_loss)
         self.metrics['alpha_loss'].append(alpha_loss.detach())
         self.metrics['alpha'].append(self.agent.alpha['action'])
@@ -300,9 +300,9 @@ class Collector:
         rewards = -torch.stack(self.objectives['optimality'])[1:]
         # new_action_log_probs = torch.stack(self.new_action_log_probs)
         action_kl = torch.stack(self.objectives['action'])
-        # alpha = self.agent.alpha['action']
+        alpha = self.agent.alpha['action']
         # target_values = torch.stack(self.target_q_values) - alpha * new_action_log_probs
-        future_q = torch.stack(self.target_q_values) - action_kl
+        future_q = torch.stack(self.target_q_values) - alpha * action_kl
         future_q = future_q * valid
         # TODO: should be an hyper-parameter
         LAMBDA = 0.
@@ -345,93 +345,6 @@ class Collector:
             obj = torch.stack(objective[:-1]) if type(objective) == list else objective
             total_objective = total_objective + obj
         total_objective = total_objective.sum(dim=0).div(n_valid_steps).mean(dim=0).sum()
-        return total_objective
-
-        # valid = torch.stack(self.valid)
-        # dones = torch.stack(self.dones)
-        # rewards = -torch.stack(self.objectives['optimality'])[1:]
-        # new_action_log_probs = torch.stack(self.new_action_log_probs)
-        #
-        # # ALPHA LOSS
-        # target_entropy = -self.agent.action_variable.n_variables
-        # alpha_loss = -self.agent.log_alpha['action'] * (new_action_log_probs + target_entropy).detach()
-        # self.alpha_optimizer.zero_grad()
-        # alpha_loss[:-1].mean().backward()
-        # self.alpha_optimizer.step()
-        # alpha = self.agent.log_alpha['action'].exp().detach()
-        #
-        # # total_objective = alpha_loss[:-1].mean()
-        # total_objective = 0
-        #
-        # # POLICY LOSS
-        # new_q_values = torch.stack(self.new_q_values)
-        # policy_loss = (alpha * new_action_log_probs - new_q_values) * valid
-        # # total_objective = total_objective + policy_loss[:-1].mean()
-        # self.policy_optimizer.zero_grad()
-        # policy_loss[:-1].mean().backward()
-        # self.policy_optimizer.step()
-        #
-        # # VALUE LOSS
-        # q_values1 = torch.stack(self.qvalues1)
-        # q_values2 = torch.stack(self.qvalues2)
-        # # q_targets = self.get_q_targets()
-        # target_values = torch.stack(self.target_q_values) - alpha * new_action_log_probs
-        # q_targets = self.agent.reward_scale * rewards + self.agent.reward_discount * target_values[1:] * valid[1:] * (1. - dones[1:])
-        # q_loss1 = self.q_criterion(q_values1[:-1], q_targets.detach())
-        # q_loss2 = self.q_criterion(q_values2[:-1], q_targets.detach())
-        # # total_objective = total_objective + q_loss1 + q_loss2
-        # self.q_value_model_optimizer.zero_grad()
-        # (q_loss1 + q_loss2).backward()
-        # self.q_value_model_optimizer.step()
-
-        # calculate policy gradient terms and add them to the total objective
-        #action_log_probs = torch.stack(self.log_probs['action'])
-        #action_importance_weights = torch.stack(self.importance_weights['action']).detach()
-        #action_reinforce_terms = - action_importance_weights[:-1] * action_log_probs[:-1] * advantages
-        #clip_importance_weight = torch.clamp(action_importance_weights[:-1], 0, 1)
-        #assert action_log_probs[:-1].shape == advantages.shape
-        #action_reinforce_terms = - action_importance_weights[:-1] * action_log_probs[:-1] * advantages.detach()
-        #entropy_term = - action_log_probs[:-1]
-        #if not self.agent.action_variable.approx_post.update == 'iterative':
-        #    # include the policy gradients in the total objective
-        #    assert action_reinforce_terms.shape == entropy_term.shape
-        #    total_objective[:-1] = total_objective[:-1] + action_reinforce_terms
-
-        # q_loss = 0.5 * (q_values1[:-1] - q_targets).pow(2) + 0.5 * (q_values2[:-1] - q_targets).pow(2)
-        # v_targets = (new_q_values - self.agent.kl_scale['action'] * new_action_log_probs).detach() * valid
-        # v_targets = ((new_q_values - self.agent.kl_scale['action'] * action_kl) * valid).detach()
-        # value_loss = 0.5 * (v_targets[:-1] - values[:-1]).pow(2)
-        # total_objective[:-1] = total_objective[:-1] + value_loss + q_loss
-        # total_objective = total_objective + value_loss + q_loss
-
-        # total_objective = total_objective.sum(dim=0).div(n_valid_steps).mean(dim=0).sum()
-        # total_objective = total_objective.sum(dim=0).mean(dim=0).sum()
-
-        # if q_loss1 > 200 or q_loss2 > 200:
-        #     import ipdb; ipdb.set_trace()
-
-        # save value / policy gradient metrics
-        # self.metrics['q_loss1'] = q_loss1
-        # self.metrics['q_loss2'] = q_loss2
-        # self.metrics['value_loss'] = value_loss
-        # self.metrics['value'] = values.mean()
-        # self.metrics['value_target'] = v_targets.mean()
-        # self.metrics['target_q_parameter'] = self.agent.parameters()['target_q_value_models'][0][0, 0]
-        # print(self.agent.parameters()['target_q_value_models'][0][0, 0])
-        # self.metrics['q_values1'] = q_values1[:-1].mean()
-        # self.metrics['q_values2'] = q_values2[:-1].mean()
-        # self.metrics['value_targets'] = target_values[1:].mean()
-        # self.metrics['q_value_targets'] = q_targets.mean()
-        # self.metrics['new_q_value'] = new_q_values.mean()
-        # self.metrics['policy_loss'] = policy_loss[:-1].mean()
-        # self.metrics['entropy_policy'] = -new_action_log_probs[:-1].mean()
-        # self.metrics['next_action_log_prob'] = new_action_log_probs[1:].mean()
-        # self.metrics['alpha_loss'] = alpha_loss[:-1].mean()
-        # self.metrics['alpha'] = alpha.mean()
-        # self.metrics['rewards'] = rewards.mean()
-        # state_importance_weights = torch.stack(self.importance_weights['state'])
-        # self.metrics['state_importance_weights'] = state_importance_weights
-
         return total_objective
 
     def get_grads(self):

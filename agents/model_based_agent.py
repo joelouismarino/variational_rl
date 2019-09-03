@@ -45,10 +45,10 @@ class ModelBasedAgent(Agent):
             self.q_value_variables = nn.ModuleList([get_variable(type='value', args={'n_input': self.q_value_models[0].n_out}) for _ in range(2)])
             self.target_q_value_variables = nn.ModuleList([get_variable(type='value', args={'n_input': self.q_value_models[0].n_out}) for _ in range(2)])
 
-        if self.action_variable.approx_post.update == 'iterative':
-            self.rollout_length = misc_args['max_rollout_length']
-            self.n_planning_samples = misc_args['n_planning_samples']
-            self.n_inf_iter = {'action': misc_args['n_inf_iter']['action']}
+        # if self.action_variable.approx_post.update == 'iterative':
+        self.rollout_length = misc_args['max_rollout_length']
+        self.n_planning_samples = misc_args['n_planning_samples']
+        self.n_inf_iter = {'action': misc_args['n_inf_iter']['action']}
 
     def step_action(self, observation, **kwargs):
         """
@@ -71,6 +71,7 @@ class ModelBasedAgent(Agent):
         Infer the approximate posterior on the action.
         """
         self.action_variable.inference_mode()
+        self.action_variable.init_approx_post()
         # if self.action_inference_model is not None or self._mode == 'eval':
         if True:
             # initialize the planning distributions
@@ -84,7 +85,7 @@ class ModelBasedAgent(Agent):
                 # use gradient-based optimizer
                 dist_params = self.action_variable.approx_post.get_dist_params()
                 params = [param for _, param in dist_params.items()]
-                act_opt = optim.Adam(params, lr=1e-4)
+                act_opt = optim.SGD(params, lr=1e-3)
                 act_opt.zero_grad()
             # inference iterations
             for inf_iter in range(self.n_inf_iter['action'] + 1):
@@ -95,10 +96,7 @@ class ModelBasedAgent(Agent):
                 kl = self.alpha['action'] * self.action_variable.kl_divergence().sum(dim=1, keepdim=True)
                 estimated_objective = - kl.view(-1, 1, 1).repeat(1, self.n_planning_samples, 1)
                 self.observation_variable.cond_likelihood.set_prev_obs(obs)
-                # estimate the initial Q-value
-                # q_value_input = [model(observation=obs, action=act) for model in q_value_models]
-                # q_values = [variable(inp) for variable, inp in zip(q_value_variables, q_value_input)]
-                # q_value = torch.min(q_values[0], q_values[1])
+                # estimated_objective = estimated_objective + q_value.view(-1, self.n_planning_samples, 1)
                 # roll out the model
                 rewards = []
                 q_values_list = []
@@ -109,6 +107,7 @@ class ModelBasedAgent(Agent):
                     # step the action
                     reward = self.reward_variable.sample()
                     rewards.append(reward.unsqueeze(0))
+                    # estimate the Q-value
                     q_value_input = [model(observation=obs, action=act) for model in q_value_models]
                     q_values = [variable(inp) for variable, inp in zip(q_value_variables, q_value_input)]
                     q_value = torch.min(q_values[0], q_values[1])
@@ -118,22 +117,16 @@ class ModelBasedAgent(Agent):
                     self.step_action(obs)
                     act = self.action_variable.sample()
 
-                    # estimate the Q-value
-                    # q_value_input = [model(observation=obs, action=act) for model in q_value_models]
-                    # q_values = [variable(inp) for variable, inp in zip(q_value_variables, q_value_input)]
-                    # q_value = torch.min(q_values[0], q_values[1])
-
                     # add new terms to the total estimate
-                    estimated_objective = estimated_objective + (self.reward_discount ** rollout_iter) * reward.view(-1, self.n_planning_samples, 1)
+                    # estimated_objective = estimated_objective + (self.reward_discount ** rollout_iter) * reward.view(-1, self.n_planning_samples, 1)
 
+                # estimate the final Q-value
                 q_value_input = [model(observation=obs, action=act) for model in q_value_models]
                 q_values = [variable(inp) for variable, inp in zip(q_value_variables, q_value_input)]
                 q_value = torch.min(q_values[0], q_values[1])
                 q_values_list.append(q_value.unsqueeze(0))
                 rewards = torch.cat(rewards, 0)
                 q_values_list = torch.cat(q_values_list, 0)
-                # estimate the final Q-value
-                #old_estimated_objective = estimated_objective + (self.reward_discount ** self.n_inf_iter['action']) * q_value.view(-1, self.n_planning_samples, 1)
                 # TODO: lambda as an hyper parameter
                 LAMBDA = 0.75
                 estimated_objective = retrace(q_values_list, rewards, None, discount=self.reward_discount, l=LAMBDA)
@@ -177,7 +170,7 @@ class ModelBasedAgent(Agent):
         Generate the conditional likelihood for the reward.
         """
         likelihood_input = self.reward_likelihood_model(observation=observation, action=action)
-        self.reward_variable.generate(likelihood_input)
+        self.reward_variable.generate(likelihood_input, action=action)
 
     def generate_observation(self, observation, action, **kwargs):
         """

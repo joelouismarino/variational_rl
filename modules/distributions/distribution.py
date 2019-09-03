@@ -10,11 +10,14 @@ class Distribution(nn.Module):
     Wrapper around PyTorch distributions.
     """
     def __init__(self, dist_type, n_variables, n_input, constant=False,
-                 constant_scale=False, residual_loc=False, update='direct'):
+                 constant_scale=False, residual_loc=False, manual_loc=False,
+                 manual_loc_alpha=0., update='direct'):
         super(Distribution, self).__init__()
         self.n_variables = n_variables
         self.const_scale = constant_scale
         self.residual_loc = residual_loc
+        self.manual_loc = manual_loc
+        self.manual_loc_alpha = manual_loc_alpha
         self.update = update
         self.dist = None
         self.planning_dist = None
@@ -39,7 +42,7 @@ class Distribution(nn.Module):
         # models, initial_params, and update gates
         param_names = ['logits'] if dist_type in ['Categorical', 'Bernoulli'] else self.dist_type.arg_constraints.keys()
         if 'scale' in param_names:
-            self._log_scale_lim = [-20, 2]
+            self._log_scale_lim = [-15, 0]
             if self.const_scale:
                 self.log_scale = nn.Parameter(torch.ones(1, self.n_variables))
                 param_names = ['loc']
@@ -48,6 +51,7 @@ class Distribution(nn.Module):
 
         self.initial_params = nn.ParameterDict({name: None for name in param_names})
         for param in self.initial_params:
+            req_grad = False if constant else True
             constraint = self.dist_type.arg_constraints[param]
             if type(constraint) == constraints.greater_than and constraint.lower_bound == 0:
                 self.initial_params[param] = nn.Parameter(torch.ones(1, n_variables))
@@ -57,11 +61,12 @@ class Distribution(nn.Module):
                 self.initial_params[param] = nn.Parameter(torch.ones(1, n_variables), requires_grad=False)
             else:
                 self.initial_params[param] = nn.Parameter(torch.zeros(1, n_variables))
+            self.initial_params[param].requires_grad_(req_grad)
 
         if self.update != 'direct':
             self.gates = nn.ModuleDict({name: None for name in param_names})
 
-    def step(self, input=None):
+    def step(self, input=None, **kwargs):
         """
         Update the distribution parameters by applying the models to the input.
 
@@ -84,6 +89,11 @@ class Distribution(nn.Module):
                         param = torch.log(param)
                     gate = self.gates[param_name](input)
                     param = gate * param + (1. - gate) * param_update
+
+                if param_name == 'loc' and self.manual_loc:
+                    # manually include action norm in reward mean estimate (MuJoCo)
+                    action_norm = kwargs['action'].norm(dim=1, keepdim=True)
+                    param = param - self.manual_loc_alpha * action_norm
 
                 if param_name == 'loc' and self.residual_loc:
                     # residual estimation of location parameter

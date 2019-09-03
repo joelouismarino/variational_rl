@@ -16,16 +16,20 @@ class ObservedVariable(nn.Module):
         constant_scale (bool): whether to use a constant scale
         residual_loc (bool): whether to use a residual mapping for loc parameter
     """
-    def __init__(self, likelihood_dist, n_variables, n_input, constant_scale, residual_loc):
+    def __init__(self, likelihood_dist, n_variables, n_input, constant_scale,
+                 residual_loc, manual_loc, manual_loc_alpha):
         super(ObservedVariable, self).__init__()
         self.cond_likelihood = Distribution(likelihood_dist, n_variables, n_input,
-                                            constant_scale=constant_scale, residual_loc=residual_loc)
+                                            constant_scale=constant_scale,
+                                            residual_loc=residual_loc,
+                                            manual_loc=manual_loc,
+                                            manual_loc_alpha=manual_loc_alpha)
         self.n_variables = n_variables
         self.planning = False
         self._n_planning_samples = 1
         self._batch_size = 1
 
-    def generate(self, input):
+    def generate(self, input, **kwargs):
         """
         Generate the conditional likelihood distribution from the input.
 
@@ -33,7 +37,7 @@ class ObservedVariable(nn.Module):
             input (torch.Tensor): input to the final linear layers to the
                                   distribution parameters
         """
-        self.cond_likelihood.step(input)
+        self.cond_likelihood.step(input, **kwargs)
 
     def sample(self):
         """
