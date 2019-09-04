@@ -44,7 +44,7 @@ def get_mujoco_config(env):
     # if agent_args['misc_args']['inference_type']['action'] == 'iterative':
     # planning configuration
     agent_args['misc_args']['n_planning_samples'] = 200
-    agent_args['misc_args']['max_rollout_length'] = 5
+    agent_args['misc_args']['max_rollout_length'] = 0
 
     observation_size = np.prod(env.observation_space.shape)
     agent_args['misc_args']['observation_size'] = observation_size

@@ -5,7 +5,7 @@ from .agent import Agent
 from modules.models import get_model
 from modules.variables import get_variable
 from misc import clear_gradients
-from misc import retrace
+from misc.retrace import retrace
 import copy
 
 
@@ -98,7 +98,7 @@ class ModelBasedAgent(Agent):
                 self.observation_variable.cond_likelihood.set_prev_obs(obs)
                 # estimated_objective = estimated_objective + q_value.view(-1, self.n_planning_samples, 1)
                 # roll out the model
-                rewards = []
+                rewards_list = []
                 q_values_list = []
                 for rollout_iter in range(self.rollout_length):
                     # generate state and reward
@@ -106,12 +106,12 @@ class ModelBasedAgent(Agent):
                     self.generate_reward(obs, act)
                     # step the action
                     reward = self.reward_variable.sample()
-                    rewards.append(reward.unsqueeze(0))
+                    rewards_list.append(reward)
                     # estimate the Q-value
                     q_value_input = [model(observation=obs, action=act) for model in q_value_models]
                     q_values = [variable(inp) for variable, inp in zip(q_value_variables, q_value_input)]
                     q_value = torch.min(q_values[0], q_values[1])
-                    q_values_list.append(q_value.unsqueeze(0))
+                    q_values_list.append(q_value)
 
                     obs = self.observation_variable.sample()
                     self.step_action(obs)
@@ -124,12 +124,13 @@ class ModelBasedAgent(Agent):
                 q_value_input = [model(observation=obs, action=act) for model in q_value_models]
                 q_values = [variable(inp) for variable, inp in zip(q_value_variables, q_value_input)]
                 q_value = torch.min(q_values[0], q_values[1])
-                q_values_list.append(q_value.unsqueeze(0))
-                rewards = torch.cat(rewards, 0)
-                q_values_list = torch.cat(q_values_list, 0)
+                q_values_list.append(q_value)
+                total_rewards = torch.stack(rewards_list) if len(rewards_list) > 0 else None
+                total_q_values = torch.stack(q_values_list)
                 # TODO: lambda as an hyper parameter
                 LAMBDA = 0.75
-                estimated_objective = retrace(q_values_list, rewards, None, discount=self.reward_discount, l=LAMBDA)
+                retrace_estimate = retrace(total_q_values, total_rewards, None, discount=self.reward_discount, l=LAMBDA)
+                estimated_objective = retrace_estimate.view(-1, self.n_planning_samples, 1)
 
                 # estimate and apply the gradients
                 objective = - estimated_objective
