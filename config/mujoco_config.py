@@ -35,7 +35,7 @@ def get_mujoco_config(env):
                                'normalize_returns': False,
                                'normalize_advantages': False,
                                'normalize_observations': False,
-                               'v_trace': dict(l=0.75, iw_clip=1.)}
+                               'retrace_lambda': 0.75
 
     if agent_args['agent_type'] == 'generative':
         agent_args['misc_args']['marginal_factor'] = 0.01

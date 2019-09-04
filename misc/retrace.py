@@ -12,8 +12,6 @@ def retrace(q_values, rewards, importance_weights=None, discount=0.9, l=0.9):
     if importance_weights is None:
         # On-policy
         importance_weights = torch.ones_like(q_values)
-    # else:
-    #     import ipdb; ipdb.set_trace()
 
     deltas = rewards + discount * q_values[1:] - q_values[:-1]
     importance_weights = l * torch.clamp(importance_weights, 0, 1)[:-2]

@@ -298,21 +298,12 @@ class Collector:
         dones = torch.stack(self.dones)
         valid = torch.stack(self.valid)
         rewards = -torch.stack(self.objectives['optimality'])[1:]
-        # new_action_log_probs = torch.stack(self.new_action_log_probs)
         action_kl = torch.stack(self.objectives['action'])
-        # alpha = self.agent.alpha['action']
-        # target_values = torch.stack(self.target_q_values) - alpha * new_action_log_probs
         future_q = torch.stack(self.target_q_values) - action_kl
-        future_q = future_q * valid
-        # TODO: should be an hyper-parameter
-        LAMBDA = 0.
-        #target_values = torch.stack(self.target_q_values) - action_kl
-        #old_q_targets = self.agent.reward_scale * rewards + self.agent.reward_discount * target_values[1:] * valid[1:] * (1. - dones[1:])
-        #print(old_q_targets)
+        future_q = future_q * valid * (1. - dones)
         rewards *= self.agent.reward_scale
         importance_weights = torch.stack(self.importance_weights['action'])
-        q_targets = retrace(future_q, rewards, importance_weights, discount=self.agent.reward_discount, l=LAMBDA)
-        #q_targets = self.agent.reward_scale * rewards + self.agent.reward_discount * target_values[1:] * valid[1:] * (1. - dones[1:])
+        q_targets = retrace(future_q, rewards, importance_weights, discount=self.agent.reward_discount, l=self.agent.retrace_lambda)
         return q_targets.detach()
 
     def evaluate_q_loss(self):
