@@ -20,13 +20,13 @@ def get_mujoco_config(env):
     """
     agent_args = {}
 
-    agent_args['agent_type'] = 'model_based'
+    agent_args['agent_type'] = 'baseline'
 
     agent_args['misc_args'] = {'kl_scale': dict(state=1., action=1.),
                                'reward_scale': 1.,
                                'n_state_samples': 2,
-                               'n_inf_iter': dict(state=1, action=2),
-                               'inference_type': dict(state='direct', action='iterative'),
+                               'n_inf_iter': dict(state=1, action=1),
+                               'inference_type': dict(state='direct', action='direct'),
                                'kl_min': dict(state=0., action=0.),
                                'kl_min_anneal_rate': dict(state=1., action=1.),
                                'kl_factor': dict(state=1., action=1.),
@@ -35,7 +35,7 @@ def get_mujoco_config(env):
                                'normalize_returns': False,
                                'normalize_advantages': False,
                                'normalize_observations': False,
-                               'retrace_lambda': 0.75
+                               'retrace_lambda': 0.75}
 
     if agent_args['agent_type'] == 'generative':
         agent_args['misc_args']['marginal_factor'] = 0.01
@@ -44,7 +44,7 @@ def get_mujoco_config(env):
     # if agent_args['misc_args']['inference_type']['action'] == 'iterative':
     # planning configuration
     agent_args['misc_args']['n_planning_samples'] = 200
-    agent_args['misc_args']['max_rollout_length'] = 0
+    agent_args['misc_args']['rollout_length'] = 0
 
     observation_size = np.prod(env.observation_space.shape)
     agent_args['misc_args']['observation_size'] = observation_size
@@ -61,8 +61,8 @@ def get_mujoco_config(env):
     elif type(action_space) == spaces.Box:
         # continuous control
         if env.action_space.low.min() == -1 and env.action_space.high.max() == 1:
-            # action_prior_dist = 'Uniform'
-            action_prior_dist = 'TransformedTanh'
+            action_prior_dist = 'Uniform'
+            # action_prior_dist = 'TransformedTanh'
             action_approx_post_dist = 'TransformedTanh'
         else:
             action_prior_dist = 'Normal'

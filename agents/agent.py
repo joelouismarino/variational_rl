@@ -264,11 +264,12 @@ class Agent(nn.Module):
         else:
             act = self.action_variable.sample()
             self._prev_action = act.new(act.shape).zero_()
-        if prev_obs is not None:
-            self._prev_obs = prev_obs.to(self.device)
-        else:
-            obs = self.observation_variable.sample()
-            self._prev_obs = obs.new(obs.shape).zero_()
+        if self.observation_variable is not None:
+            if prev_obs is not None:
+                self._prev_obs = prev_obs.to(self.device)
+            else:
+                obs = self.observation_variable.sample()
+                self._prev_obs = obs.new(obs.shape).zero_()
 
     @property
     def device(self):

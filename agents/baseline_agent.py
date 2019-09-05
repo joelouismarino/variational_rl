@@ -11,8 +11,7 @@ class BaselineAgent(Agent):
     Baseline Variational RL Agent
     """
     def __init__(self, action_variable_args, action_prior_args,
-                 action_inference_args, value_model_args, q_value_model_args,
-                 misc_args):
+                 action_inference_args, q_value_model_args, misc_args):
         super(BaselineAgent, self).__init__(misc_args)
 
         # models

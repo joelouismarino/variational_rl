@@ -46,7 +46,7 @@ class ModelBasedAgent(Agent):
             self.target_q_value_variables = nn.ModuleList([get_variable(type='value', args={'n_input': self.q_value_models[0].n_out}) for _ in range(2)])
 
         # if self.action_variable.approx_post.update == 'iterative':
-        self.rollout_length = misc_args['max_rollout_length']
+        self.rollout_length = misc_args['rollout_length']
         self.n_planning_samples = misc_args['n_planning_samples']
         self.n_inf_iter = {'action': misc_args['n_inf_iter']['action']}
 
@@ -120,7 +120,7 @@ class ModelBasedAgent(Agent):
                 q_values = [variable(inp) for variable, inp in zip(q_value_variables, q_value_input)]
                 q_value = torch.min(q_values[0], q_values[1])
                 q_values_list.append(q_value)
-                
+
                 # add retrace Q-value estimate to the objective
                 total_rewards = torch.stack(rewards_list) if len(rewards_list) > 0 else None
                 total_q_values = torch.stack(q_values_list)

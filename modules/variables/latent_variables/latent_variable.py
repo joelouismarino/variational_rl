@@ -79,8 +79,8 @@ class LatentVariable(nn.Module):
         Initialize the approximate posterior from the prior.
         """
         if self.approx_post is not None:
-            # if self.approx_post.update != 'direct':
-            if True:
+            if self.approx_post.update != 'direct':
+            # if True:
                 parameters = {}
                 prior_params = self.prior.get_dist_params()
                 for param_name, param in prior_params.items():
