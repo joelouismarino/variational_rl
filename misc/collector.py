@@ -82,17 +82,12 @@ class Collector:
         else:
             # continuous
             kl = kl.sum(dim=1, keepdim=True)
-            obj_kl = obj_kl.sum(dim=1, keepdim=True)
+            # obj_kl = obj_kl.sum(dim=1, keepdim=True)
             for dist_name in ['prior', 'approx_post']:
                 dist = getattr(variable, dist_name)
                 for param_name in dist.initial_params:
                     param = getattr(dist.dist, param_name)
                     self.distributions[name][dist_name][param_name].append(param.detach())
-            # self.distributions[name]['prior']['loc'].append(variable.prior.dist.loc.detach())
-            # if hasattr(variable.prior.dist, 'scale'):
-            #     self.distributions[name]['prior']['scale'].append(variable.prior.dist.scale.detach())
-            # self.distributions[name]['approx_post']['loc'].append(variable.approx_post.dist.loc.detach())
-            # self.distributions[name]['approx_post']['scale'].append(variable.approx_post.dist.scale.detach())
         if self.agent._mode == 'train':
             self.objectives[name].append(self.agent.alpha[name] * obj_kl * (1 - done) * valid)
         self.metrics[name]['kl'].append((kl * (1 - done) * valid).detach())

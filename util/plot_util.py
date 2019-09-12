@@ -64,7 +64,10 @@ class Plotter:
                     mean = mean.squeeze()
                     std = std.squeeze()
                     x, plus, minus = mean, mean + std, mean - std
-                    if key == 'action' and self.agent_args['action_variable_args']['approx_post_dist'] == 'TransformedTanh':
+                    if key == 'action' and label == 'approx_post' and self.agent_args['action_variable_args']['approx_post_dist'] == 'TransformedTanh':
+                        # Tanh Normal distribution
+                        x, plus, minus = np.tanh(x), np.tanh(plus), np.tanh(minus)
+                    if key == 'action' and label == 'prior' and self.agent_args['action_variable_args']['prior_dist'] == 'TransformedTanh':
                         # Tanh Normal distribution
                         x, plus, minus = np.tanh(x), np.tanh(plus), np.tanh(minus)
                 elif 'low' in statistics:

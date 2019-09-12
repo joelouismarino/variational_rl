@@ -56,15 +56,14 @@ class ModelBasedAgent(Agent):
         """
         self.action_variable.generative_mode()
         if self.action_prior_model is not None:
-            if not self.action_variable.reinitialized:
-                if self._prev_action is not None:
-                    action = self._prev_action
-                else:
-                    action = self.action_variable.sample()
-                if self.obs_normalizer:
-                    observation = self.obs_normalizer(observation, update=self._mode=='eval')
-                prior_input = self.action_prior_model(observation=observation, action=action)
-                self.action_variable.step(prior_input)
+            if self._prev_action is not None:
+                action = self._prev_action
+            else:
+                action = self.action_variable.sample()
+            if self.obs_normalizer:
+                observation = self.obs_normalizer(observation, update=self._mode=='eval')
+            prior_input = self.action_prior_model(observation=observation, action=action)
+            self.action_variable.step(prior_input)
 
     def action_inference(self, observation, action=None,**kwargs):
         """
