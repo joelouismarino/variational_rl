@@ -43,5 +43,5 @@ class AddBatchDim(gym.RewardWrapper):
         gym.RewardWrapper.__init__(self, env)
 
     def reward(self, reward):
-        reward = reward.reshape(1)
+        reward = np.array(reward).reshape(1)
         return np.expand_dims(reward, 0)

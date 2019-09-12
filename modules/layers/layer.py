@@ -16,12 +16,13 @@ class Layer(nn.Module):
         self.bias_init = 0.
 
     def initialize(self):
-        if type(self.linear) == nn.Module:
-            # nn.init.xavier_normal_(self.linear.weight, gain=self.init_gain)
+        if hasattr(self.linear, 'forward'):
+            nn.init.xavier_normal_(self.linear.weight, gain=self.init_gain)
             # nn.init.kaiming_uniform_(self.linear.weight, gain=self.init_gain)
-            fanin_init(self.linear.weight)
+            # fanin_init(self.linear.weight)
             nn.init.constant_(self.linear.bias, self.bias_init)
-        if type(self.batch_norm) == nn.Module:
+            # pass
+        if hasattr(self.batch_norm, 'forward'):
             nn.init.normal_(self.batch_norm.weight, 1, 0.02)
             nn.init.constant_(self.batch_norm.bias, 0.)
 

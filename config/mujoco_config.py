@@ -20,13 +20,13 @@ def get_mujoco_config(env):
     """
     agent_args = {}
 
-    agent_args['agent_type'] = 'baseline'
+    agent_args['agent_type'] = 'model_based'
 
     agent_args['misc_args'] = {'kl_scale': dict(state=1., action=1.),
                                'reward_scale': 1.,
                                'n_state_samples': 2,
-                               'n_inf_iter': dict(state=1, action=1),
-                               'inference_type': dict(state='direct', action='direct'),
+                               'n_inf_iter': dict(state=1, action=2),
+                               'inference_type': dict(state='direct', action='iterative'),
                                'kl_min': dict(state=0., action=0.),
                                'kl_min_anneal_rate': dict(state=1., action=1.),
                                'kl_factor': dict(state=1., action=1.),
@@ -61,7 +61,8 @@ def get_mujoco_config(env):
     elif type(action_space) == spaces.Box:
         # continuous control
         if env.action_space.low.min() == -1 and env.action_space.high.max() == 1:
-            action_prior_dist = 'Uniform'
+            # action_prior_dist = 'Uniform'
+            action_prior_dist = 'Normal'
             # action_prior_dist = 'TransformedTanh'
             action_approx_post_dist = 'TransformedTanh'
         else:
@@ -75,7 +76,7 @@ def get_mujoco_config(env):
     if agent_args['agent_type'] == 'baseline':
         # action
         agent_args['action_variable_args'] = {'type': 'fully_connected',
-                                              'prior_dist': action_prior_dist,
+                                              'prior_dist': 'Uniform',
                                               'approx_post_dist': action_approx_post_dist,
                                               'n_variables': n_action_variables,
                                               'constant_prior': True,
@@ -153,9 +154,9 @@ def get_mujoco_config(env):
                                              'n_layers': 2,
                                              'inputs': ['observation', 'action'],
                                              'n_units': 256,
-                                             'connectivity': 'highway',
+                                             'connectivity': 'sequential',
                                              'batch_norm': False,
-                                             'non_linearity': 'elu'}
+                                             'non_linearity': 'relu'}
 
         # reward
         agent_args['reward_variable_args'] = {'type': 'fully_connected',
@@ -169,9 +170,9 @@ def get_mujoco_config(env):
                                                 'n_layers': 2,
                                                 'inputs': ['observation', 'action'],
                                                 'n_units': 256,
-                                                'connectivity': 'highway',
+                                                'connectivity': 'sequential',
                                                 'batch_norm': False,
-                                                'non_linearity': 'elu',
+                                                'non_linearity': 'relu',
                                                 'dropout': None}
 
         agent_args['q_value_model_args'] = {'type': 'fully_connected',

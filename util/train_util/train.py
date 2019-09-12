@@ -10,7 +10,7 @@ def train(agent, env, buffer, optimizer, plotter):
     timestep = 0
     n_episodes = 0
     n_initial_batches = 1
-    n_updates = 1000
+    n_updates = 50
     while timestep < 2e6:
         # collect an episode
         print(' -- Collecting Episode: ' + str(n_episodes + 1))

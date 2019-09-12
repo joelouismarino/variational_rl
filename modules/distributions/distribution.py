@@ -175,7 +175,7 @@ class Distribution(nn.Module):
 
         return sample
 
-    def log_prob(self, x):
+    def log_prob(self, x, non_planning=False):
         """
         Evaluate the log probability at x.
 
@@ -183,7 +183,7 @@ class Distribution(nn.Module):
             x (torch.Tensor): the point of evaluation [batch_size * n_x_samples, n_variables]
         """
         # get the appropriate distribution
-        d = self.planning_dist if self.planning else self.dist
+        d = self.planning_dist if self.planning and not non_planning else self.dist
         n_x_samples = int(x.shape[0] / self._batch_size)
         n_d_samples = int(d.batch_shape[0] / self._batch_size)
         if n_x_samples == 1:
@@ -217,6 +217,8 @@ class Distribution(nn.Module):
             dist_params = {k: v.repeat(batch_size, 1) for k, v in self.initial_params.items()}
             if self.const_scale:
                 dist_params['scale'] = self.log_scale.repeat(batch_size, 1).exp()
+            for _, v in dist_params.items():
+                v.retain_grad()
         # initialize the distribution
         self.dist = self.dist_type(**dist_params)
         if self.dist_type == getattr(torch.distributions, 'Categorical'):
@@ -243,7 +245,7 @@ class Distribution(nn.Module):
             else:
                 self._planning_prev_obs = prev_obs
 
-    def planning_mode(self, dist_params=None):
+    def planning_mode(self, dist_type=None, dist_params=None):
         """
         Put the distribution in planning mode. Initialize the planning dist.
 
@@ -253,8 +255,8 @@ class Distribution(nn.Module):
         self.planning = True
         self._planning_sample = None
         self.planning_dist = None
-        if dist_params is not None:
-            self.planning_dist = self.dist_type(**dist_params)
+        if dist_type is not None:
+            self.planning_dist = dist_type(**dist_params)
 
     def acting_mode(self):
         """

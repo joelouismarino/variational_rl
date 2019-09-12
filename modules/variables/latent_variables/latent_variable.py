@@ -79,14 +79,19 @@ class LatentVariable(nn.Module):
         Initialize the approximate posterior from the prior.
         """
         if self.approx_post is not None:
-            if self.approx_post.update != 'direct':
-            # if True:
+            # if self.approx_post.update != 'direct':
+            if True:
                 parameters = {}
-                prior_params = self.prior.get_dist_params()
-                for param_name, param in prior_params.items():
-                    parameters[param_name] = param.detach().clone().requires_grad_()
-                self.approx_post.reset(batch_size=self.prior._batch_size,
-                                       dist_params=parameters)
+                if self.approx_post.dist_type == self.prior.dist_type:
+                    # initialize from the prior
+                    prior_params = self.prior.get_dist_params()
+                    for param_name, param in prior_params.items():
+                        parameters[param_name] = param.detach().clone().requires_grad_()
+                    self.approx_post.reset(batch_size=self.prior._batch_size,
+                                           dist_params=parameters)
+                else:
+                    #initialize from the initial parameters
+                    self.approx_post.reset(batch_size=self.prior._batch_size)
             else:
                 self.approx_post.reset(batch_size=self.prior._batch_size)
 
@@ -101,7 +106,7 @@ class LatentVariable(nn.Module):
         def _numerical_approx():
             # numerical approximation
             sample = self.approx_post.sample()
-            return self.approx_post.log_prob(sample) - self.prior.log_prob(sample)
+            return self.approx_post.log_prob(sample, non_planning=True) - self.prior.log_prob(sample, non_planning=True)
 
         if self.approx_post is not None:
             if analytical:
@@ -179,7 +184,7 @@ class LatentVariable(nn.Module):
         for param_name, param in parameters.items():
             param = param.requires_grad_()
             parameters[param_name] = param.repeat(n_planning_samples, 1)
-        self.prior.planning_mode(parameters)
+        self.prior.planning_mode(self.approx_post.dist_type, parameters)
 
     def acting_mode(self):
         self.planning = False

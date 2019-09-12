@@ -54,18 +54,29 @@ class Plotter:
                 probs = statistics['probs']
                 probs = probs.cpu().numpy()
                 plt.plot(probs, label=label, color=color)
-            elif len(statistics) == 2:  # Normal distribution
-                mean = statistics['loc']
-                std = statistics['scale']
-                mean = mean[:, i].cpu().numpy()
-                std = std[:, i].cpu().numpy()
-                mean = mean.squeeze()
-                std = std.squeeze()
-                x, plus, minus = mean, mean + std, mean - std
-                if key == 'action' and self.agent_args['action_variable_args']['approx_post_dist'] == 'TransformedTanh':
-                    x, plus, minus = np.tanh(x), np.tanh(plus), np.tanh(minus)
+            elif len(statistics) == 2:
+                if 'loc' in statistics:
+                    # Normal distribution
+                    mean = statistics['loc']
+                    std = statistics['scale']
+                    mean = mean[:, i].cpu().numpy()
+                    std = std[:, i].cpu().numpy()
+                    mean = mean.squeeze()
+                    std = std.squeeze()
+                    x, plus, minus = mean, mean + std, mean - std
+                    if key == 'action' and self.agent_args['action_variable_args']['approx_post_dist'] == 'TransformedTanh':
+                        # Tanh Normal distribution
+                        x, plus, minus = np.tanh(x), np.tanh(plus), np.tanh(minus)
+                elif 'low' in statistics:
+                    # Uniform distribution
+                    low = statistics['low'][:, i].cpu().numpy()
+                    high = statistics['high'][:, i].cpu().numpy()
+                    x = low + (high - low) / 2
+                    plus, minus = x + high, x + low
+                else:
+                    raise NotImplementedError
                 plt.plot(x, label=label, color=color)
-                plt.fill_between(np.arange(len(mean)), plus, minus, color=color, alpha=0.2, label=label)
+                plt.fill_between(np.arange(len(x)), plus, minus, color=color, alpha=0.2, label=label)
             else:
                 NotImplementedError
             k += 1

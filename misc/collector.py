@@ -148,7 +148,7 @@ class Collector:
         self.episode['done'].append(done)
 
         if done:
-            if self.agent.observation_variable is not None:
+            if hasattr(self.agent, 'marginal_factor'):
                 self.agent.marginal_factor *= self.agent.marginal_factor_anneal_rate
                 self.agent.marginal_factor = min(self.agent.marginal_factor, 1.)
             self.agent.kl_min['state'] *= self.agent.kl_min_anneal_rate['state']
@@ -198,11 +198,12 @@ class Collector:
         self.metrics['new_q_value'].append(self.new_q_values[-1].detach())
 
     def _get_alpha_losses(self, valid, done):
-        new_action_log_probs = torch.stack(self.new_action_log_probs)
-        target_entropy = -self.agent.action_variable.n_variables
-        alpha_loss = - (self.agent.log_alpha['action'] * (self.new_action_log_probs[-1] + target_entropy).detach()) * valid * (1 - done)
-        # target_kl = 0.1
-        # alpha_loss = - (self.agent.log_alpha['action'] * (self.metrics['action']['kl'][-1] - target_kl).detach()) * valid * (1 - done)
+        # new_action_log_probs = torch.stack(self.new_action_log_probs)
+        # target_entropy = -self.agent.action_variable.n_variables
+        # alpha_loss = - (self.agent.log_alpha['action'] * (self.new_action_log_probs[-1] + target_entropy).detach()) * valid * (1 - done)
+        # target_kl = 3.386
+        target_kl = self.agent.action_variable.n_variables * (1. + float(np.log(2)))
+        alpha_loss = - (self.agent.log_alpha['action'] * (self.metrics['action']['kl'][-1] - target_kl).detach()) * valid * (1 - done)
         self.objectives['alpha_loss'].append(alpha_loss)
         self.metrics['alpha_loss'].append(alpha_loss.detach())
         self.metrics['alpha'].append(self.agent.alpha['action'])
@@ -299,11 +300,16 @@ class Collector:
         valid = torch.stack(self.valid)
         rewards = -torch.stack(self.objectives['optimality'])[1:]
         action_kl = torch.stack(self.objectives['action'])
+        # new_action_log_probs = torch.stack(self.new_action_log_probs)
+        # alpha = self.agent.alpha['action']
+        # target_values = torch.stack(self.target_q_values) - alpha * new_action_log_probs
         future_q = torch.stack(self.target_q_values) - action_kl
         future_q = future_q * valid * (1. - dones)
         rewards *= self.agent.reward_scale
         importance_weights = torch.stack(self.importance_weights['action'])
         q_targets = retrace(future_q, rewards, importance_weights, discount=self.agent.reward_discount, l=self.agent.retrace_lambda)
+        # target_values = torch.stack(self.target_q_values) - action_kl
+        # q_targets = self.agent.reward_scale * rewards + self.agent.reward_discount * target_values[1:] * valid[1:] * (1. - dones[1:])
         return q_targets.detach()
 
     def evaluate_q_loss(self):
@@ -371,8 +377,8 @@ class Collector:
             self.distributions['action'] = {'prior': {'probs': []},
                                             'approx_post': {'probs': []}}
         else:
-            self.distributions['action'] = {'prior': {'loc': [], 'scale': []},
-                                            'approx_post': {'loc': [], 'scale': []}}
+            self.distributions['action'] = {'prior': {param_name: [] for param_name in self.agent.action_variable.prior.initial_params},
+                                            'approx_post': {param_name: [] for param_name in self.agent.action_variable.approx_post.initial_params}}
 
         self.inference_improvement = {'action': []}
         self.log_probs = {'action': []}

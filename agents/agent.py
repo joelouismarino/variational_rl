@@ -127,17 +127,6 @@ class Agent(nn.Module):
         # generate the conditional likelihood for episode being done
         pass
 
-    # def estimate_value(self, done, observation, reward, **kwargs):
-    #     # estimate the value of the current state
-    #     state = self.state_variable.sample() if self.state_variable is not None else None
-    #     value_input = self.value_model(state=state, observation=observation, reward=reward)
-    #     value = self.value_variable(value_input)
-    #     self.collector.values.append(value)
-    #     target_value_input = self.target_value_model(state=state, observation=observation, reward=reward)
-    #     target_value = self.target_value_variable(target_value_input)
-    #     self.collector.target_values.append(target_value.detach())
-    #     return value
-
     def estimate_q_values(self, done, observation, reward, action, **kwargs):
         # estimate the value of the current state
         state = self.state_variable.sample() if self.state_variable is not None else None

@@ -1,5 +1,4 @@
 import gym
-from gym.envs.mujoco import HalfCheetahEnv
 from collections import defaultdict
 from .registration import register_env
 from .wrappers import action_wrappers, observation_wrappers, reward_wrappers
@@ -25,8 +24,7 @@ def create_env(env_name, seed=None):
     if env_name not in env_types:
         raise KeyError('Environment not found.')
     env_type = env_types[env_name]
-    # env = gym.make(env_name)
-    env = HalfCheetahEnv()
+    env = gym.make(env_name)
     env.seed(seed)
 
     # wrap the environment
