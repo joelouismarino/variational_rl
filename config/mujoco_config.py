@@ -2,17 +2,6 @@ import gym.spaces as spaces
 import numpy as np
 from .get_n_input import get_n_input
 
-# action_penalties = {'HalfCheetah-v2': 0.1,
-#                     'Hopper-v2': 1e-3,
-#                     'Ant-v2': 0.5,
-#                     'Humanoid-v2': 0.1,
-#                     'HumanoidStandup-v2': 0.1,
-#                     'Swimmer-v2': 1e-4,
-#                     'Reacher-v2': 1.,
-#                     'Walker2d-v2': 1e-3,
-#                     'InvertedPendulum-v2': 0.,
-#                     'InvertedDoublePendulum-v2': 0.}
-
 
 def get_mujoco_config(env):
     """
@@ -25,7 +14,7 @@ def get_mujoco_config(env):
     agent_args['misc_args'] = {'kl_scale': dict(state=1., action=1.),
                                'reward_scale': 1.,
                                'n_state_samples': 2,
-                               'n_inf_iter': dict(state=1, action=2),
+                               'n_inf_iter': dict(state=1, action=1),
                                'inference_type': dict(state='direct', action='iterative'),
                                'kl_min': dict(state=0., action=0.),
                                'kl_min_anneal_rate': dict(state=1., action=1.),
@@ -41,10 +30,10 @@ def get_mujoco_config(env):
         agent_args['misc_args']['marginal_factor'] = 0.01
         agent_args['misc_args']['marginal_factor_anneal_rate'] = 1.002
 
-    # if agent_args['misc_args']['inference_type']['action'] == 'iterative':
-    # planning configuration
-    agent_args['misc_args']['n_planning_samples'] = 200
-    agent_args['misc_args']['rollout_length'] = 0
+    if agent_args['agent_type'] in ['model_based', 'generative']:
+        # planning configuration
+        agent_args['misc_args']['n_planning_samples'] = 200
+        agent_args['misc_args']['rollout_length'] = 10
 
     observation_size = np.prod(env.observation_space.shape)
     agent_args['misc_args']['observation_size'] = observation_size
@@ -64,7 +53,8 @@ def get_mujoco_config(env):
             # action_prior_dist = 'Uniform'
             action_prior_dist = 'Normal'
             # action_prior_dist = 'TransformedTanh'
-            action_approx_post_dist = 'TransformedTanh'
+            action_approx_post_dist = 'Normal'
+            # action_approx_post_dist = 'TransformedTanh'
         else:
             action_prior_dist = 'Normal'
             action_approx_post_dist = 'Normal'
@@ -82,16 +72,17 @@ def get_mujoco_config(env):
                                               'constant_prior': True,
                                               'inference_type': 'direct'}
 
-        # agent_args['action_prior_args'] = {'type': 'fully_connected',
-        #                                    'n_layers': 2,
-        #                                    'inputs': ['observation'],
-        #                                    'n_units': 256,
-        #                                    'connectivity': 'sequential',
-        #                                    'batch_norm': False,
-        #                                    'non_linearity': 'relu',
-        #                                    'dropout': None}
-
-        agent_args['action_prior_args'] = None
+        if agent_args['action_variable_args']['constant_prior']:
+            agent_args['action_prior_args'] = None
+        else:
+            agent_args['action_prior_args'] = {'type': 'fully_connected',
+                                               'n_layers': 2,
+                                               'inputs': ['observation'],
+                                               'n_units': 256,
+                                               'connectivity': 'sequential',
+                                               'batch_norm': False,
+                                               'non_linearity': 'relu',
+                                               'dropout': None}
 
         agent_args['action_inference_args'] = {'type': 'fully_connected',
                                                'n_layers': 2,
@@ -120,27 +111,26 @@ def get_mujoco_config(env):
                                               'constant_prior': False,
                                               'inference_type': 'iterative'}
 
-        agent_args['action_prior_args'] = {'type': 'fully_connected',
-                                           'n_layers': 2,
-                                           'inputs': ['observation'],
-                                           'n_units': 256,
-                                           'connectivity': 'sequential',
-                                           'batch_norm': False,
-                                           'non_linearity': 'relu',
-                                           'dropout': None}
-
-        # agent_args['action_prior_args'] = None
+        if agent_args['action_variable_args']['constant_prior']:
+            agent_args['action_prior_args'] = None
+        else:
+            agent_args['action_prior_args'] = {'type': 'fully_connected',
+                                               'n_layers': 2,
+                                               'inputs': ['observation'],
+                                               'n_units': 64,
+                                               'connectivity': 'highway',
+                                               'batch_norm': False,
+                                               'non_linearity': 'elu',
+                                               'dropout': None}
 
         agent_args['action_inference_args'] = {'type': 'fully_connected',
                                                'n_layers': 2,
-                                               'inputs': ['observation', 'params', 'grads'],
-                                               'n_units': 256,
-                                               'connectivity': 'sequential',
+                                               'inputs': ['params', 'grads'],
+                                               'n_units': 64,
+                                               'connectivity': 'highway',
                                                'batch_norm': False,
-                                               'non_linearity': 'relu',
+                                               'non_linearity': 'elu',
                                                'dropout': None}
-
-        # agent_args['action_inference_args'] = None
 
         # observation (state)
         agent_args['observation_variable_args'] = {'type': 'fully_connected',

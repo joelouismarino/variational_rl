@@ -74,8 +74,8 @@ class Distribution(nn.Module):
             input (torch.Tensor, optional): the input to the linear layers to
                                             the distribution parameters
         """
+        parameters = {}
         if input is not None:
-            parameters = {}
             for param_name in self.models:
                 constraint = self.dist.arg_constraints[param_name]
 
@@ -115,14 +115,16 @@ class Distribution(nn.Module):
                 log_scale = self.log_scale.repeat(input.shape[0], 1)
                 scale = torch.exp(torch.clamp(log_scale, self._log_scale_lim[0], self._log_scale_lim[1]))
                 parameters['scale'] = scale
+        else:
+            parameters = self.initial_params
 
-            # create a new distribution with the parameters
-            if not self.planning:
-                self.dist = self.dist_type(**parameters)
-                self._sample = None
-            else:
-                self.planning_dist = self.dist_type(**parameters)
-                self._planning_sample = None
+        # create a new distribution with the parameters
+        if not self.planning:
+            self.dist = self.dist_type(**parameters)
+            self._sample = None
+        else:
+            self.planning_dist = self.dist_type(**parameters)
+            self._planning_sample = None
 
     def retain_grads(self):
         """

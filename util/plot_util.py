@@ -1,4 +1,7 @@
+import comet_ml
 from comet_ml import Experiment
+import os, io
+import torch
 import numpy as np
 import matplotlib
 matplotlib.use('Agg')
@@ -32,16 +35,21 @@ class Plotter:
     Args:
         exp_args (args.parse_args): arguments for the experiment
         agent_args (dict): arguments for the agent
+        agent (Agent): the agent
     """
-    def __init__(self, exp_args, agent_args):
+    def __init__(self, exp_args, agent_args, agent):
         self.experiment = Experiment(api_key='prsuXaz6RVyjfIWmbZwVjWMug',
                                      project_name='variational-rl',
                                      workspace="joelouismarino")
         self.exp_args = exp_args
         self.agent_args = agent_args
+        self.agent = agent
         self.experiment.disable_mp()
         self.experiment.log_parameters(get_arg_dict(exp_args))
         self.experiment.log_parameters(flatten_arg_dict(agent_args))
+        if self.exp_args.checkpoint_exp_key is not None:
+            self.load_checkpoint()
+        self.ckpt_iter = 1
 
     def _plot_ts(self, key, observations, statistics, label, color):
         dim_obs = min(observations.shape[1], 9)
@@ -86,6 +94,12 @@ class Plotter:
 
     def plot_episode(self, episode, step):
         self.experiment.log_metric('cumulative_reward', episode['reward'].sum(), step)
+
+        # checkpointing
+        if step >= self.ckpt_iter * self.exp_args.checkpoint_interval:
+            self.save_checkpoint(step)
+            self.ckpt_iter += 1
+
         def merge_legends():
             handles, labels = plt.gca().get_legend_handles_labels()
             newLabels, newHandles = [], []
@@ -108,11 +122,17 @@ class Plotter:
             plt.close()
 
     def log_results(self, results, timestep):
+        """
+        Log the results dictionary to Comet.
+        """
         for n, m in flatten(results).items():
             self.experiment.log_metric(n, m, timestep)
 
-    def checkpoint_model(self):
-        # checkpoint the model by getting the state dictionary for each component
+    def save_checkpoint(self, step):
+        """
+        Checkpoint the model by getting the state dictionary for each component.
+        """
+        print('Checkpointing the agent...')
         state_dict = {}
         variable_names = ['state_variable', 'action_variable',
                           'observation_variable', 'reward_variable',
@@ -129,7 +149,22 @@ class Plotter:
                      state_dict[attr] = {k: v.cpu() for k, v in sd.items()}
 
         # save the state dictionaries
-        ckpt_path = os.path.join('./ckpt_episode_'+str(self._episode) + '.ckpt')
+        ckpt_path = os.path.join('./ckpt_step_'+ str(step) + '.ckpt')
         torch.save(state_dict, ckpt_path)
         self.experiment.log_asset(ckpt_path)
         os.remove(ckpt_path)
+        print('Done.')
+
+    def load_checkpoint(self):
+        """
+        Loads a checkpoint from Comet.
+        """
+        assert self.exp_args.checkpoint_exp_key is not None, 'Checkpoint experiment key must be set.'
+        print('Loading checkpoint from ' + self.exp_args.checkpoint_exp_key + '...')
+        comet_api = comet_ml.API(rest_api_key='jHxSNRKAIOSSBP4TyRvGHfanF')
+        asset = comet_api.get_experiment_asset_list(self.exp_args.checkpoint_exp_key)[-1]
+        print('Checkpoint Name: ', asset['fileName'])
+        ckpt = comet_api.get_experiment_asset(self.exp_args.checkpoint_exp_key, asset['assetId'])
+        state_dict = torch.load(io.BytesIO(ckpt))
+        self.agent.load(state_dict)
+        print('Done.')

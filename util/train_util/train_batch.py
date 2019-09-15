@@ -1,5 +1,5 @@
 
-def train_batch(agent, data, optimizer):
+def train_batch(agent, data, optimizer, model_only=False):
     """
     Trains the agent on the data using the optimizer.
     """
@@ -17,7 +17,7 @@ def train_batch(agent, data, optimizer):
 
     for step in range(n_steps):
         agent.act(observation[step], reward[step], done[step], action[step], valid[step], log_prob[step])
-        optimizer.step()
+        optimizer.step(model_only=model_only)
     results = agent.evaluate()
-    optimizer.apply()
+    optimizer.apply(model_only=model_only)
     return results

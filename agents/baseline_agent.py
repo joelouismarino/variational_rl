@@ -14,6 +14,8 @@ class BaselineAgent(Agent):
                  action_inference_args, q_value_model_args, misc_args):
         super(BaselineAgent, self).__init__(misc_args)
 
+        self.type = 'baseline'
+
         # models
         self.action_prior_model = get_model(action_prior_args)
         self.action_inference_model = get_model(action_inference_args)
