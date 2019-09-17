@@ -52,8 +52,8 @@ def get_mujoco_config(env):
         # continuous control
         if env.action_space.low.min() == -1 and env.action_space.high.max() == 1:
             # action_prior_dist = 'Uniform'
-            # action_prior_dist = 'Normal'
-            action_prior_dist = 'TransformedTanh'
+            action_prior_dist = 'Normal'
+            # action_prior_dist = 'TransformedTanh'
             # action_approx_post_dist = 'Normal'
             action_approx_post_dist = 'TransformedTanh'
         else:
