@@ -1,8 +1,10 @@
 import torch
 import torch.nn as nn
+import copy
 import numpy as np
 from torch import optim
 from misc.retrace import retrace
+from modules.distributions import kl_divergence
 
 
 class Collector:
@@ -62,11 +64,8 @@ class Collector:
         # self.metrics[name]['mll'].append((-mll * (1 - done) * valid).detach())
         # self.metrics[name]['info_gain'].append((-info_gain * (1 - done) * valid).detach())
         if 'probs' in dir(variable.cond_likelihood.dist):
-            # self.distributions[name]['pred']['probs'].append(variable.cond_likelihood.dist.probs.detach())
             self.distributions[name]['recon']['probs'].append(variable.cond_likelihood.dist.probs.detach())
         else:
-            # self.distributions[name]['pred']['loc'].append(variable.cond_likelihood.dist.loc.detach())
-            # self.distributions[name]['pred']['scale'].append(variable.cond_likelihood.dist.scale.detach())
             self.distributions[name]['recon']['loc'].append(variable.cond_likelihood.dist.loc.detach())
             self.distributions[name]['recon']['scale'].append(variable.cond_likelihood.dist.scale.detach())
 
@@ -89,8 +88,29 @@ class Collector:
                     param = getattr(dist.dist, param_name)
                     self.distributions[name][dist_name][param_name].append(param.detach())
         if self.agent._mode == 'train':
-            self.objectives[name].append(self.agent.alpha[name] * obj_kl * (1 - done) * valid)
+            self.objectives[name].append(self.agent.alphas['pi'] * obj_kl * (1 - done) * valid)
         self.metrics[name]['kl'].append((kl * (1 - done) * valid).detach())
+
+        if name == 'action' and self.agent.action_prior_model is not None:
+            # decoupled updates on the prior from the previous prior distribution
+            # get the distribution parameters
+            target_variable = self.agent.target_action_variable
+            target_loc = self.agent.target_action_variable.prior.dist.loc
+            target_scale = self.agent.target_action_variable.prior.dist.scale
+            current_loc = self.agent.action_variable.prior.dist.loc
+            current_scale = self.agent.action_variable.prior.dist.scale
+            # evaluate the separate KLs for the loc and scale
+            batch_size = variable.prior._batch_size
+            variable.prior.reset(batch_size, dist_params={'loc': current_loc, 'scale': target_scale.detach()})
+            kl_loc = kl_divergence(target_variable.prior, variable.prior).sum(dim=1, keepdim=True)
+            variable.prior.reset(batch_size, dist_params={'loc': target_loc.detach(), 'scale': current_scale})
+            kl_scale = kl_divergence(target_variable.prior, variable.prior).sum(dim=1, keepdim=True)
+            # append the objectives and metrics
+            if self.agent._mode == 'train':
+                self.objectives[name + '_loc'].append(self.agent.alphas['loc'] * kl_loc * (1 - done) * valid)
+                self.objectives[name + '_scale'].append(self.agent.alphas['scale'] * kl_scale * (1 - done) * valid)
+            self.metrics[name]['kl_loc'].append((kl_loc * (1 - done) * valid).detach())
+            self.metrics[name]['kl_scale'].append((kl_loc * (1 - done) * valid).detach())
 
     def _collect_log_probs(self, action, log_prob, valid):
         action = self.agent._convert_action(action)
@@ -196,12 +216,27 @@ class Collector:
         # new_action_log_probs = torch.stack(self.new_action_log_probs)
         # target_entropy = -self.agent.action_variable.n_variables
         # alpha_loss = - (self.agent.log_alpha['action'] * (self.new_action_log_probs[-1] + target_entropy).detach()) * valid * (1 - done)
-        # target_kl = 3.386
-        target_kl = self.agent.action_variable.n_variables * (1. + float(np.log(2)))
-        alpha_loss = - (self.agent.log_alpha['action'] * (self.metrics['action']['kl'][-1] - target_kl).detach()) * valid * (1 - done)
-        self.objectives['alpha_loss'].append(alpha_loss)
-        self.metrics['alpha_loss'].append(alpha_loss.detach())
-        self.metrics['alpha'].append(self.agent.alpha['action'])
+        if self.agent.epsilons['pi'] is not None:
+            target_kl = self.agent.epsilons['pi']
+        else:
+            target_kl = self.agent.action_variable.n_variables * (1. + float(np.log(2)))
+        alpha_loss = - (self.agent.log_alphas['pi'] * (self.metrics['action']['kl'][-1] - target_kl).detach()) * valid * (1 - done)
+        self.objectives['alpha_loss_pi'].append(alpha_loss)
+        self.metrics['alpha_losses']['pi'].append(alpha_loss.detach())
+        self.metrics['alphas']['pi'].append(self.agent.alphas['pi'])
+
+        if self.agent.action_prior_model is not None:
+            target_loc_kl = self.agent.epsilons['loc']
+            alpha_loss_loc = - (self.agent.log_alphas['loc'] * (self.metrics['action']['kl_loc'][-1] - target_loc_kl).detach()) * valid * (1 - done)
+            self.objectives['alpha_loss_loc'].append(alpha_loss_loc)
+            self.metrics['alpha_losses']['loc'].append(alpha_loss_loc.detach())
+            self.metrics['alphas']['loc'].append(self.agent.alphas['loc'])
+
+            target_scale_kl = self.agent.epsilons['scale']
+            alpha_loss_scale = - (self.agent.log_alphas['scale'] * (self.metrics['action']['kl_scale'][-1] - target_scale_kl).detach()) * valid * (1 - done)
+            self.objectives['alpha_loss_scale'].append(alpha_loss_scale)
+            self.metrics['alpha_losses']['scale'].append(alpha_loss_scale.detach())
+            self.metrics['alphas']['scale'].append(self.agent.alphas['scale'])
 
     def get_episode(self):
         """
@@ -360,13 +395,26 @@ class Collector:
                         'action': [], 'log_prob': []}
 
         self.objectives = {'optimality': [], 'action': [], 'policy_loss': [],
-                           'alpha_loss': [], 'q_loss': []}
+                           'alpha_loss_pi': [], 'q_loss': []}
         self.metrics = {'optimality': {'cll': []},
                         'action': {'kl': []},
                         'policy_loss': [],
                         'new_q_value': [],
-                        'alpha_loss':[],
-                        'alpha': []}
+                        'alpha_losses':{'pi': []},
+                        'alphas': {'pi': []}}
+
+        if self.agent.action_prior_model is not None:
+            self.objectives['action_loc'] = []
+            self.objectives['action_scale'] = []
+            self.objectives['alpha_loss_loc'] = []
+            self.objectives['alpha_loss_scale'] = []
+            self.metrics['action']['kl_loc'] = []
+            self.metrics['action']['kl_scale'] = []
+            self.metrics['alpha_losses']['loc'] = []
+            self.metrics['alpha_losses']['scale'] = []
+            self.metrics['alphas']['loc'] = []
+            self.metrics['alphas']['scale'] = []
+
         self.distributions = {}
         if self.agent.action_variable.approx_post.dist_type == getattr(torch.distributions, 'Categorical'):
             self.distributions['action'] = {'prior': {'probs': []},

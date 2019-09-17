@@ -25,7 +25,7 @@ class Agent(nn.Module):
         self.action_inference_model = None
         self.q_value_models = None
         self.target_q_value_models = None
-        # self.value_model = None
+        self.target_action_prior_model = None
 
         # variables
         self.state_variable = None
@@ -33,12 +33,13 @@ class Agent(nn.Module):
         self.observation_variable = None
         self.reward_variable = None
         self.done_variable = None
-
-        # self.value_variable = None
         self.q_value_variables = None
         self.target_q_value_variables = None
+        self.target_action_variable = None
 
-        self.log_alpha = nn.ParameterDict({'action': nn.Parameter(torch.zeros(1))})
+        self.log_alphas = nn.ParameterDict({'pi': nn.Parameter(torch.zeros(1)),
+                                            'loc': nn.Parameter(torch.zeros(1)),
+                                            'scale': nn.Parameter(torch.zeros(1))})
 
         # miscellaneous
         self.reward_scale = misc_args['reward_scale']
@@ -53,6 +54,7 @@ class Agent(nn.Module):
         self.kl_factor_anneal_rate = {'state': misc_args['kl_factor_anneal_rate']['state'],
                                       'action': misc_args['kl_factor_anneal_rate']['action']}
         self.retrace_lambda = misc_args['retrace_lambda']
+        self.epsilons = misc_args['epsilons']
 
         # mode (either 'train' or 'eval')
         self._mode = 'train'
@@ -266,8 +268,8 @@ class Agent(nn.Module):
         return p[list(p.keys())[0]][0].device
 
     @property
-    def alpha(self):
-        return {name: self.log_alpha[name].exp().detach() for name in self.log_alpha}
+    def alphas(self):
+        return {name: self.log_alphas[name].exp().detach() for name in self.log_alphas}
 
     def train(self, *args):
         super(Agent, self).train(*args)
@@ -300,6 +302,11 @@ class Agent(nn.Module):
             param_dict['action_prior_model'].extend(list(self.action_prior_model.parameters()))
             param_dict['action_prior_model'].extend(list(self.action_variable.generative_parameters()))
 
+        if self.target_action_prior_model is not None:
+            param_dict['target_action_prior_model'] = nn.ParameterList()
+            param_dict['target_action_prior_model'].extend(list(self.target_action_prior_model.parameters()))
+            param_dict['target_action_prior_model'].extend(list(self.target_action_variable.generative_parameters()))
+
         if self.obs_likelihood_model is not None:
             param_dict['obs_likelihood_model'] = nn.ParameterList()
             param_dict['obs_likelihood_model'].extend(list(self.obs_likelihood_model.parameters()))
@@ -325,10 +332,10 @@ class Agent(nn.Module):
             param_dict['target_q_value_models'].extend(list(self.target_q_value_models.parameters()))
             param_dict['target_q_value_models'].extend(list(self.target_q_value_variables.parameters()))
 
-        if self.log_alpha is not None:
-            param_dict['log_alpha'] = nn.ParameterList()
-            for variable_name in self.log_alpha:
-                param_dict['log_alpha'].append(self.log_alpha[variable_name])
+        if self.log_alphas is not None:
+            param_dict['log_alphas'] = nn.ParameterList()
+            for name in self.log_alphas:
+                param_dict['log_alphas'].append(self.log_alphas[name])
 
         return param_dict
 

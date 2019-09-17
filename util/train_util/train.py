@@ -39,8 +39,8 @@ def train(agent, env, buffer, optimizer, plotter, args):
                     t_start = time.time()
                     batch = buffer.sample()
                     results = train_batch(agent, batch, optimizer, model_only=True)
-                    if update % 1000 == 0:
-                        plotter.log_results(results, update)
+                    # if update % 1000 == 0:
+                    #     plotter.log_results(results, update)
                     t_end = time.time()
                     print('Duration: ' + '{:.2f}'.format(t_end - t_start) + ' s.')
                 agent.train_model_only = False

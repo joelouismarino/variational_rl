@@ -136,11 +136,13 @@ class Plotter:
         state_dict = {}
         variable_names = ['state_variable', 'action_variable',
                           'observation_variable', 'reward_variable',
-                          'done_variable', 'value_variable']
+                          'done_variable', 'q_value_variables',
+                          'target_q_value_variables', 'log_alpha']
         model_names = ['state_prior_model', 'action_prior_model',
                        'obs_likelihood_model', 'reward_likelihood_model',
-                       'done_likelihood_model', 'value_model',
-                       'state_inference_model', 'action_inference_model']
+                       'done_likelihood_model', 'q_value_models',
+                       'state_inference_model', 'action_inference_model'
+                       'target_q_value_models']
 
         for attr in variable_names + model_names:
             if hasattr(self.agent, attr):
@@ -162,8 +164,11 @@ class Plotter:
         assert self.exp_args.checkpoint_exp_key is not None, 'Checkpoint experiment key must be set.'
         print('Loading checkpoint from ' + self.exp_args.checkpoint_exp_key + '...')
         comet_api = comet_ml.API(rest_api_key='jHxSNRKAIOSSBP4TyRvGHfanF')
-        asset = comet_api.get_experiment_asset_list(self.exp_args.checkpoint_exp_key)[-1]
-        print('Checkpoint Name: ', asset['fileName'])
+        asset_list = comet_api.get_experiment_asset_list(self.exp_args.checkpoint_exp_key)
+        # get most recent checkpoint
+        asset_times = [asset['createdAt'] for asset in asset_list]
+        asset = asset_list[asset_times.index(max(asset_times))]
+        print('Checkpoint Name:', asset['fileName'])
         ckpt = comet_api.get_experiment_asset(self.exp_args.checkpoint_exp_key, asset['assetId'])
         state_dict = torch.load(io.BytesIO(ckpt))
         self.agent.load(state_dict)

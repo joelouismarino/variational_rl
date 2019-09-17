@@ -67,9 +67,16 @@ class Optimizer(object):
             # exponential moving update of the action prior
             old_action_prior = copy.deepcopy(self.parameters['action_prior_model'])
 
+        if self.model.target_action_prior_model is not None and not model_only:
+            # copy over current action prior parameters to the target model
+            target_params = self.parameters['target_action_prior_model']
+            current_params = self.parameters['action_prior_model']
+            for target_param, current_param in zip(target_params, current_params):
+                target_param.data.copy_(current_param.data)
+
         for model_name, opt in self.opt.items():
             if 'target' in model_name:
-                # do not update the target value models
+                # do not update the target value models or target policy
                 continue
             elif model_name == 'action_inference_model' and self.model.action_variable.approx_post.update == 'iterative':
                 # we optimize the iterative inference model at each step

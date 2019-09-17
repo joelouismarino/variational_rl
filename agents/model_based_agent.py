@@ -22,12 +22,14 @@ class ModelBasedAgent(Agent):
         self.type = 'model_based'
 
         # models
-        self.action_prior_model = get_model(action_prior_args)
+        self.action_prior_model = get_model(copy.deepcopy(action_prior_args))
         self.action_inference_model = get_model(action_inference_args)
         self.reward_likelihood_model = get_model(reward_likelihood_args)
         self.obs_likelihood_model = get_model(obs_likelihood_args)
         self.q_value_models = nn.ModuleList([get_model(copy.deepcopy(q_value_model_args)) for _ in range(2)])
         self.target_q_value_models = nn.ModuleList([get_model(copy.deepcopy(q_value_model_args)) for _ in range(2)])
+        if self.decoupled_updates:
+            self.target_action_prior_model = get_model(copy.deepcopy(action_prior_args))
 
         # variables
         action_variable_args['n_input'] = [None, None]
@@ -35,7 +37,8 @@ class ModelBasedAgent(Agent):
             action_variable_args['n_input'][0] = self.action_prior_model.n_out
         if self.action_inference_model is not None:
            action_variable_args['n_input'][1] = self.action_inference_model.n_out
-        self.action_variable = get_variable(type='latent', args=action_variable_args)
+        self.action_variable = get_variable(type='latent', args=copy.deepcopy(action_variable_args))
+        self.target_action_variable = get_variable(type='latent', args=copy.deepcopy(action_variable_args))
 
         observation_variable_args['n_input'] = self.obs_likelihood_model.n_out
         self.observation_variable = get_variable(type='observed', args=observation_variable_args)
@@ -43,13 +46,13 @@ class ModelBasedAgent(Agent):
         reward_variable_args['n_input'] = self.reward_likelihood_model.n_out
         self.reward_variable = get_variable(type='observed', args=reward_variable_args)
 
-        if self.q_value_models is not None:
-            self.q_value_variables = nn.ModuleList([get_variable(type='value', args={'n_input': self.q_value_models[0].n_out}) for _ in range(2)])
-            self.target_q_value_variables = nn.ModuleList([get_variable(type='value', args={'n_input': self.q_value_models[0].n_out}) for _ in range(2)])
+        self.q_value_variables = nn.ModuleList([get_variable(type='value', args={'n_input': self.q_value_models[0].n_out}) for _ in range(2)])
+        self.target_q_value_variables = nn.ModuleList([get_variable(type='value', args={'n_input': self.q_value_models[0].n_out}) for _ in range(2)])
 
         self.rollout_length = misc_args['rollout_length']
         self.n_planning_samples = misc_args['n_planning_samples']
         self.n_inf_iter = {'action': misc_args['n_inf_iter']['action']}
+        self._planning = False
         self.train_model_only = False
 
     def step_action(self, observation, **kwargs):
@@ -66,6 +69,9 @@ class ModelBasedAgent(Agent):
                 observation = self.obs_normalizer(observation, update=self._mode=='eval')
             prior_input = self.action_prior_model(observation=observation, action=action)
             self.action_variable.step(prior_input)
+            if not self._planning:
+                prior_input = self.target_action_prior_model(observation=observation, action=action)
+                self.target_action_variable.step(prior_input)
 
     def action_inference(self, observation, action=None,**kwargs):
         """
@@ -93,7 +99,7 @@ class ModelBasedAgent(Agent):
                 # sample and evaluate log probs of initial actions
                 act = self.action_variable.sample()
                 obs = observation.repeat(self.n_planning_samples, 1)
-                kl = self.alpha['action'] * self.action_variable.kl_divergence().sum(dim=1, keepdim=True)
+                kl = self.alphas['pi'] * self.action_variable.kl_divergence().sum(dim=1, keepdim=True)
                 estimated_objective = - kl.view(-1, 1, 1).repeat(1, self.n_planning_samples, 1)
                 self.observation_variable.cond_likelihood.set_prev_obs(obs)
                 # roll out the model
@@ -115,7 +121,7 @@ class ModelBasedAgent(Agent):
                     self.step_action(obs)
                     act = self.action_variable.sample()
 
-                    estimated_objective = estimated_objective + (self.reward_discount ** rollout_iter) * reward.view(-1, self.n_planning_samples, 1)
+                    # estimated_objective = estimated_objective + (self.reward_discount ** rollout_iter) * reward.view(-1, self.n_planning_samples, 1)
 
                 # estimate the final Q-value
                 q_value_input = [model(observation=obs, action=act) for model in q_value_models]
@@ -126,8 +132,8 @@ class ModelBasedAgent(Agent):
                 # add retrace Q-value estimate to the objective
                 total_rewards = torch.stack(rewards_list) if len(rewards_list) > 0 else None
                 total_q_values = torch.stack(q_values_list)
-                # retrace_estimate = retrace(total_q_values, total_rewards, None, discount=self.reward_discount, l=self.retrace_lambda)
-                # estimated_objective = estimated_objective + retrace_estimate.view(-1, self.n_planning_samples, 1)
+                retrace_estimate = retrace(total_q_values, total_rewards, None, discount=self.reward_discount, l=self.retrace_lambda)
+                estimated_objective = estimated_objective + retrace_estimate.view(-1, self.n_planning_samples, 1)
 
                 # estimated_objective = estimated_objective + (self.reward_discount ** self.rollout_length) * q_value.view(-1, self.n_planning_samples, 1)
 
