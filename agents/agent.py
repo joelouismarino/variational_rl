@@ -26,6 +26,7 @@ class Agent(nn.Module):
         self.q_value_models = None
         self.target_q_value_models = None
         self.target_action_prior_model = None
+        self.target_action_inference_model = None
 
         # variables
         self.state_variable = None
@@ -55,6 +56,7 @@ class Agent(nn.Module):
                                       'action': misc_args['kl_factor_anneal_rate']['action']}
         self.retrace_lambda = misc_args['retrace_lambda']
         self.epsilons = misc_args['epsilons']
+        # self.prior_ent_factor = misc_args['prior_ent_factor']
 
         # mode (either 'train' or 'eval')
         self._mode = 'train'
@@ -291,6 +293,11 @@ class Agent(nn.Module):
             param_dict['action_inference_model'] = nn.ParameterList()
             param_dict['action_inference_model'].extend(list(self.action_inference_model.parameters()))
             param_dict['action_inference_model'].extend(list(self.action_variable.inference_parameters()))
+
+        if self.target_action_inference_model is not None:
+            param_dict['target_action_inference_model'] = nn.ParameterList()
+            param_dict['target_action_inference_model'].extend(list(self.target_action_inference_model.parameters()))
+            param_dict['target_action_inference_model'].extend(list(self.target_action_variable.inference_parameters()))
 
         if self.state_prior_model is not None:
             param_dict['state_prior_model'] = nn.ParameterList()

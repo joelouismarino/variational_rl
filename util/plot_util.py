@@ -50,6 +50,7 @@ class Plotter:
         if self.exp_args.checkpoint_exp_key is not None:
             self.load_checkpoint()
         self.ckpt_iter = 1
+        self.result_dict = None
 
     def _plot_ts(self, key, observations, statistics, label, color):
         dim_obs = min(observations.shape[1], 9)
@@ -121,12 +122,26 @@ class Plotter:
             self.experiment.log_figure(figure=plt, figure_name=k + '_ts_'+str(step))
             plt.close()
 
-    def log_results(self, results, timestep):
+    def log_results(self, results):
         """
-        Log the results dictionary to Comet.
+        Log the results dictionary.
         """
-        for n, m in flatten(results).items():
-            self.experiment.log_metric(n, m, timestep)
+        if self.result_dict is None:
+            self.result_dict = {}
+        for k, v in flatten_arg_dict(results).items():
+            if k not in self.result_dict:
+                self.result_dict[k] = [v]
+            else:
+                self.result_dict[k].append(v)
+
+    def plot_results(self, timestep):
+        """
+        Plot/log the results to Comet.
+        """
+        for k, v in self.result_dict.items():
+            avg_value = np.mean(v)
+            self.experiment.log_metric(k, avg_value, timestep)
+        self.result_dict = None
 
     def save_checkpoint(self, step):
         """
@@ -137,12 +152,12 @@ class Plotter:
         variable_names = ['state_variable', 'action_variable',
                           'observation_variable', 'reward_variable',
                           'done_variable', 'q_value_variables',
-                          'target_q_value_variables', 'log_alpha']
+                          'target_q_value_variables', 'log_alphas', 'target_action_variable']
         model_names = ['state_prior_model', 'action_prior_model',
                        'obs_likelihood_model', 'reward_likelihood_model',
                        'done_likelihood_model', 'q_value_models',
                        'state_inference_model', 'action_inference_model'
-                       'target_q_value_models']
+                       'target_q_value_models', 'target_action_prior_model']
 
         for attr in variable_names + model_names:
             if hasattr(self.agent, attr):

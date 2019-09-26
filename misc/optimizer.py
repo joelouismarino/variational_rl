@@ -63,20 +63,21 @@ class Optimizer(object):
         if self.norm_grad is not None:
             norm_gradients(grads, self.norm_grad)
 
-        if self.model.action_prior_model is not None and not model_only:
-            # exponential moving update of the action prior
-            old_action_prior = copy.deepcopy(self.parameters['action_prior_model'])
+        # if self.model.action_prior_model is not None and not model_only:
+        #     # exponential moving update of the action prior
+        #     old_action_prior = copy.deepcopy(self.parameters['action_prior_model'])
 
-        if self.model.target_action_prior_model is not None and not model_only:
-            # copy over current action prior parameters to the target model
-            target_params = self.parameters['target_action_prior_model']
-            current_params = self.parameters['action_prior_model']
-            for target_param, current_param in zip(target_params, current_params):
-                target_param.data.copy_(current_param.data)
+        # if self.model.target_action_inference_model is not None and not model_only:
+        #     # copy over current action prior parameters to the target model
+        #     target_params = self.parameters['target_action_inference_model']
+        #     current_params = self.parameters['action_inference_model']
+        #     for target_param, current_param in zip(target_params, current_params):
+        #         # target_param.data.copy_(current_param.data)
+        #         target_param.data.copy_(self.policy_ema_tau * current_param.data + (1. - self.policy_ema_tau) * target_param.data)
 
         for model_name, opt in self.opt.items():
             if 'target' in model_name:
-                # do not update the target value models or target policy
+                # do not update the target models with gradients
                 continue
             elif model_name == 'action_inference_model' and self.model.action_variable.approx_post.update == 'iterative':
                 # we optimize the iterative inference model at each step
@@ -89,11 +90,19 @@ class Optimizer(object):
                 continue
             opt.step()
 
-        if self.model.action_prior_model is not None and not model_only:
-            # exponential moving update of the action prior
-            current_action_prior = self.parameters['action_prior_model']
-            for old_param, current_param in zip(old_action_prior, current_action_prior):
-                current_param.data.copy_(self.policy_ema_tau * current_param.data + (1. - self.policy_ema_tau) * old_param.data)
+        # if self.model.action_prior_model is not None and not model_only:
+        #     # exponential moving update of the action prior
+        #     current_action_prior = self.parameters['action_prior_model']
+        #     for old_param, current_param in zip(old_action_prior, current_action_prior):
+        #         current_param.data.copy_(self.policy_ema_tau * current_param.data + (1. - self.policy_ema_tau) * old_param.data)
+
+        if self.model.target_action_prior_model is not None and not model_only:
+            # copy over current action prior parameters to the target model
+            target_params = self.parameters['target_action_prior_model']
+            current_params = self.parameters['action_prior_model']
+            for target_param, current_param in zip(target_params, current_params):
+                # target_param.data.copy_(current_param.data)
+                target_param.data.copy_(self.policy_ema_tau * current_param.data + (1. - self.policy_ema_tau) * target_param.data)
 
         if self.model.target_q_value_models is not None and not model_only:
             # exponential moving update of the target q value model parameters

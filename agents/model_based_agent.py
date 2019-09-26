@@ -28,8 +28,7 @@ class ModelBasedAgent(Agent):
         self.obs_likelihood_model = get_model(obs_likelihood_args)
         self.q_value_models = nn.ModuleList([get_model(copy.deepcopy(q_value_model_args)) for _ in range(2)])
         self.target_q_value_models = nn.ModuleList([get_model(copy.deepcopy(q_value_model_args)) for _ in range(2)])
-        if self.decoupled_updates:
-            self.target_action_prior_model = get_model(copy.deepcopy(action_prior_args))
+        self.target_action_prior_model = get_model(copy.deepcopy(action_prior_args))
 
         # variables
         action_variable_args['n_input'] = [None, None]

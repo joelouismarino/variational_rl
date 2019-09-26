@@ -56,8 +56,7 @@ def train(agent, env, buffer, optimizer, plotter, args):
                 results = train_batch(agent, batch, optimizer)
                 t_end = time.time()
                 print('Duration: ' + '{:.2f}'.format(t_end - t_start) + ' s.')
-                if update == 0:
-                    plotter.log_results(results, timestep)
-
+                plotter.log_results(results)
+            plotter.plot_results(timestep)
             # if on_policy:
             #     buffer.empty()
