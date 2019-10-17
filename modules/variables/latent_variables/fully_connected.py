@@ -7,14 +7,16 @@ INIT_W = 1e-3
 class FullyConnectedLatentVariable(LatentVariable):
 
     def __init__(self, prior_dist, approx_post_dist, n_variables, n_input,
-                 constant_prior=False, inference_type='direct', norm_samples=False):
+                 constant_prior=False, inference_type='direct', norm_samples=False,
+                 constant_prior_scale=False):
         super(FullyConnectedLatentVariable, self).__init__(prior_dist,
                                                            approx_post_dist,
                                                            n_variables,
                                                            n_input,
                                                            constant_prior,
                                                            inference_type,
-                                                           norm_samples)
+                                                           norm_samples,
+                                                           constant_prior_scale)
         # initialize the models
         if not constant_prior and n_input[0] is not None:
             for model_name in self.prior.models:

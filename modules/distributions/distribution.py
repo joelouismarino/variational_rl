@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.distributions.constraints as constraints
 from .delta import Delta
-from .transformed_tanh import TransformedTanh
+from .tanh_normal import TanhNormal
 
 
 class Distribution(nn.Module):
@@ -34,17 +34,18 @@ class Distribution(nn.Module):
         # distribution type
         if dist_type == 'Delta':
             self.dist_type = Delta
-        elif dist_type == 'TransformedTanh':
-            self.dist_type = TransformedTanh
+        elif dist_type == 'TanhNormal':
+            self.dist_type = TanhNormal
         else:
             self.dist_type = getattr(torch.distributions, dist_type)
 
         # models, initial_params, and update gates
         param_names = ['logits'] if dist_type in ['Categorical', 'Bernoulli'] else self.dist_type.arg_constraints.keys()
+        self.param_names = param_names
         if 'scale' in param_names:
-            self._log_scale_lim = [-15, 0]
+            self._log_scale_lim = [-15, 15]
             if self.const_scale:
-                self.log_scale = nn.Parameter(torch.ones(1, self.n_variables))
+                self.log_scale = nn.Parameter(torch.zeros(1, self.n_variables))
                 param_names = ['loc']
 
         self.models = nn.ModuleDict({name: None for name in param_names}) if not constant else None
@@ -140,7 +141,7 @@ class Distribution(nn.Module):
         Args:
             n_samples (int): number of samples to draw from the distribution
         """
-        if (self._sample is None and not self.planning) or (self._planning_sample is None and self.planning):
+        if (self._sample is None and not self.planning) or (n_samples != self._n_samples and not self.planning) or (self._planning_sample is None and self.planning):
             # get the appropriate distribution
             d = self.planning_dist if self.planning else self.dist
             # perform the sampling
@@ -171,9 +172,9 @@ class Distribution(nn.Module):
         if self._detach and not self.planning:
             sample = sample.detach()
 
-        if n_samples < self._n_samples:
-            sample = sample.view(self._n_samples, -1, self.n_variables)
-            sample = sample[:n_samples].view(-1, self.n_variables)
+        # if n_samples < self._n_samples:
+        #     sample = sample.view(self._n_samples, -1, self.n_variables)
+        #     sample = sample[:n_samples].view(-1, self.n_variables)
 
         return sample
 
@@ -289,7 +290,7 @@ class Distribution(nn.Module):
         Get the dictionary of distribution parameters.
         """
         parameters = {}
-        for parameter_name in self.initial_params:
+        for parameter_name in self.param_names:
             parameters[parameter_name] = getattr(self.dist, parameter_name)
         return parameters
 

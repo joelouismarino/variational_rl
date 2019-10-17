@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.distributions.constraints as constraints
 from modules.distributions import Distribution
+from modules.distributions import kl_divergence as kl
 
 
 class LatentVariable(nn.Module):
@@ -18,9 +19,10 @@ class LatentVariable(nn.Module):
         norm_samples (bool): whether to layer normalize samples
     """
     def __init__(self, prior_dist, approx_post_dist, n_variables, n_input,
-                 constant_prior=False, inference_type='direct', norm_samples=False):
+                 constant_prior=False, inference_type='direct', norm_samples=False,
+                 constant_prior_scale=False):
         super(LatentVariable, self).__init__()
-        self.prior = Distribution(prior_dist, n_variables, n_input[0], constant=constant_prior)
+        self.prior = Distribution(prior_dist, n_variables, n_input[0], constant=constant_prior, constant_scale=constant_prior_scale)
 
         self.approx_post = None
         if approx_post_dist is not None:
@@ -95,30 +97,15 @@ class LatentVariable(nn.Module):
             else:
                 self.approx_post.reset(batch_size=self.prior._batch_size)
 
-
-    def kl_divergence(self, analytical=True):
+    def kl_divergence(self, analytical=True, n_samples=1):
         """
         Evaluate / estimate the KL divergence.
 
         Args:
-            analytical (bool): whether to analytically evaluate the KL.
+            analytical (bool): whether to analytically evaluate the KL
+            n_samples (int): number of samples for non-analytical KL
         """
-        def _numerical_approx():
-            # numerical approximation
-            sample = self.approx_post.sample()
-            return self.approx_post.log_prob(sample, non_planning=True) - self.prior.log_prob(sample, non_planning=True)
-
-        if self.approx_post is not None:
-            if analytical:
-                try:
-                    return torch.distributions.kl_divergence(self.approx_post.dist, self.prior.dist)
-                except NotImplementedError:
-                    return _numerical_approx()
-            else:
-                return _numerical_approx()
-        else:
-            sample = self.prior.sample()
-            return sample.new_zeros(sample.shape)
+        return kl(self.approx_post, self.prior, analytical=analytical, n_samples=n_samples)
 
     def log_importance_weights(self):
         """

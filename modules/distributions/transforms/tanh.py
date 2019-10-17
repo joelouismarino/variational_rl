@@ -29,7 +29,10 @@ class TanhTransform(Transform):
         # y = y.clamp(min=-1 + finfo.eps, max=1. - finfo.eps)
         # return 0.5 * torch.log((1 + y) / (1 - y) + finfo.eps)
         if self._pretanh_value is not None:
-            return self._pretanh_value.view(y.shape)
+            try:
+                return self._pretanh_value.view(y.shape)
+            except:
+                pass
         return 0.5 * torch.log((1 + y) / (1 - y) + 1e-6)
 
     def log_abs_det_jacobian(self, x, y):

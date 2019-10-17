@@ -21,8 +21,10 @@ parser.add_argument('--n_total_steps', default=3e6, type=int, help='total number
 parser.add_argument('--optimizer', default='adam', type=str, help='optimizer')
 parser.add_argument('--grad_norm', default=None, help='gradient norm constraint')
 parser.add_argument('--weight_decay', default=0., type=float, help='L2 weight decay')
-parser.add_argument('--value_ema_tau', default=5e-3, type=float, help='value EMA update rate')
-parser.add_argument('--policy_ema_tau', default=1e-3, type=float, help='policy EMA update rate')
+parser.add_argument('--value_tau', default=5e-3, type=float, help='value update rate')
+parser.add_argument('--value_update', default='soft', type=str, help='value target update type; hard or soft')
+parser.add_argument('--policy_tau', default=1e-3, type=float, help='policy update rate')
+parser.add_argument('--policy_update', default='hard', type=str, help='policy prior target update type; hard or soft')
 parser.add_argument('--n_initial_batches', default=5, type=int, help='number of initial batches')
 parser.add_argument('--n_pretrain_updates', default=2500, type=int, help='number of pre-training iterations for the model')
 parser.add_argument('--update_factor', default=1, type=int, help='number of updates to perform per training step')
@@ -49,8 +51,10 @@ buffer = Buffer(batch_size=args.batch_size, seq_len=args.train_seq_len)
 # create the optimizer
 optimizer = Optimizer(agent, optimizer=args.optimizer, lr=args.lr,
                       norm_grad=args.grad_norm, weight_decay=args.weight_decay,
-                      value_ema_tau=args.value_ema_tau,
-                      policy_ema_tau=args.policy_ema_tau)
+                      value_tau=args.value_tau,
+                      policy_tau=args.policy_tau,
+                      value_update=args.value_update,
+                      policy_update=args.policy_update)
 
 # create the logger / plotter
 plotter = Plotter(args, agent_args, agent)

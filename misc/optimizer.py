@@ -7,10 +7,22 @@ import copy
 class Optimizer(object):
     """
     An optimizer object to handle updating the model parameters.
+
+    Args:
+        model (Agent):
+        lr (float or dict):
+        clip_grad (float, optional):
+        norm_grad (float, optional):
+        optimizer (str, optional):
+        weight_decay (float, optional):
+        value_tau (float, optional):
+        policy_tau (float, optional):
+        value_update (str, optional):
+        policy_update (str, optional):
     """
     def __init__(self, model, lr, clip_grad=None, norm_grad=None,
-                 optimizer='adam', weight_decay=0., value_ema_tau=5e-3,
-                 policy_ema_tau=5e-3):
+                 optimizer='adam', weight_decay=0., value_tau=5e-3,
+                 policy_tau=5e-3, value_update='soft', policy_update='hard'):
         self.model = model
         self.parameters = model.parameters()
         if type(lr) == float:
@@ -23,8 +35,11 @@ class Optimizer(object):
             raise NotImplementedError
         self.clip_grad = clip_grad
         self.norm_grad = norm_grad
-        self.value_ema_tau = value_ema_tau
-        self.policy_ema_tau = policy_ema_tau
+        self.value_tau = value_tau
+        self.policy_tau = policy_tau
+        self.value_update = value_update
+        self.policy_update = policy_update
+        self._n_steps = 0
 
     def step(self, model_only=False):
         # collect and apply inference parameter gradients if necessary
@@ -73,7 +88,7 @@ class Optimizer(object):
         #     current_params = self.parameters['action_inference_model']
         #     for target_param, current_param in zip(target_params, current_params):
         #         # target_param.data.copy_(current_param.data)
-        #         target_param.data.copy_(self.policy_ema_tau * current_param.data + (1. - self.policy_ema_tau) * target_param.data)
+        #         target_param.data.copy_(self.policy_tau * current_param.data + (1. - self.policy_tau) * target_param.data)
 
         for model_name, opt in self.opt.items():
             if 'target' in model_name:
@@ -94,22 +109,29 @@ class Optimizer(object):
         #     # exponential moving update of the action prior
         #     current_action_prior = self.parameters['action_prior_model']
         #     for old_param, current_param in zip(old_action_prior, current_action_prior):
-        #         current_param.data.copy_(self.policy_ema_tau * current_param.data + (1. - self.policy_ema_tau) * old_param.data)
+        #         current_param.data.copy_(self.policy_tau * current_param.data + (1. - self.policy_tau) * old_param.data)
 
         if self.model.target_action_prior_model is not None and not model_only:
             # copy over current action prior parameters to the target model
             target_params = self.parameters['target_action_prior_model']
             current_params = self.parameters['action_prior_model']
             for target_param, current_param in zip(target_params, current_params):
-                # target_param.data.copy_(current_param.data)
-                target_param.data.copy_(self.policy_ema_tau * current_param.data + (1. - self.policy_ema_tau) * target_param.data)
+                if self.policy_update == 'hard' and self._n_steps % int(1 / self.policy_tau) == 0:
+                    target_param.data.copy_(current_param.data)
+                else:
+                    target_param.data.copy_(self.policy_tau * current_param.data + (1. - self.policy_tau) * target_param.data)
 
         if self.model.target_q_value_models is not None and not model_only:
-            # exponential moving update of the target q value model parameters
+            # copy over current value parameters to the target model
             target_params = self.parameters['target_q_value_models']
             current_params = self.parameters['q_value_models']
             for target_param, current_param in zip(target_params, current_params):
-                target_param.data.copy_(self.value_ema_tau * current_param.data + (1. - self.value_ema_tau) * target_param.data)
+                if self.value_update == 'hard' and self._n_steps % int(1 / self.value_tau) == 0:
+                    target_param.data.copy_(current_param.data)
+                else:
+                    target_param.data.copy_(self.value_tau * current_param.data + (1. - self.value_tau) * target_param.data)
+
+        self._n_steps += 1
 
     def zero_grad(self):
         for _, opt in self.opt.items():

@@ -70,8 +70,7 @@ class Collector:
             self.distributions[name]['recon']['scale'].append(variable.cond_likelihood.dist.scale.detach())
 
     def _collect_kl(self, name, variable, valid, done):
-        # if name == 'action' and self.agent.action_prior_model is not None:
-        if name == 'action' and self.agent.target_action_inference_model is not None:
+        if name == 'action' and self.agent.target_action_prior_model is not None:
             # get the distribution parameters
             target_variable = self.agent.target_action_variable
             target_prior_loc = self.agent.target_action_variable.prior.dist.loc
@@ -92,8 +91,8 @@ class Collector:
             # kl_curr_loc = kl_divergence(variable.approx_post, target_variable.approx_post).sum(dim=1, keepdim=True)
             # kl_curr_loc_obj = kl_curr_loc
             variable.prior.reset(batch_size, dist_params={'loc': current_prior_loc, 'scale': target_prior_scale.detach()})
-            kl_prev_loc = kl_divergence(target_variable.prior, variable.prior).sum(dim=1, keepdim=True)
-            kl_curr_loc = kl_divergence(variable.approx_post, variable.prior)
+            kl_prev_loc = kl_divergence(target_variable.prior, variable.prior, n_samples=self.agent.n_action_samples).sum(dim=1, keepdim=True)
+            kl_curr_loc = kl_divergence(variable.approx_post, variable.prior, n_samples=self.agent.n_action_samples)
             kl_curr_loc_obj = torch.clamp(kl_curr_loc, min=self.agent.kl_min[name]).sum(dim=1, keepdim=True)
             kl_curr_loc = kl_curr_loc.sum(dim=1, keepdim=True)
             # scale KLs
@@ -101,33 +100,39 @@ class Collector:
             # kl_curr_scale = kl_divergence(variable.approx_post, target_variable.approx_post).sum(dim=1, keepdim=True)
             # kl_curr_scale_obj = kl_curr_scale
             variable.prior.reset(batch_size, dist_params={'loc': target_prior_loc.detach(), 'scale': current_prior_scale})
-            kl_prev_scale = kl_divergence(target_variable.prior, variable.prior).sum(dim=1, keepdim=True)
-            kl_curr_scale = kl_divergence(variable.approx_post, variable.prior)
+            kl_prev_scale = kl_divergence(target_variable.prior, variable.prior, n_samples=self.agent.n_action_samples).sum(dim=1, keepdim=True)
+            kl_curr_scale = kl_divergence(variable.approx_post, variable.prior, n_samples=self.agent.n_action_samples)
             kl_curr_scale_obj = torch.clamp(kl_curr_scale, min=self.agent.kl_min[name]).sum(dim=1, keepdim=True)
             kl_curr_scale = kl_curr_scale.sum(dim=1, keepdim=True)
 
-            # prior_ent = - variable.prior.dist.entropy().sum(dim=1, keepdim=True)
             # append the objectives and metrics
             if self.agent._mode == 'train':
                 self.objectives[name + '_prev_loc'].append(self.agent.alphas['loc'] * kl_prev_loc * (1 - done) * valid)
                 self.objectives[name + '_curr_loc'].append(self.agent.alphas['pi'] * kl_curr_loc_obj * (1 - done) * valid)
-                # self.objectives[name + '_curr_loc'].append(self.agent.alphas['loc'] * kl_curr_loc_obj * (1 - done) * valid)
                 self.objectives[name + '_prev_scale'].append(self.agent.alphas['scale'] * kl_prev_scale * (1 - done) * valid)
                 self.objectives[name + '_curr_scale'].append(self.agent.alphas['pi'] * kl_curr_scale_obj * (1 - done) * valid)
-                # self.objectives[name + '_curr_scale'].append(self.agent.alphas['scale'] * kl_curr_scale_obj * (1 - done) * valid)
-                # self.objectives[name + '_prior_ent'].append(self.agent.alphas['pi'] * self.agent.prior_ent_factor * prior_ent * (1 - done) * valid)
             self.metrics[name]['kl_prev_loc'].append((kl_prev_loc * (1 - done) * valid).detach())
             self.metrics[name]['kl_curr_loc'].append((kl_curr_loc * (1 - done) * valid).detach())
             self.metrics[name]['kl_prev_scale'].append((kl_prev_scale * (1 - done) * valid).detach())
             self.metrics[name]['kl_curr_scale'].append((kl_curr_scale * (1 - done) * valid).detach())
-            # self.metrics[name]['prior_ent'].append((prior_ent * (1 - done) * valid).detach())
+            self.metrics[name]['prior_prev_loc'].append(target_prior_loc.detach().mean(dim=1, keepdim=True))
+            self.metrics[name]['prior_prev_scale'].append(target_prior_scale.detach().mean(dim=1, keepdim=True))
+            self.metrics[name]['prior_curr_loc'].append(current_prior_loc.detach().mean(dim=1, keepdim=True))
+            self.metrics[name]['prior_curr_scale'].append(current_prior_scale.detach().mean(dim=1, keepdim=True))
+            self.metrics[name]['approx_post_loc'].append(current_post_loc.detach().mean(dim=1, keepdim=True))
+            self.metrics[name]['approx_post_scale'].append(current_post_scale.detach().mean(dim=1, keepdim=True))
 
             # reset the prior with detached parameters and approx. post. with
             # non-detached parameters to evaluate KL for approx. post.
             variable.prior.reset(batch_size, dist_params={'loc': current_prior_loc.detach(), 'scale': current_prior_scale.detach()})
             variable.approx_post.reset(batch_size, dist_params={'loc': current_post_loc, 'scale': current_post_scale})
+        else:
+            current_post_loc = self.agent.action_variable.approx_post.dist.loc
+            current_post_scale = self.agent.action_variable.approx_post.dist.scale
+            self.metrics[name]['approx_post_loc'].append(current_post_loc.detach().mean(dim=1, keepdim=True))
+            self.metrics[name]['approx_post_scale'].append(current_post_scale.detach().mean(dim=1, keepdim=True))
 
-        kl = variable.kl_divergence()
+        kl = variable.kl_divergence(n_samples=self.agent.n_action_samples)
         obj_kl = self.agent.kl_factor[name] * torch.clamp(kl, min=self.agent.kl_min[name]).sum(dim=1, keepdim=True)
         if variable.approx_post.dist_type == getattr(torch.distributions, 'Categorical'):
             # discrete
@@ -141,7 +146,7 @@ class Collector:
             obj_kl = obj_kl.sum(dim=1, keepdim=True)
             for dist_name in ['prior', 'approx_post']:
                 dist = getattr(variable, dist_name)
-                for param_name in dist.initial_params:
+                for param_name in dist.param_names:
                     param = getattr(dist.dist, param_name)
                     self.distributions[name][dist_name][param_name].append(param.detach())
         if self.agent._mode == 'train':
@@ -163,8 +168,6 @@ class Collector:
             self.log_probs['state'].append(state_log_prob * valid)
         action_importance_weight = torch.exp(action_log_prob) / torch.exp(log_prob)
         self.importance_weights['action'].append(action_importance_weight.detach())
-        # state_importance_weight = self.agent.state_variable.log_importance_weights().exp().mean(dim=0)
-        # self.importance_weights['state'].append(state_importance_weight.detach())
 
     def _collect_episode(self, observation, reward, done, action):
         """
@@ -175,7 +178,7 @@ class Collector:
             if self.agent.state_variable is not None:
                 self.episode['state'].append(self.agent.state_variable.sample().detach())
             if action is None:
-                action = self.agent.action_variable.sample().detach()
+                action = self.agent.action_variable.sample(n_samples=1).detach()
                 action = self.agent._convert_action(self.agent.action_variable.sample().detach())
             self.episode['action'].append(action)
             action_log_prob = self.agent.action_variable.approx_post.log_prob(action)
@@ -251,27 +254,26 @@ class Collector:
     def _get_alpha_losses(self, valid, done):
         # new_action_log_probs = torch.stack(self.new_action_log_probs)
         # target_entropy = -self.agent.action_variable.n_variables
-        # alpha_loss = - (self.agent.log_alpha['action'] * (self.new_action_log_probs[-1] + target_entropy).detach()) * valid * (1 - done)
+        # alpha_loss = - (self.agent.log_alphas['pi'].exp() * (self.new_action_log_probs[-1] + target_entropy).detach()) * valid * (1 - done)
         if self.agent.epsilons['pi'] is not None:
             target_kl = self.agent.epsilons['pi']
         else:
             target_kl = self.agent.action_variable.n_variables * (1. + float(np.log(2)))
-        alpha_loss = - (self.agent.log_alphas['pi'] * (self.metrics['action']['kl'][-1] - target_kl).detach()) * valid * (1 - done)
+        alpha_loss = - (self.agent.log_alphas['pi'].exp() * (self.metrics['action']['kl'][-1] - target_kl).detach()) * valid * (1 - done)
         self.objectives['alpha_loss_pi'].append(alpha_loss)
         self.metrics['alpha_losses']['pi'].append(alpha_loss.detach())
         self.metrics['alphas']['pi'].append(self.agent.alphas['pi'])
 
-        # if self.agent.action_prior_model is not None:
-        if self.agent.action_inference_model is not None:
+        if self.agent.action_prior_model is not None:
             target_loc_kl = self.agent.epsilons['loc']
-            alpha_loss_loc = - (self.agent.log_alphas['loc'] * (self.metrics['action']['kl_prev_loc'][-1] - target_loc_kl).detach()) * valid * (1 - done)
+            alpha_loss_loc = - (self.agent.log_alphas['loc'].exp() * (self.metrics['action']['kl_prev_loc'][-1] - target_loc_kl).detach()) * valid * (1 - done)
             # alpha_loss_loc = - (self.agent.log_alphas['loc'] * (self.metrics['action']['kl_curr_loc'][-1] - target_loc_kl).detach()) * valid * (1 - done)
             self.objectives['alpha_loss_loc'].append(alpha_loss_loc)
             self.metrics['alpha_losses']['loc'].append(alpha_loss_loc.detach())
             self.metrics['alphas']['loc'].append(self.agent.alphas['loc'])
 
             target_scale_kl = self.agent.epsilons['scale']
-            alpha_loss_scale = - (self.agent.log_alphas['scale'] * (self.metrics['action']['kl_prev_scale'][-1] - target_scale_kl).detach()) * valid * (1 - done)
+            alpha_loss_scale = - (self.agent.log_alphas['scale'].exp() * (self.metrics['action']['kl_prev_scale'][-1] - target_scale_kl).detach()) * valid * (1 - done)
             # alpha_loss_scale = - (self.agent.log_alphas['scale'] * (self.metrics['action']['kl_curr_scale'][-1] - target_scale_kl).detach()) * valid * (1 - done)
             self.objectives['alpha_loss_scale'].append(alpha_loss_scale)
             self.metrics['alpha_losses']['scale'].append(alpha_loss_scale.detach())
@@ -443,8 +445,7 @@ class Collector:
                         'alpha_losses':{'pi': []},
                         'alphas': {'pi': []}}
 
-        # if self.agent.action_prior_model is not None:
-        if self.agent.action_inference_model is not None:
+        if self.agent.action_prior_model is not None:
             self.objectives['action_prev_loc'] = []
             self.objectives['action_prev_scale'] = []
             self.objectives['action_curr_loc'] = []
@@ -462,13 +463,21 @@ class Collector:
             self.metrics['alphas']['loc'] = []
             self.metrics['alphas']['scale'] = []
 
+            self.metrics['action']['prior_prev_loc'] = []
+            self.metrics['action']['prior_prev_scale'] = []
+            self.metrics['action']['prior_curr_loc'] = []
+            self.metrics['action']['prior_curr_scale'] = []
+
+        self.metrics['action']['approx_post_loc'] = []
+        self.metrics['action']['approx_post_scale'] = []
+
         self.distributions = {}
         if self.agent.action_variable.approx_post.dist_type == getattr(torch.distributions, 'Categorical'):
             self.distributions['action'] = {'prior': {'probs': []},
                                             'approx_post': {'probs': []}}
         else:
-            self.distributions['action'] = {'prior': {param_name: [] for param_name in self.agent.action_variable.prior.initial_params},
-                                            'approx_post': {param_name: [] for param_name in self.agent.action_variable.approx_post.initial_params}}
+            self.distributions['action'] = {'prior': {param_name: [] for param_name in self.agent.action_variable.prior.param_names},
+                                            'approx_post': {param_name: [] for param_name in self.agent.action_variable.approx_post.param_names}}
 
         self.inference_improvement = {'action': []}
         self.log_probs = {'action': []}

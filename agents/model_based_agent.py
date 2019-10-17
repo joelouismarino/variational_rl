@@ -106,6 +106,7 @@ class ModelBasedAgent(Agent):
                 q_values_list = []
                 for rollout_iter in range(self.rollout_length):
                     # estimate the Q-value
+                    act = act.tanh() if self.postprocess_action else act
                     q_value_input = [model(observation=obs, action=act) for model in q_value_models]
                     q_values = [variable(inp) for variable, inp in zip(q_value_variables, q_value_input)]
                     q_value = torch.min(q_values[0], q_values[1])
@@ -123,6 +124,7 @@ class ModelBasedAgent(Agent):
                     # estimated_objective = estimated_objective + (self.reward_discount ** rollout_iter) * reward.view(-1, self.n_planning_samples, 1)
 
                 # estimate the final Q-value
+                act = act.tanh() if self.postprocess_action else act
                 q_value_input = [model(observation=obs, action=act) for model in q_value_models]
                 q_values = [variable(inp) for variable, inp in zip(q_value_variables, q_value_input)]
                 q_value = torch.min(q_values[0], q_values[1])
@@ -167,8 +169,9 @@ class ModelBasedAgent(Agent):
             self.generative_mode()
 
         # predict next observation and reward
-        self.generate_observation(self._prev_obs, self._prev_action)
-        self.generate_reward(self._prev_obs, self._prev_action)
+        act = self._prev_action.tanh() if self.postprocess_action else self._prev_action
+        self.generate_observation(self._prev_obs, act)
+        self.generate_reward(self._prev_obs, act)
         self.observation_variable.cond_likelihood.set_prev_obs(observation)
 
     def generate_reward(self, observation, action, **kwargs):

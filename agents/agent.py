@@ -44,6 +44,7 @@ class Agent(nn.Module):
 
         # miscellaneous
         self.reward_scale = misc_args['reward_scale']
+        self.n_action_samples = misc_args['n_action_samples']
         self.kl_scale = {'state': misc_args['kl_scale']['state'],
                          'action': misc_args['kl_scale']['action']}
         self.kl_min = {'state': misc_args['kl_min']['state'],
@@ -56,7 +57,7 @@ class Agent(nn.Module):
                                       'action': misc_args['kl_factor_anneal_rate']['action']}
         self.retrace_lambda = misc_args['retrace_lambda']
         self.epsilons = misc_args['epsilons']
-        # self.prior_ent_factor = misc_args['prior_ent_factor']
+        self.postprocess_action = misc_args['postprocess_action']
 
         # mode (either 'train' or 'eval')
         self._mode = 'train'
@@ -98,6 +99,8 @@ class Agent(nn.Module):
                 self._prev_action = action
                 action = self._convert_action(action)
         self.collector.collect(observation, reward, done, action, valid, log_prob)
+        if self.postprocess_action:
+            action = action.tanh()
         return action.cpu().numpy()
 
     @abstractmethod
@@ -134,6 +137,8 @@ class Agent(nn.Module):
     def estimate_q_values(self, done, observation, reward, action, **kwargs):
         # estimate the value of the current state
         state = self.state_variable.sample() if self.state_variable is not None else None
+        if self.postprocess_action:
+            action = action.tanh()
         # estimate Q values for off-policy actions sample from the buffer
         q_value_input = [model(state=state, observation=observation, action=action, reward=reward) for model in self.q_value_models]
         q_values = [variable(inp) for variable, inp in zip(self.q_value_variables, q_value_input)]
@@ -144,6 +149,8 @@ class Agent(nn.Module):
         # get on-policy actions and log probs
         new_action = self.action_variable.sample()
         new_action_log_prob = self.action_variable.approx_post.log_prob(new_action).sum(dim=1, keepdim=True)
+        if self.postprocess_action:
+            new_action = new_action.tanh()
         self.collector.new_actions.append(new_action)
         self.collector.new_action_log_probs.append(new_action_log_prob)
 
@@ -263,6 +270,10 @@ class Agent(nn.Module):
             else:
                 obs = self.observation_variable.sample()
                 self._prev_obs = obs.new(obs.shape).zero_()
+
+        # clamp log-alphas to prevent collapse
+        for name, log_alpha in self.log_alphas.items():
+            log_alpha = torch.clamp(log_alpha, min=-15.)
 
     @property
     def device(self):

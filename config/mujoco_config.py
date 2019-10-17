@@ -13,7 +13,7 @@ def get_mujoco_config(env):
 
     agent_args['misc_args'] = {'kl_scale': dict(state=1., action=1.),
                                'reward_scale': 1.,
-                               'n_state_samples': 2,
+                               'n_action_samples': 1,
                                'n_inf_iter': dict(state=1, action=1),
                                'inference_type': dict(state='direct', action='direct'),
                                'kl_min': dict(state=0., action=0.),
@@ -25,7 +25,8 @@ def get_mujoco_config(env):
                                'normalize_advantages': False,
                                'normalize_observations': False,
                                'retrace_lambda': 0.75,
-                               'epsilons': dict(pi=0.1, loc=5e-4, scale=1e-5)}
+                               'epsilons': dict(pi=1, loc=5e-3, scale=5e-6),
+                               'postprocess_action': True}
 
     if agent_args['agent_type'] == 'generative':
         agent_args['misc_args']['marginal_factor'] = 0.01
@@ -52,10 +53,10 @@ def get_mujoco_config(env):
         # continuous control
         if env.action_space.low.min() == -1 and env.action_space.high.max() == 1:
             # action_prior_dist = 'Uniform'
-            # action_prior_dist = 'Normal'
-            action_prior_dist = 'TransformedTanh'
-            # action_approx_post_dist = 'Normal'
-            action_approx_post_dist = 'TransformedTanh'
+            action_prior_dist = 'Normal'
+            # action_prior_dist = 'TanhNormal'
+            action_approx_post_dist = 'Normal'
+            # action_approx_post_dist = 'TanhNormal'
         else:
             action_prior_dist = 'Normal'
             action_approx_post_dist = 'Normal'
@@ -71,7 +72,8 @@ def get_mujoco_config(env):
                                               'approx_post_dist': action_approx_post_dist,
                                               'n_variables': n_action_variables,
                                               'constant_prior': False,
-                                              'inference_type': 'direct'}
+                                              'inference_type': 'direct',
+                                              'constant_prior_scale': False}
 
         if agent_args['action_variable_args']['constant_prior']:
             agent_args['action_prior_args'] = None
@@ -110,7 +112,8 @@ def get_mujoco_config(env):
                                               'approx_post_dist': action_approx_post_dist,
                                               'n_variables': n_action_variables,
                                               'constant_prior': False,
-                                              'inference_type': agent_args['misc_args']['inference_type']['action']}
+                                              'inference_type': agent_args['misc_args']['inference_type']['action'],
+                                              'constant_prior_scale': False}
 
         if agent_args['action_variable_args']['constant_prior']:
             agent_args['action_prior_args'] = None
