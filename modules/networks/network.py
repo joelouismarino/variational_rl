@@ -38,7 +38,7 @@ class Network(nn.Module):
                 out = torch.cat([layer(out), input], dim=1)
         return out
 
-    def reset(self, *args, **kwargs):
+    def reset(self, batch_size):
         pass
 
     def planning_mode(self, batch_size):

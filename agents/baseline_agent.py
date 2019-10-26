@@ -45,6 +45,7 @@ class BaselineAgent(Agent):
         Infer the approximate posterior on the action.
         """
         self.action_variable.inference_mode()
+        self.action_variable.init_approx_post()
         if self.action_inference_model is not None:
             action = self._prev_action
             # if action is None:

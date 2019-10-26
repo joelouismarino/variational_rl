@@ -43,9 +43,10 @@ class Collector:
         self.qvalues1 = []
         self.qvalues2 = []
         self.new_actions = []
-        self.new_action_log_probs = []
+        # self.new_action_log_probs = []
         self.new_q_values = []
         self.target_q_values = []
+        self.sample_new_q_values = []
 
         self.valid = []
         self.dones = []
@@ -70,35 +71,43 @@ class Collector:
             self.distributions[name]['recon']['scale'].append(variable.cond_likelihood.dist.scale.detach())
 
     def _collect_kl(self, name, variable, valid, done):
+
+        if name == 'action' and variable.approx_post.dist is None:
+            # calculate the Boltzmann approximate posterior
+            action_prior_samples = self.new_actions[-1]
+            prior_log_probs = variable.prior.log_prob(action_prior_samples).detach()
+            # prior_log_probs = self.agent.target_action_variable.prior.log_prob(action_prior_samples).detach()
+            prior_log_probs = prior_log_probs.sum(dim=2, keepdim=True)
+            q_values = self.sample_new_q_values[-1].detach().view(self.agent.n_action_samples, -1, 1)
+            eta = self.agent.alphas['pi'].detach()
+            variable.approx_post.step(prior_log_probs=prior_log_probs,
+                                      q_values=q_values,
+                                      eta=eta)
+
         if name == 'action' and self.agent.target_action_prior_model is not None:
+            batch_size = variable.prior._batch_size
             # get the distribution parameters
             target_variable = self.agent.target_action_variable
             target_prior_loc = self.agent.target_action_variable.prior.dist.loc
             target_prior_scale = self.agent.target_action_variable.prior.dist.scale
             current_prior_loc = self.agent.action_variable.prior.dist.loc
             current_prior_scale = self.agent.action_variable.prior.dist.scale
-            current_post_loc = self.agent.action_variable.approx_post.dist.loc
-            current_post_scale = self.agent.action_variable.approx_post.dist.scale
+            if 'loc' in dir(variable.approx_post.dist):
+                current_post_loc = self.agent.action_variable.approx_post.dist.loc
+                current_post_scale = self.agent.action_variable.approx_post.dist.scale
+                variable.approx_post.reset(batch_size, dist_params={'loc': current_post_loc.detach(), 'scale': current_post_scale.detach()})
             # target_post_loc = self.agent.target_action_variable.approx_post.dist.loc
             # target_post_scale = self.agent.target_action_variable.approx_post.dist.scale
             # decoupled updates on the prior from the previous prior distribution
             # and decoupled updates on the prior from the approx. posterior distribution
             # evaluate separate KLs for the loc and scale
-            batch_size = variable.prior._batch_size
-            variable.approx_post.reset(batch_size, dist_params={'loc': current_post_loc.detach(), 'scale': current_post_scale.detach()})
             # loc KLs
-            # variable.approx_post.reset(batch_size, dist_params={'loc': current_post_loc, 'scale': target_post_scale.detach()})
-            # kl_curr_loc = kl_divergence(variable.approx_post, target_variable.approx_post).sum(dim=1, keepdim=True)
-            # kl_curr_loc_obj = kl_curr_loc
             variable.prior.reset(batch_size, dist_params={'loc': current_prior_loc, 'scale': target_prior_scale.detach()})
             kl_prev_loc = kl_divergence(target_variable.prior, variable.prior, n_samples=self.agent.n_action_samples).sum(dim=1, keepdim=True)
             kl_curr_loc = kl_divergence(variable.approx_post, variable.prior, n_samples=self.agent.n_action_samples)
             kl_curr_loc_obj = torch.clamp(kl_curr_loc, min=self.agent.kl_min[name]).sum(dim=1, keepdim=True)
             kl_curr_loc = kl_curr_loc.sum(dim=1, keepdim=True)
             # scale KLs
-            # variable.approx_post.reset(batch_size, dist_params={'loc': target_post_loc.detach(), 'scale': current_post_scale})
-            # kl_curr_scale = kl_divergence(variable.approx_post, target_variable.approx_post).sum(dim=1, keepdim=True)
-            # kl_curr_scale_obj = kl_curr_scale
             variable.prior.reset(batch_size, dist_params={'loc': target_prior_loc.detach(), 'scale': current_prior_scale})
             kl_prev_scale = kl_divergence(target_variable.prior, variable.prior, n_samples=self.agent.n_action_samples).sum(dim=1, keepdim=True)
             kl_curr_scale = kl_divergence(variable.approx_post, variable.prior, n_samples=self.agent.n_action_samples)
@@ -119,18 +128,21 @@ class Collector:
             self.metrics[name]['prior_prev_scale'].append(target_prior_scale.detach().mean(dim=1, keepdim=True))
             self.metrics[name]['prior_curr_loc'].append(current_prior_loc.detach().mean(dim=1, keepdim=True))
             self.metrics[name]['prior_curr_scale'].append(current_prior_scale.detach().mean(dim=1, keepdim=True))
-            self.metrics[name]['approx_post_loc'].append(current_post_loc.detach().mean(dim=1, keepdim=True))
-            self.metrics[name]['approx_post_scale'].append(current_post_scale.detach().mean(dim=1, keepdim=True))
+            if 'loc' in dir(variable.approx_post.dist):
+                self.metrics[name]['approx_post_loc'].append(current_post_loc.detach().mean(dim=1, keepdim=True))
+                self.metrics[name]['approx_post_scale'].append(current_post_scale.detach().mean(dim=1, keepdim=True))
 
             # reset the prior with detached parameters and approx. post. with
             # non-detached parameters to evaluate KL for approx. post.
             variable.prior.reset(batch_size, dist_params={'loc': current_prior_loc.detach(), 'scale': current_prior_scale.detach()})
-            variable.approx_post.reset(batch_size, dist_params={'loc': current_post_loc, 'scale': current_post_scale})
+            if 'loc' in dir(variable.approx_post.dist):
+                variable.approx_post.reset(batch_size, dist_params={'loc': current_post_loc, 'scale': current_post_scale})
         else:
-            current_post_loc = self.agent.action_variable.approx_post.dist.loc
-            current_post_scale = self.agent.action_variable.approx_post.dist.scale
-            self.metrics[name]['approx_post_loc'].append(current_post_loc.detach().mean(dim=1, keepdim=True))
-            self.metrics[name]['approx_post_scale'].append(current_post_scale.detach().mean(dim=1, keepdim=True))
+            if 'loc' in dir(variable.approx_post.dist):
+                current_post_loc = self.agent.action_variable.approx_post.dist.loc
+                current_post_scale = self.agent.action_variable.approx_post.dist.scale
+                self.metrics[name]['approx_post_loc'].append(current_post_loc.detach().mean(dim=1, keepdim=True))
+                self.metrics[name]['approx_post_scale'].append(current_post_scale.detach().mean(dim=1, keepdim=True))
 
         kl = variable.kl_divergence(n_samples=self.agent.n_action_samples)
         obj_kl = self.agent.kl_factor[name] * torch.clamp(kl, min=self.agent.kl_min[name]).sum(dim=1, keepdim=True)
@@ -155,19 +167,23 @@ class Collector:
 
     def _collect_log_probs(self, action, log_prob, valid):
         action = self.agent._convert_action(action)
-        action_log_prob = self.agent.action_variable.approx_post.dist.log_prob(action)
-        if self.agent.action_variable.approx_post.dist_type == getattr(torch.distributions, 'Categorical'):
-            action_log_prob = action_log_prob.view(-1, 1)
+        if 'loc' not in dir(self.agent.action_variable.approx_post.dist):
+            self.log_probs['action'].append(valid)
+            self.importance_weights['action'].append(valid)
         else:
-            action_log_prob = action_log_prob.sum(dim=1, keepdim=True)
-        self.log_probs['action'].append(action_log_prob * valid)
-        if self.agent.state_variable is not None:
-            state = self.agent.state_variable.sample()
-            state_log_prob = self.agent.state_variable.approx_post.dist.log_prob(state)
-            state_log_prob = state_log_prob.sum(dim=1, keepdim=True)
-            self.log_probs['state'].append(state_log_prob * valid)
-        action_importance_weight = torch.exp(action_log_prob) / torch.exp(log_prob)
-        self.importance_weights['action'].append(action_importance_weight.detach())
+            action_log_prob = self.agent.action_variable.approx_post.dist.log_prob(action)
+            if self.agent.action_variable.approx_post.dist_type == getattr(torch.distributions, 'Categorical'):
+                action_log_prob = action_log_prob.view(-1, 1)
+            else:
+                action_log_prob = action_log_prob.sum(dim=1, keepdim=True)
+            self.log_probs['action'].append(action_log_prob * valid)
+            if self.agent.state_variable is not None:
+                state = self.agent.state_variable.sample()
+                state_log_prob = self.agent.state_variable.approx_post.dist.log_prob(state)
+                state_log_prob = state_log_prob.sum(dim=1, keepdim=True)
+                self.log_probs['state'].append(state_log_prob * valid)
+            action_importance_weight = torch.exp(action_log_prob) / torch.exp(log_prob)
+            self.importance_weights['action'].append(action_importance_weight.detach())
 
     def _collect_episode(self, observation, reward, done, action):
         """
@@ -376,6 +392,7 @@ class Collector:
         # alpha = self.agent.alpha['action']
         # target_values = torch.stack(self.target_q_values) - alpha * new_action_log_probs
         future_q = torch.stack(self.target_q_values) - action_kl
+        # future_q = torch.stack(self.target_q_values)
         future_q = future_q * valid * (1. - dones)
         rewards *= self.agent.reward_scale
         importance_weights = torch.stack(self.importance_weights['action'])
@@ -450,14 +467,12 @@ class Collector:
             self.objectives['action_prev_scale'] = []
             self.objectives['action_curr_loc'] = []
             self.objectives['action_curr_scale'] = []
-            # self.objectives['action_prior_ent'] = []
             self.objectives['alpha_loss_loc'] = []
             self.objectives['alpha_loss_scale'] = []
             self.metrics['action']['kl_prev_loc'] = []
             self.metrics['action']['kl_prev_scale'] = []
             self.metrics['action']['kl_curr_loc'] = []
             self.metrics['action']['kl_curr_scale'] = []
-            # self.metrics['action']['prior_ent'] = []
             self.metrics['alpha_losses']['loc'] = []
             self.metrics['alpha_losses']['scale'] = []
             self.metrics['alphas']['loc'] = []
@@ -468,8 +483,9 @@ class Collector:
             self.metrics['action']['prior_curr_loc'] = []
             self.metrics['action']['prior_curr_scale'] = []
 
-        self.metrics['action']['approx_post_loc'] = []
-        self.metrics['action']['approx_post_scale'] = []
+        if self.agent.action_inference_model is not None:
+            self.metrics['action']['approx_post_loc'] = []
+            self.metrics['action']['approx_post_scale'] = []
 
         self.distributions = {}
         if self.agent.action_variable.approx_post.dist_type == getattr(torch.distributions, 'Categorical'):
@@ -515,6 +531,7 @@ class Collector:
         self.qvalues2 = []
         self.new_actions = []
         self.new_q_values = []
-        self.new_action_log_probs = []
+        self.sample_new_q_values = []
+        # self.new_action_log_probs = []
         self.valid = []
         self.dones = []

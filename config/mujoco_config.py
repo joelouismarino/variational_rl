@@ -13,7 +13,7 @@ def get_mujoco_config(env):
 
     agent_args['misc_args'] = {'kl_scale': dict(state=1., action=1.),
                                'reward_scale': 1.,
-                               'n_action_samples': 1,
+                               'n_action_samples': 20,
                                'n_inf_iter': dict(state=1, action=1),
                                'inference_type': dict(state='direct', action='direct'),
                                'kl_min': dict(state=0., action=0.),
@@ -25,7 +25,7 @@ def get_mujoco_config(env):
                                'normalize_advantages': False,
                                'normalize_observations': False,
                                'retrace_lambda': 0.75,
-                               'epsilons': dict(pi=1, loc=5e-3, scale=5e-6),
+                               'epsilons': dict(pi=0.1, loc=5e-4, scale=1e-5),
                                'postprocess_action': True}
 
     if agent_args['agent_type'] == 'generative':
@@ -54,9 +54,12 @@ def get_mujoco_config(env):
         if env.action_space.low.min() == -1 and env.action_space.high.max() == 1:
             # action_prior_dist = 'Uniform'
             action_prior_dist = 'Normal'
+            # action_prior_dist = 'NormalUniform'
             # action_prior_dist = 'TanhNormal'
-            action_approx_post_dist = 'Normal'
+            # action_approx_post_dist = 'Normal'
+            # action_approx_post_dist = 'NormalUniform'
             # action_approx_post_dist = 'TanhNormal'
+            action_approx_post_dist = 'Boltzmann'
         else:
             action_prior_dist = 'Normal'
             action_approx_post_dist = 'Normal'
@@ -85,16 +88,22 @@ def get_mujoco_config(env):
                                                'connectivity': 'sequential',
                                                'batch_norm': False,
                                                'non_linearity': 'relu',
-                                               'dropout': None}
+                                               'dropout': None,
+                                               'separate_networks': False}
 
-        agent_args['action_inference_args'] = {'type': 'fully_connected',
-                                               'n_layers': 2,
-                                               'inputs': ['observation'],
-                                               'n_units': 256,
-                                               'connectivity': 'sequential',
-                                               'batch_norm': False,
-                                               'non_linearity': 'relu',
-                                               'dropout': None}
+        if action_approx_post_dist == 'Boltzmann':
+            # no inference model for non-parametric approximate posterior
+            agent_args['action_inference_args'] = None
+        else:
+            agent_args['action_inference_args'] = {'type': 'fully_connected',
+                                                   'n_layers': 2,
+                                                   'inputs': ['observation'],
+                                                   'n_units': 256,
+                                                   'connectivity': 'sequential',
+                                                   'batch_norm': False,
+                                                   'non_linearity': 'relu',
+                                                   'dropout': None,
+                                                   'separate_networks': True}
 
         agent_args['q_value_model_args'] = {'type': 'fully_connected',
                                           'n_layers': 2,

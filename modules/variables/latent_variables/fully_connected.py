@@ -2,7 +2,8 @@ import torch.nn as nn
 from .latent_variable import LatentVariable
 from ...layers import FullyConnectedLayer
 
-INIT_W = 1e-3
+INIT_W_PRIOR = 1e-3
+INIT_W_POSTERIOR = 1e-3
 
 class FullyConnectedLatentVariable(LatentVariable):
 
@@ -23,16 +24,22 @@ class FullyConnectedLatentVariable(LatentVariable):
                 self.prior.models[model_name] = FullyConnectedLayer(n_input[0],
                                                                     n_variables)
 
-                nn.init.uniform_(self.prior.models[model_name].linear.weight, -INIT_W, INIT_W)
-                nn.init.uniform_(self.prior.models[model_name].linear.bias, -INIT_W, INIT_W)
+                # nn.init.uniform_(self.prior.models[model_name].linear.weight, -INIT_W_PRIOR, INIT_W_PRIOR)
+                # nn.init.uniform_(self.prior.models[model_name].linear.bias, -INIT_W_PRIOR, INIT_W_PRIOR)
+
+                nn.init.constant_(self.prior.models[model_name].linear.weight, 0.)
+                if model_name == 'loc':
+                    nn.init.constant_(self.prior.models[model_name].linear.bias, 0.)
+                else:
+                    nn.init.constant_(self.prior.models[model_name].linear.bias, 0.5)
 
         if approx_post_dist is not None and n_input[1] is not None:
             for model_name in self.approx_post.models:
                 self.approx_post.models[model_name] = FullyConnectedLayer(n_input[1],
                                                                           n_variables)
 
-                nn.init.uniform_(self.approx_post.models[model_name].linear.weight, -INIT_W, INIT_W)
-                nn.init.uniform_(self.approx_post.models[model_name].linear.bias, -INIT_W, INIT_W)
+                nn.init.uniform_(self.approx_post.models[model_name].linear.weight, -INIT_W_POSTERIOR, INIT_W_POSTERIOR)
+                nn.init.uniform_(self.approx_post.models[model_name].linear.bias, -INIT_W_POSTERIOR, INIT_W_POSTERIOR)
 
                 if self.approx_post.update != 'direct':
                     self.approx_post.gates[model_name] = FullyConnectedLayer(n_input[1],

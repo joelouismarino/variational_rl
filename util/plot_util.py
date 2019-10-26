@@ -79,6 +79,9 @@ class Plotter:
                     if key == 'action' and label == 'prior' and self.agent_args['action_variable_args']['prior_dist'] == 'TanhNormal':
                         # Tanh Normal distribution
                         x, plus, minus = np.tanh(x), np.tanh(plus), np.tanh(minus)
+                    if key == 'action' and label == 'prior' and self.agent_args['action_variable_args']['prior_dist'] == 'NormalUniform':
+                        # Normal + Uniform distribution
+                        x, plus, minus = x, np.minimum(plus, 1.), np.maximum(minus, -1)
                 elif 'low' in statistics:
                     # Uniform distribution
                     low = statistics['low'][:, i].cpu().numpy()

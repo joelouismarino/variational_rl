@@ -3,6 +3,8 @@ import torch.nn as nn
 import torch.distributions.constraints as constraints
 from .delta import Delta
 from .tanh_normal import TanhNormal
+from .normal_uniform import NormalUniform
+from .boltzmann import Boltzmann
 
 
 class Distribution(nn.Module):
@@ -22,6 +24,7 @@ class Distribution(nn.Module):
         self.dist = None
         self.planning_dist = None
         self.planning = False
+        self.continuous = True
 
         self._n_samples = 1
         self._sample = None
@@ -36,11 +39,20 @@ class Distribution(nn.Module):
             self.dist_type = Delta
         elif dist_type == 'TanhNormal':
             self.dist_type = TanhNormal
+        elif dist_type == 'NormalUniform':
+            self.dist_type = NormalUniform
+        elif dist_type == 'Boltzmann':
+            self.dist_type = Boltzmann
         else:
             self.dist_type = getattr(torch.distributions, dist_type)
 
         # models, initial_params, and update gates
         param_names = ['logits'] if dist_type in ['Categorical', 'Bernoulli'] else self.dist_type.arg_constraints.keys()
+        if 'logits' in param_names:
+            self.continuous = False
+        if dist_type == 'Boltzmann':
+            # non-parametric distribution
+            param_names = []
         self.param_names = param_names
         if 'scale' in param_names:
             self._log_scale_lim = [-15, 15]
@@ -77,10 +89,10 @@ class Distribution(nn.Module):
         """
         parameters = {}
         if input is not None:
-            for param_name in self.models:
+            for ind, param_name in enumerate(self.models):
                 constraint = self.dist.arg_constraints[param_name]
-
-                param_update = self.models[param_name](input)
+                param_input = input[ind] if type(input) == list else input
+                param_update = self.models[param_name](param_input)
                 if self.update == 'direct':
                     param = param_update
                 else:
@@ -88,7 +100,7 @@ class Distribution(nn.Module):
                     if type(constraint) == constraints.greater_than and constraint.lower_bound == 0:
                         # convert to log-space (for scale parameters)
                         param = torch.log(param)
-                    gate = self.gates[param_name](input)
+                    gate = self.gates[param_name](param_input)
                     param = gate * param + (1. - gate) * param_update
 
                 if param_name == 'loc' and self.manual_loc:
@@ -116,6 +128,9 @@ class Distribution(nn.Module):
                 log_scale = self.log_scale.repeat(input.shape[0], 1)
                 scale = torch.exp(torch.clamp(log_scale, self._log_scale_lim[0], self._log_scale_lim[1]))
                 parameters['scale'] = scale
+        elif kwargs is not None:
+            # Boltzmann approximate posterior
+            parameters = kwargs
         else:
             parameters = self.initial_params
 
@@ -145,10 +160,13 @@ class Distribution(nn.Module):
             # get the appropriate distribution
             d = self.planning_dist if self.planning else self.dist
             # perform the sampling
-            if d.has_rsample:
-                # sample is of size [batch_size x n_samples x n_variables]
-                sample = d.rsample([n_samples])
-                # sample = sample.view(self._batch_size * n_samples, -1)
+            if self.continuous:
+                # sample is of size [n_samples x batch_size x n_variables]
+                if d.has_rsample:
+                    sample = d.rsample([n_samples])
+                else:
+                    sample = d.sample([n_samples])
+                # sample = sample.view(n_samples * self._batch_size, -1)
                 sample = sample.view(-1, self.n_variables)
             else:
                 sample = d.sample([n_samples])
@@ -223,7 +241,7 @@ class Distribution(nn.Module):
             for _, v in dist_params.items():
                 v.retain_grad()
         # initialize the distribution
-        self.dist = self.dist_type(**dist_params)
+        self.dist = self.dist_type(**dist_params) if len(dist_params.keys()) > 0 else None
         if self.dist_type == getattr(torch.distributions, 'Categorical'):
             self.dist.logits = dist_params['logits']
         # reset other quantities

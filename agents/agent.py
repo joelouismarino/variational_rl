@@ -89,10 +89,10 @@ class Agent(nn.Module):
         self.state_inference(observation=observation, reward=reward, done=done, valid=valid)
         self.step_action(observation=observation, reward=reward, done=done, valid=valid, action=action)
         self.action_inference(observation=observation, reward=reward, done=done, valid=valid, action=action)
+        self.estimate_q_values(observation=observation, action=action, reward=reward, done=done, valid=valid)
         self._prev_obs = observation
         if self._mode == 'train':
             self._prev_action = action
-            q_values = self.estimate_q_values(observation=observation, action=action, reward=reward, done=done, valid=valid)
         else:
             if observation is not None and action is None:
                 action = self.action_variable.sample()
@@ -137,38 +137,43 @@ class Agent(nn.Module):
     def estimate_q_values(self, done, observation, reward, action, **kwargs):
         # estimate the value of the current state
         state = self.state_variable.sample() if self.state_variable is not None else None
-        if self.postprocess_action:
-            action = action.tanh()
-        # estimate Q values for off-policy actions sample from the buffer
-        q_value_input = [model(state=state, observation=observation, action=action, reward=reward) for model in self.q_value_models]
-        q_values = [variable(inp) for variable, inp in zip(self.q_value_variables, q_value_input)]
-        self.collector.qvalues1.append(q_values[0])
-        self.collector.qvalues2.append(q_values[1])
-        # self.collector.qvalues.append(torch.min(q_values[0], q_values[1]))
+        if action is not None:
+            # if self.postprocess_action:
+            #     action = action.tanh()
+            # estimate Q values for off-policy actions sample from the buffer
+            q_value_input = [model(state=state, observation=observation, action=action, reward=reward) for model in self.q_value_models]
+            q_values = [variable(inp) for variable, inp in zip(self.q_value_variables, q_value_input)]
+            self.collector.qvalues1.append(q_values[0])
+            self.collector.qvalues2.append(q_values[1])
+            # self.collector.qvalues.append(torch.min(q_values[0], q_values[1]))
 
         # get on-policy actions and log probs
-        new_action = self.action_variable.sample()
-        new_action_log_prob = self.action_variable.approx_post.log_prob(new_action).sum(dim=1, keepdim=True)
+        new_action = self.action_variable.sample(self.n_action_samples)
+        # new_action = self.target_action_variable.sample(self.n_action_samples)
+        # new_action_log_prob = self.action_variable.approx_post.log_prob(new_action).mean(dim=0).sum(dim=1, keepdim=True)
+        self.collector.new_actions.append(new_action)
         if self.postprocess_action:
             new_action = new_action.tanh()
-        self.collector.new_actions.append(new_action)
-        self.collector.new_action_log_probs.append(new_action_log_prob)
+        # self.collector.new_action_log_probs.append(new_action_log_prob)
+        expanded_obs = observation.repeat(self.n_action_samples, 1)
 
         # estimate Q value for on-policy actions sampled from current policy
         new_q_value_models = copy.deepcopy(self.q_value_models)
         new_q_value_variables = copy.deepcopy(self.q_value_variables)
-        new_q_value_input = [model(state=state, observation=observation, action=new_action, reward=reward) for model in new_q_value_models]
+        new_q_value_input = [model(state=state, observation=expanded_obs, action=new_action, reward=reward) for model in new_q_value_models]
         new_q_values = [variable(inp) for variable, inp in zip(new_q_value_variables, new_q_value_input)]
-        new_q_value = torch.min(new_q_values[0], new_q_values[1])
-        self.collector.new_q_values.append(new_q_value)
+        sample_new_q_values = torch.min(new_q_values[0], new_q_values[1])
+        self.collector.sample_new_q_values.append(sample_new_q_values)
+        avg_new_q_value = torch.min(new_q_values[0].view(self.n_action_samples, -1, 1).mean(dim=0), new_q_values[1].view(self.n_action_samples, -1, 1).mean(dim=0))
+        self.collector.new_q_values.append(avg_new_q_value)
 
         # estimate target Q value for on-policy actions sampled from current policy
-        target_q_value_input = [model(state=state, observation=observation, action=new_action, reward=reward) for model in self.target_q_value_models]
-        target_q_values = [variable(inp) for variable, inp in zip(self.target_q_value_variables, target_q_value_input)]
+        target_q_value_input = [model(state=state, observation=expanded_obs, action=new_action, reward=reward) for model in self.target_q_value_models]
+        target_q_values = [variable(inp).view(self.n_action_samples, -1, 1).mean(dim=0) for variable, inp in zip(self.target_q_value_variables, target_q_value_input)]
         target_q_value = torch.min(target_q_values[0], target_q_values[1])
         self.collector.target_q_values.append(target_q_value)
 
-        return torch.min(q_values[0], q_values[1])
+        # return torch.min(q_values[0], q_values[1])
 
     def evaluate(self):
         # evaluate the objective, collect various metrics for reporting
@@ -234,6 +239,8 @@ class Agent(nn.Module):
     def reset(self, batch_size=1, prev_action=None, prev_obs=None):
         # reset the variables
         self.action_variable.reset(batch_size)
+        if self.target_action_variable is not None:
+            self.target_action_variable.reset(batch_size)
         if self.state_variable is not None:
             self.state_variable.reset(batch_size)
         if self.observation_variable is not None:
@@ -248,6 +255,8 @@ class Agent(nn.Module):
             self.state_prior_model.reset(batch_size)
         if self.action_prior_model is not None:
             self.action_prior_model.reset(batch_size)
+        if self.target_action_prior_model is not None:
+            self.target_action_prior_model.reset(batch_size)
         if self.obs_likelihood_model is not None:
             self.obs_likelihood_model.reset(batch_size)
         if self.reward_likelihood_model is not None:

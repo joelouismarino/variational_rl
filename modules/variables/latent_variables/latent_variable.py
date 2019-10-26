@@ -66,7 +66,7 @@ class LatentVariable(nn.Module):
         """
         if self.planning:
             sample = self.prior.sample(n_samples)
-        elif self.approx_post is not None:
+        elif self.approx_post.dist is not None:
             sample = self.approx_post.sample(n_samples)
         else:
             sample = self.prior.sample(n_samples)

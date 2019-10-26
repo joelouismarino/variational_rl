@@ -25,7 +25,7 @@ parser.add_argument('--value_tau', default=5e-3, type=float, help='value update 
 parser.add_argument('--value_update', default='soft', type=str, help='value target update type; hard or soft')
 parser.add_argument('--policy_tau', default=1e-3, type=float, help='policy update rate')
 parser.add_argument('--policy_update', default='hard', type=str, help='policy prior target update type; hard or soft')
-parser.add_argument('--n_initial_batches', default=5, type=int, help='number of initial batches')
+parser.add_argument('--n_initial_batches', default=1, type=int, help='number of initial batches')
 parser.add_argument('--n_pretrain_updates', default=2500, type=int, help='number of pre-training iterations for the model')
 parser.add_argument('--update_factor', default=1, type=int, help='number of updates to perform per training step')
 parser.add_argument('--checkpoint_exp_key', default=None, type=str, help='experiment key for the checkpoint to load')
