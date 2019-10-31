@@ -21,8 +21,9 @@ class BaselineAgent(Agent):
         self.action_inference_model = get_model(copy.deepcopy(action_inference_args))
         self.q_value_models = nn.ModuleList([get_model(copy.deepcopy(q_value_model_args)) for _ in range(2)])
         self.target_q_value_models = nn.ModuleList([get_model(copy.deepcopy(q_value_model_args)) for _ in range(2)])
-        self.target_action_prior_model = get_model(copy.deepcopy(action_prior_args))
-        self.target_action_inference_model = get_model(copy.deepcopy(action_inference_args))
+        # self.target_action_prior_model = get_model(copy.deepcopy(action_prior_args))
+        # self.target_action_inference_model = get_model(copy.deepcopy(action_inference_args))
+        self.target_action_prior_model = copy.deepcopy(self.action_prior_model)
 
         # variables
         action_variable_args['n_input'] = [None, None]
@@ -32,6 +33,7 @@ class BaselineAgent(Agent):
            action_variable_args['n_input'][1] = self.action_inference_model.n_out
         self.action_variable = get_variable(type='latent', args=copy.deepcopy(action_variable_args))
         self.target_action_variable = get_variable(type='latent', args=copy.deepcopy(action_variable_args))
+        self.target_action_variable.prior.models = copy.deepcopy(self.action_variable.prior.models)
 
         if self.q_value_models is not None:
             self.q_value_variables = nn.ModuleList([get_variable(type='value', args={'n_input': self.q_value_models[0].n_out}) for _ in range(2)])

@@ -138,8 +138,6 @@ class Agent(nn.Module):
         # estimate the value of the current state
         state = self.state_variable.sample() if self.state_variable is not None else None
         if action is not None:
-            # if self.postprocess_action:
-            #     action = action.tanh()
             # estimate Q values for off-policy actions sample from the buffer
             q_value_input = [model(state=state, observation=observation, action=action, reward=reward) for model in self.q_value_models]
             q_values = [variable(inp) for variable, inp in zip(self.q_value_variables, q_value_input)]
@@ -147,9 +145,12 @@ class Agent(nn.Module):
             self.collector.qvalues2.append(q_values[1])
             # self.collector.qvalues.append(torch.min(q_values[0], q_values[1]))
 
+        # if self._mode == 'train':
+        #     import ipdb; ipdb.set_trace()
+
         # get on-policy actions and log probs
-        new_action = self.action_variable.sample(self.n_action_samples)
-        # new_action = self.target_action_variable.sample(self.n_action_samples)
+        # new_action = self.action_variable.sample(self.n_action_samples)
+        new_action = self.target_action_variable.sample(self.n_action_samples)
         # new_action_log_prob = self.action_variable.approx_post.log_prob(new_action).mean(dim=0).sum(dim=1, keepdim=True)
         self.collector.new_actions.append(new_action)
         if self.postprocess_action:

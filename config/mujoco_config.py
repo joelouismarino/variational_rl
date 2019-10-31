@@ -25,7 +25,7 @@ def get_mujoco_config(env):
                                'normalize_advantages': False,
                                'normalize_observations': False,
                                'retrace_lambda': 0.75,
-                               'epsilons': dict(pi=0.1, loc=5e-4, scale=1e-5),
+                               'epsilons': dict(pi=0.1, loc=5e-3, scale=1e-5),
                                'postprocess_action': True}
 
     if agent_args['agent_type'] == 'generative':
@@ -87,7 +87,8 @@ def get_mujoco_config(env):
                                                'n_units': 256,
                                                'connectivity': 'sequential',
                                                'batch_norm': False,
-                                               'non_linearity': 'relu',
+                                               'layer_norm': [True, False],
+                                               'non_linearity': ['tanh', 'elu'],
                                                'dropout': None,
                                                'separate_networks': False}
 
@@ -103,14 +104,16 @@ def get_mujoco_config(env):
                                                    'batch_norm': False,
                                                    'non_linearity': 'relu',
                                                    'dropout': None,
-                                                   'separate_networks': True}
+                                                   'separate_networks': False}
 
         agent_args['q_value_model_args'] = {'type': 'fully_connected',
                                           'n_layers': 2,
                                           'inputs': ['observation', 'action'],
                                           'n_units': 256,
                                           'connectivity': 'sequential',
-                                          'non_linearity': 'relu',
+                                          'batch_norm': False,
+                                          'layer_norm': [True, False],
+                                          'non_linearity': ['tanh', 'elu'],
                                           'dropout': None}
 
     elif agent_args['agent_type'] == 'model_based':

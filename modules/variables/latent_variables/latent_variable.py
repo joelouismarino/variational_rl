@@ -97,7 +97,7 @@ class LatentVariable(nn.Module):
             else:
                 self.approx_post.reset(batch_size=self.prior._batch_size)
 
-    def kl_divergence(self, analytical=True, n_samples=1):
+    def kl_divergence(self, analytical=True, n_samples=1, sample=None):
         """
         Evaluate / estimate the KL divergence.
 
@@ -105,7 +105,7 @@ class LatentVariable(nn.Module):
             analytical (bool): whether to analytically evaluate the KL
             n_samples (int): number of samples for non-analytical KL
         """
-        return kl(self.approx_post, self.prior, analytical=analytical, n_samples=n_samples)
+        return kl(self.approx_post, self.prior, analytical=analytical, n_samples=n_samples, sample=sample)
 
     def log_importance_weights(self):
         """

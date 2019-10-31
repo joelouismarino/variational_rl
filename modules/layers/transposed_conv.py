@@ -5,13 +5,17 @@ from .layer import Layer
 class TransposedConvLayer(Layer):
 
     def __init__(self, n_input, n_output, filter_size, padding, stride,
-                 batch_norm=False, non_linearity=None, dropout=None):
+                 batch_norm=False, layer_norm=False, non_linearity=None,
+                 dropout=None):
         super(TransposedConvLayer, self).__init__()
         self.linear = nn.ConvTranspose2d(n_input, n_output, filter_size,
                                          padding=padding, stride=stride)
 
         if batch_norm:
             self.batch_norm = nn.BatchNorm2d(n_output)
+
+        if layer_norm:
+            raise NotImplementedError
 
         if non_linearity is None or non_linearity == 'linear':
             pass

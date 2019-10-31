@@ -58,6 +58,8 @@ class Plotter:
         for i in range(dim_obs):
             plt.subplot(int(str(dim_obs) + '1' + str(k)))
             observations_i = observations[:, i].cpu().numpy()
+            if key == 'action' and self.agent.postprocess_action:
+                observations_i = np.tanh(observations_i)
             plt.plot(observations_i.squeeze(), 'o', label='observation', color='k', markersize=2)
             if len(statistics) == 1:  # Bernoulli distribution
                 probs = statistics['probs']
@@ -78,6 +80,8 @@ class Plotter:
                         x, plus, minus = np.tanh(x), np.tanh(plus), np.tanh(minus)
                     if key == 'action' and label == 'prior' and self.agent_args['action_variable_args']['prior_dist'] == 'TanhNormal':
                         # Tanh Normal distribution
+                        x, plus, minus = np.tanh(x), np.tanh(plus), np.tanh(minus)
+                    if key == 'action' and self.agent.postprocess_action:
                         x, plus, minus = np.tanh(x), np.tanh(plus), np.tanh(minus)
                     if key == 'action' and label == 'prior' and self.agent_args['action_variable_args']['prior_dist'] == 'NormalUniform':
                         # Normal + Uniform distribution

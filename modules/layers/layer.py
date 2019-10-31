@@ -10,6 +10,7 @@ class Layer(nn.Module):
         super(Layer, self).__init__()
         self.linear = lambda x: x
         self.batch_norm = lambda x: x
+        self.layer_norm = lambda x: x
         self.non_linearity = lambda x: x
         self.dropout = lambda x: x
         self.init_gain = 1.
@@ -29,6 +30,7 @@ class Layer(nn.Module):
     def forward(self, input):
         x = self.linear(input)
         x = self.batch_norm(x)
+        x = self.layer_norm(x)
         x = self.non_linearity(x)
         x = self.dropout(x)
         return x

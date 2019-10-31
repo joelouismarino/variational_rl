@@ -31,7 +31,7 @@ class FullyConnectedLatentVariable(LatentVariable):
                 if model_name == 'loc':
                     nn.init.constant_(self.prior.models[model_name].linear.bias, 0.)
                 else:
-                    nn.init.constant_(self.prior.models[model_name].linear.bias, 0.5)
+                    nn.init.constant_(self.prior.models[model_name].linear.bias, -0.5)
 
         if approx_post_dist is not None and n_input[1] is not None:
             for model_name in self.approx_post.models:

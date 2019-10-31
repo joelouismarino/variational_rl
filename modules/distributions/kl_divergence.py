@@ -1,7 +1,7 @@
 import torch
 
 
-def kl_divergence(dist1, dist2, analytical=True, n_samples=1):
+def kl_divergence(dist1, dist2, analytical=True, n_samples=1, sample=None):
     """
     Evaluate / estimate the KL divergence.
 
@@ -10,19 +10,26 @@ def kl_divergence(dist1, dist2, analytical=True, n_samples=1):
         dist2 (Distribution): the second distribution
         analytical (bool): whether to analytically evaluate the KL
         n_samples (int): number of samples for non-analytical KL
+        sample (torch.tensor): sample at which to evaluate; used for Boltzmann d1
     """
     def numerical_approx(d1, d2, n_s):
         # numerical approximation
         try:
-            sample = d1.sample(n_s)
-            weights = 1.
+            s = d1.sample(n_s)
+            w = 1.
         except NotImplementedError:
             # kl using Boltzmann approximate posterior
-            sample = d2.sample(n_s)
-            weights = d1.dist.get_weights()
-        kl = d1.log_prob(sample, non_planning=True) - d2.log_prob(sample, non_planning=True)
-        kl = weights * kl
-        kl = kl.view(n_samples, -1, kl.shape[-1])
+            if sample is not None:
+                s = sample
+            else:
+                s = d2.sample(n_s)
+            w = d1.dist.get_weights()
+            w = w.view(n_s, -1, 1).repeat(1, 1, s.shape[-1])
+            # if s.shape[0] > n_s:
+            #     import ipdb; ipdb.set_trace()
+        kl = d1.log_prob(s, non_planning=True) - d2.log_prob(s, non_planning=True)
+        kl = w * kl
+        kl = kl.view(n_s, -1, kl.shape[-1])
         return kl.mean(dim=0)
 
     if dist1 is not None:

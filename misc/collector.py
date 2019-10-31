@@ -72,17 +72,22 @@ class Collector:
 
     def _collect_kl(self, name, variable, valid, done):
 
+        sample = None
+
         if name == 'action' and variable.approx_post.dist is None:
             # calculate the Boltzmann approximate posterior
             action_prior_samples = self.new_actions[-1]
-            prior_log_probs = variable.prior.log_prob(action_prior_samples).detach()
-            # prior_log_probs = self.agent.target_action_variable.prior.log_prob(action_prior_samples).detach()
+            sample = action_prior_samples
+            # if self.agent._mode == 'train':
+            #     import ipdb; ipdb.set_trace()
+            # prior_log_probs = variable.prior.log_prob(action_prior_samples).detach()
+            prior_log_probs = self.agent.target_action_variable.prior.log_prob(action_prior_samples).detach()
             prior_log_probs = prior_log_probs.sum(dim=2, keepdim=True)
             q_values = self.sample_new_q_values[-1].detach().view(self.agent.n_action_samples, -1, 1)
-            eta = self.agent.alphas['pi'].detach()
+            temperature = self.agent.alphas['pi'].detach()
             variable.approx_post.step(prior_log_probs=prior_log_probs,
                                       q_values=q_values,
-                                      eta=eta)
+                                      temperature=temperature)
 
         if name == 'action' and self.agent.target_action_prior_model is not None:
             batch_size = variable.prior._batch_size
@@ -104,13 +109,13 @@ class Collector:
             # loc KLs
             variable.prior.reset(batch_size, dist_params={'loc': current_prior_loc, 'scale': target_prior_scale.detach()})
             kl_prev_loc = kl_divergence(target_variable.prior, variable.prior, n_samples=self.agent.n_action_samples).sum(dim=1, keepdim=True)
-            kl_curr_loc = kl_divergence(variable.approx_post, variable.prior, n_samples=self.agent.n_action_samples)
+            kl_curr_loc = kl_divergence(variable.approx_post, variable.prior, n_samples=self.agent.n_action_samples, sample=sample)
             kl_curr_loc_obj = torch.clamp(kl_curr_loc, min=self.agent.kl_min[name]).sum(dim=1, keepdim=True)
             kl_curr_loc = kl_curr_loc.sum(dim=1, keepdim=True)
             # scale KLs
             variable.prior.reset(batch_size, dist_params={'loc': target_prior_loc.detach(), 'scale': current_prior_scale})
             kl_prev_scale = kl_divergence(target_variable.prior, variable.prior, n_samples=self.agent.n_action_samples).sum(dim=1, keepdim=True)
-            kl_curr_scale = kl_divergence(variable.approx_post, variable.prior, n_samples=self.agent.n_action_samples)
+            kl_curr_scale = kl_divergence(variable.approx_post, variable.prior, n_samples=self.agent.n_action_samples, sample=sample)
             kl_curr_scale_obj = torch.clamp(kl_curr_scale, min=self.agent.kl_min[name]).sum(dim=1, keepdim=True)
             kl_curr_scale = kl_curr_scale.sum(dim=1, keepdim=True)
 
@@ -144,7 +149,7 @@ class Collector:
                 self.metrics[name]['approx_post_loc'].append(current_post_loc.detach().mean(dim=1, keepdim=True))
                 self.metrics[name]['approx_post_scale'].append(current_post_scale.detach().mean(dim=1, keepdim=True))
 
-        kl = variable.kl_divergence(n_samples=self.agent.n_action_samples)
+        kl = variable.kl_divergence(n_samples=self.agent.n_action_samples, sample=sample)
         obj_kl = self.agent.kl_factor[name] * torch.clamp(kl, min=self.agent.kl_min[name]).sum(dim=1, keepdim=True)
         if variable.approx_post.dist_type == getattr(torch.distributions, 'Categorical'):
             # discrete

@@ -149,7 +149,7 @@ class Distribution(nn.Module):
         for param_name in self.models:
             getattr(self.dist, param_name).retain_grad()
 
-    def sample(self, n_samples=1):
+    def sample(self, n_samples=1, detach=True):
         """
         Sample the distribution.
 
@@ -187,7 +187,7 @@ class Distribution(nn.Module):
 
         sample = self._planning_sample if self.planning else self._sample
 
-        if self._detach and not self.planning:
+        if self._detach and not self.planning and detach:
             sample = sample.detach()
 
         # if n_samples < self._n_samples:

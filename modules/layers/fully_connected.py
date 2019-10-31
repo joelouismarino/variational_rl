@@ -6,13 +6,16 @@ class FullyConnectedLayer(Layer):
     """
     A fully-connected layer.
     """
-    def __init__(self, n_input, n_output, batch_norm=False, non_linearity=None,
-                 dropout=None):
+    def __init__(self, n_input, n_output, batch_norm=False, layer_norm=False,
+                 non_linearity=None, dropout=None):
         super(FullyConnectedLayer, self).__init__()
         self.linear = nn.Linear(n_input, n_output)
 
         if batch_norm:
             self.batch_norm = nn.BatchNorm1d(n_output)
+
+        if layer_norm:
+            self.layer_norm = nn.LayerNorm(n_output)
 
         if non_linearity is None or non_linearity == 'linear':
             pass
