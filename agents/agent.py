@@ -149,8 +149,10 @@ class Agent(nn.Module):
         #     import ipdb; ipdb.set_trace()
 
         # get on-policy actions and log probs
-        # new_action = self.action_variable.sample(self.n_action_samples)
-        new_action = self.target_action_variable.sample(self.n_action_samples)
+        if self.target_action_variable is not None:
+            new_action = self.target_action_variable.sample(self.n_action_samples)
+        else:
+            new_action = self.action_variable.sample(self.n_action_samples)
         # new_action_log_prob = self.action_variable.approx_post.log_prob(new_action).mean(dim=0).sum(dim=1, keepdim=True)
         self.collector.new_actions.append(new_action)
         if self.postprocess_action:
