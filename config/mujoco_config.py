@@ -145,9 +145,9 @@ def get_mujoco_config(env):
                                                'dropout': None}
 
         if agent_args['misc_args']['inference_type']['action'] == 'iterative':
-            agent_args['action_inference_args'] = ['observation', 'params', 'grads']
+            agent_args['action_inference_args']['inputs'] = ['observation', 'params', 'grads']
         else:
-            agent_args['action_inference_args'] = ['observation']
+            agent_args['action_inference_args']['inputs'] = ['observation']
 
         # observation (state)
         agent_args['observation_variable_args'] = {'type': 'fully_connected',

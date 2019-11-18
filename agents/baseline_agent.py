@@ -21,8 +21,6 @@ class BaselineAgent(Agent):
         self.action_inference_model = get_model(copy.deepcopy(action_inference_args))
         self.q_value_models = nn.ModuleList([get_model(copy.deepcopy(q_value_model_args)) for _ in range(2)])
         self.target_q_value_models = nn.ModuleList([get_model(copy.deepcopy(q_value_model_args)) for _ in range(2)])
-        # self.target_action_prior_model = get_model(copy.deepcopy(action_prior_args))
-        # self.target_action_inference_model = get_model(copy.deepcopy(action_inference_args))
         self.target_action_prior_model = copy.deepcopy(self.action_prior_model)
 
         # variables
@@ -59,9 +57,6 @@ class BaselineAgent(Agent):
                 observation = self.obs_normalizer(observation, update=self._mode=='eval')
             inf_input = self.action_inference_model(observation=observation, reward=reward, action=action)
             self.action_variable.infer(inf_input)
-            # get the target network output
-            inf_input = self.target_action_inference_model(observation=observation, reward=reward, action=action)
-            self.target_action_variable.infer(inf_input)
 
     def step_state(self, **kwargs):
         pass

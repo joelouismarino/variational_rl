@@ -32,12 +32,12 @@ class NetworkEnsemble(nn.Module):
 
     def acting_mode(self):
         for network in self.net_ensemble:
-            network.acting_mode(batch_size)
+            network.acting_mode()
 
     def detach_hidden_state(self):
         for network in self.net_ensemble:
-            network.detach_hidden_state(batch_size)
+            network.detach_hidden_state()
 
     def attach_hidden_state(self):
         for network in self.net_ensemble:
-            network.attach_hidden_state(batch_size)
+            network.attach_hidden_state()

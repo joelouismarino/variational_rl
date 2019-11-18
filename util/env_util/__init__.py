@@ -10,7 +10,8 @@ def get_env_types():
     """
     env_types = {}
     for env in gym.envs.registry.all():
-        env_type = env.entry_point.split(':')[0].split('.')[-1]
+        entry_point = env.entry_point if 'entry_point' in dir(env) else env._entry_point
+        env_type = entry_point.split(':')[0].split('.')[-1]
         env_types[env.id] = env_type
     return env_types
 
