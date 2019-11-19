@@ -26,7 +26,8 @@ def get_mujoco_config(env):
                                'normalize_observations': False,
                                'retrace_lambda': 0.75,
                                'epsilons': dict(pi=None, loc=5e-3, scale=1e-5),
-                               'postprocess_action': False}
+                               'postprocess_action': False,
+                               'train_model': False}
 
     if agent_args['agent_type'] == 'generative':
         agent_args['misc_args']['marginal_factor'] = 0.01

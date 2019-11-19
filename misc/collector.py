@@ -239,16 +239,16 @@ class Collector:
             self.objectives['optimality'].append(-optimality_cll * valid)
         self.metrics['optimality']['cll'].append((-optimality_cll * valid).detach())
 
-        if self.agent.done_likelihood_model is not None:
+        if self.agent.done_likelihood_model is not None and self.agent.train_model:
             self._collect_likelihood('done', done, self.agent.done_variable, valid)
 
-        if self.agent.reward_likelihood_model is not None:
+        if self.agent.reward_likelihood_model is not None and self.agent.train_model:
             self._collect_likelihood('reward', reward, self.agent.reward_variable, valid)
 
-        if self.agent.obs_likelihood_model is not None:
+        if self.agent.obs_likelihood_model is not None and self.agent.train_model:
             self._collect_likelihood('observation', observation, self.agent.observation_variable, valid, done)
 
-        if self.agent.state_variable is not None:
+        if self.agent.state_variable is not None and self.agent.train_model:
             self._collect_kl('state', self.agent.state_variable, valid, done)
 
         self._collect_kl('action', self.agent.action_variable, valid, done)
@@ -503,7 +503,7 @@ class Collector:
         self.inference_improvement = {'action': []}
         self.log_probs = {'action': []}
 
-        if self.agent.state_variable is not None:
+        if self.agent.state_variable is not None and self.agent.train_model:
             self.episode['state'] = []
             self.objectives['state'] = []
             self.metrics['state'] = {'kl': []}
@@ -511,19 +511,19 @@ class Collector:
                                            'approx_post': {'loc': [], 'scale': []}}
             self.log_probs['state'] = []
             self.inference_improvement['state'] = []
-        if self.agent.observation_variable is not None:
+        if self.agent.observation_variable is not None and self.agent.train_model:
             self.objectives['observation'] = []
             self.metrics['observation'] = {'cll': []}
             # self.metrics['observation'] = {'cll': [], 'info_gain': [], 'mll': []}
             self.distributions['observation'] = {'pred': {'loc': [], 'scale': []},
                                                  'recon': {'loc': [], 'scale': []}}
-        if self.agent.reward_variable is not None:
+        if self.agent.reward_variable is not None and self.agent.train_model:
             self.objectives['reward'] = []
             self.metrics['reward'] = {'cll': []}
             # self.metrics['reward'] = {'cll': [], 'info_gain': [], 'mll': []}
             self.distributions['reward'] = {'pred': {'loc': [], 'scale': []},
                                             'recon': {'loc': [], 'scale': []}}
-        if self.agent.done_variable is not None:
+        if self.agent.done_variable is not None and self.agent.train_model:
             self.objectives['done'] = []
             self.metrics['done'] = {'cll': [], 'info_gain': [], 'mll': []}
             self.distributions['done'] = {'pred': {'probs': []}, 'recon': {'probs': []}}

@@ -58,6 +58,7 @@ class Agent(nn.Module):
         self.retrace_lambda = misc_args['retrace_lambda']
         self.epsilons = misc_args['epsilons']
         self.postprocess_action = misc_args['postprocess_action']
+        self.train_model = misc_args['train_model']
 
         # mode (either 'train' or 'eval')
         self._mode = 'train'

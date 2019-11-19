@@ -169,9 +169,10 @@ class ModelBasedAgent(Agent):
             self.generative_mode()
 
         # predict next observation and reward
-        act = self._prev_action.tanh() if self.postprocess_action else self._prev_action
-        self.generate_observation(self._prev_obs, act)
-        self.generate_reward(self._prev_obs, act)
+        if self.train_model:
+            act = self._prev_action.tanh() if self.postprocess_action else self._prev_action
+            self.generate_observation(self._prev_obs, act)
+            self.generate_reward(self._prev_obs, act)
         self.observation_variable.cond_likelihood.set_prev_obs(observation)
 
     def generate_reward(self, observation, action, **kwargs):
