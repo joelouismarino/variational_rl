@@ -30,12 +30,13 @@ class BaselineAgent(Agent):
         if self.action_inference_model is not None:
            action_variable_args['n_input'][1] = self.action_inference_model.n_out
         self.action_variable = get_variable(type='latent', args=copy.deepcopy(action_variable_args))
-        self.target_action_variable = get_variable(type='latent', args=copy.deepcopy(action_variable_args))
-        self.target_action_variable.prior.models = copy.deepcopy(self.action_variable.prior.models)
+        self.target_action_variable = None
+        if self.action_prior_model is not None:
+            self.target_action_variable = get_variable(type='latent', args=copy.deepcopy(action_variable_args))
+            self.target_action_variable.prior.models = copy.deepcopy(self.action_variable.prior.models)
 
-        if self.q_value_models is not None:
-            self.q_value_variables = nn.ModuleList([get_variable(type='value', args={'n_input': self.q_value_models[0].n_out}) for _ in range(2)])
-            self.target_q_value_variables = nn.ModuleList([get_variable(type='value', args={'n_input': self.q_value_models[0].n_out}) for _ in range(2)])
+        self.q_value_variables = nn.ModuleList([get_variable(type='value', args={'n_input': self.q_value_models[0].n_out}) for _ in range(2)])
+        self.target_q_value_variables = nn.ModuleList([get_variable(type='value', args={'n_input': self.q_value_models[0].n_out}) for _ in range(2)])
 
     def state_inference(self, **kwargs):
         pass
