@@ -154,11 +154,11 @@ class Agent(nn.Module):
             new_action = self.target_action_variable.sample(self.n_action_samples)
         else:
             new_action = self.action_variable.sample(self.n_action_samples)
-        # new_action_log_prob = self.action_variable.approx_post.log_prob(new_action).mean(dim=0).sum(dim=1, keepdim=True)
+        new_action_log_prob = self.action_variable.approx_post.log_prob(new_action).sum(dim=1).mean()
         self.collector.new_actions.append(new_action)
         if self.postprocess_action:
             new_action = new_action.tanh()
-        # self.collector.new_action_log_probs.append(new_action_log_prob)
+        self.collector.new_action_log_probs.append(new_action_log_prob)
         expanded_obs = observation.repeat(self.n_action_samples, 1)
 
         # estimate Q value for on-policy actions sampled from current policy

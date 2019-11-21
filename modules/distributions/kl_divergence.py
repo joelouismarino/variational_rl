@@ -25,8 +25,6 @@ def kl_divergence(dist1, dist2, analytical=True, n_samples=1, sample=None):
                 s = d2.sample(n_s)
             w = d1.dist.get_weights()
             w = w.view(n_s, -1, 1).repeat(1, 1, s.shape[-1])
-            # if s.shape[0] > n_s:
-            #     import ipdb; ipdb.set_trace()
         kl = d1.log_prob(s, non_planning=True) - d2.log_prob(s, non_planning=True)
         kl = w * kl
         kl = kl.view(n_s, -1, kl.shape[-1])

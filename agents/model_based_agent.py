@@ -101,7 +101,7 @@ class ModelBasedAgent(Agent):
                 # sample and evaluate log probs of initial actions
                 act = self.action_variable.sample()
                 obs = observation.repeat(self.n_planning_samples, 1)
-                kl = self.alphas['pi'] * self.action_variable.kl_divergence().sum(dim=1, keepdim=True)
+                kl = self.alphas['pi'] * self.action_variable.kl_divergence(n_samples=self.n_planning_samples).sum(dim=1, keepdim=True)
                 estimated_objective = - kl.view(-1, 1, 1).repeat(1, self.n_planning_samples, 1)
                 self.observation_variable.cond_likelihood.set_prev_obs(obs)
                 # roll out the model

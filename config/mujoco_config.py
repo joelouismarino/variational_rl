@@ -14,7 +14,7 @@ def get_mujoco_config(env):
     agent_args['misc_args'] = {'kl_scale': dict(state=1., action=1.),
                                'reward_scale': 1.,
                                'n_action_samples': 1,
-                               'n_inf_iter': dict(state=1, action=1),
+                               'n_inf_iter': dict(state=1, action=2),
                                'inference_type': dict(state='direct', action='iterative'),
                                'kl_min': dict(state=0., action=0.),
                                'kl_min_anneal_rate': dict(state=1., action=1.),
