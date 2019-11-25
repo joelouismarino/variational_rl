@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#SBATCH --time=72:00:00
+#SBATCH --time=7:00:00:00
 #SBATCH --job-name=agent
 #SBATCH --mem=20GB
 #SBATCH --output=agent.out
