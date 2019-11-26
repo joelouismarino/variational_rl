@@ -163,7 +163,7 @@ class Plotter:
         model_names = ['state_prior_model', 'action_prior_model',
                        'obs_likelihood_model', 'reward_likelihood_model',
                        'done_likelihood_model', 'q_value_models',
-                       'state_inference_model', 'action_inference_model'
+                       'state_inference_model', 'action_inference_model',
                        'target_q_value_models', 'target_action_prior_model']
 
         for attr in variable_names + model_names:
