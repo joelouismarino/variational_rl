@@ -139,10 +139,10 @@ def get_mujoco_config(env):
 
         agent_args['action_inference_args'] = {'type': 'fully_connected',
                                                'n_layers': 2,
-                                               'n_units': 256,
-                                               'connectivity': 'sequential',
+                                               'n_units': 512,
+                                               'connectivity': 'highway',
                                                'batch_norm': False,
-                                               'non_linearity': 'relu',
+                                               'non_linearity': 'elu',
                                                'dropout': None}
 
         if agent_args['misc_args']['inference_type']['action'] == 'iterative':

@@ -36,7 +36,6 @@ class Collector:
         # stores the log probabilities during training
         self.log_probs = {'action': []}
         # stores the importance weights during training
-        # self.importance_weights = {'action': [], 'state': []}
         self.importance_weights = {'action': []}
         # store the values during training
         self.qvalues = []
@@ -52,18 +51,10 @@ class Collector:
         self.dones = []
 
     def _collect_likelihood(self, name, obs, variable, valid, done=0.):
-        # log_importance_weights = self.agent.state_variable.log_importance_weights().detach()
-        # weighted_info_gain = variable.info_gain(obs, log_importance_weights, marg_factor=self.agent.marginal_factor)
-        # info_gain = variable.info_gain(obs, log_importance_weights, marg_factor=1.)
-        # cll = variable.cond_log_likelihood(obs).view(self.agent.n_state_samples, -1, 1).mean(dim=0)
         cll = variable.cond_log_likelihood(obs).view(-1, 1)
-        # mll = variable.marg_log_likelihood(obs, log_importance_weights)
         if self.agent._mode == 'train':
-            # self.objectives[name].append(-weighted_info_gain * (1 - done) * valid)
             self.objectives[name].append(-cll * (1 - done) * valid)
         self.metrics[name]['cll'].append((-cll * (1 - done) * valid).detach())
-        # self.metrics[name]['mll'].append((-mll * (1 - done) * valid).detach())
-        # self.metrics[name]['info_gain'].append((-info_gain * (1 - done) * valid).detach())
         if 'probs' in dir(variable.cond_likelihood.dist):
             self.distributions[name]['recon']['probs'].append(variable.cond_likelihood.dist.probs.detach())
         else:
@@ -182,11 +173,6 @@ class Collector:
             else:
                 action_log_prob = action_log_prob.sum(dim=1, keepdim=True)
             self.log_probs['action'].append(action_log_prob * valid)
-            if self.agent.state_variable is not None:
-                state = self.agent.state_variable.sample()
-                state_log_prob = self.agent.state_variable.approx_post.dist.log_prob(state)
-                state_log_prob = state_log_prob.sum(dim=1, keepdim=True)
-                self.log_probs['state'].append(state_log_prob * valid)
             action_importance_weight = torch.exp(action_log_prob) / torch.exp(log_prob)
             self.importance_weights['action'].append(action_importance_weight.detach())
 
@@ -196,8 +182,6 @@ class Collector:
         """
         if not done:
             self.episode['observation'].append(observation)
-            if self.agent.state_variable is not None:
-                self.episode['state'].append(self.agent.state_variable.sample().detach())
             if action is None:
                 action = self.agent.action_variable.sample(n_samples=1).detach()
                 action = self.agent._convert_action(self.agent.action_variable.sample().detach())
@@ -213,24 +197,14 @@ class Collector:
             action = self.episode['action'][0]
             log_prob = self.episode['log_prob'][0]
             self.episode['observation'].append(obs.new(obs.shape).zero_())
-            # self.episode['observation'].append(observation)
             self.episode['action'].append(action.new(action.shape).zero_())
             self.episode['log_prob'].append(log_prob.new(log_prob.shape).zero_())
-            if self.agent.state_variable is not None:
-                state = self.episode['state'][0]
-                self.episode['state'].append(state.new(state.shape).zero_())
         self.episode['reward'].append(reward)
         self.episode['done'].append(done)
 
         if done:
-            if hasattr(self.agent, 'marginal_factor'):
-                self.agent.marginal_factor *= self.agent.marginal_factor_anneal_rate
-                self.agent.marginal_factor = min(self.agent.marginal_factor, 1.)
-            self.agent.kl_min['state'] *= self.agent.kl_min_anneal_rate['state']
             self.agent.kl_min['action'] *= self.agent.kl_min_anneal_rate['action']
-            self.agent.kl_factor['state'] *= self.agent.kl_factor_anneal_rate['state']
             self.agent.kl_factor['action'] *= self.agent.kl_factor_anneal_rate['action']
-            self.agent.kl_factor['state'] = min(self.agent.kl_factor['state'], 1.)
             self.agent.kl_factor['action'] = min(self.agent.kl_factor['action'], 1.)
 
     def collect(self, observation, reward, done, action, valid, log_prob):
@@ -239,17 +213,11 @@ class Collector:
             self.objectives['optimality'].append(-optimality_cll * valid)
         self.metrics['optimality']['cll'].append((-optimality_cll * valid).detach())
 
-        if self.agent.done_likelihood_model is not None and self.agent.train_model:
-            self._collect_likelihood('done', done, self.agent.done_variable, valid)
-
         if self.agent.reward_likelihood_model is not None and self.agent.train_model:
             self._collect_likelihood('reward', reward, self.agent.reward_variable, valid)
 
         if self.agent.obs_likelihood_model is not None and self.agent.train_model:
             self._collect_likelihood('observation', observation, self.agent.observation_variable, valid, done)
-
-        if self.agent.state_variable is not None and self.agent.train_model:
-            self._collect_kl('state', self.agent.state_variable, valid, done)
 
         self._collect_kl('action', self.agent.action_variable, valid, done)
 
@@ -467,6 +435,7 @@ class Collector:
                         'alpha_losses':{'pi': []},
                         'alphas': {'pi': []}}
 
+
         if self.agent.action_prior_model is not None:
             self.objectives['action_prev_loc'] = []
             self.objectives['action_prev_scale'] = []
@@ -503,32 +472,17 @@ class Collector:
         self.inference_improvement = {'action': []}
         self.log_probs = {'action': []}
 
-        if self.agent.state_variable is not None and self.agent.train_model:
-            self.episode['state'] = []
-            self.objectives['state'] = []
-            self.metrics['state'] = {'kl': []}
-            self.distributions['state'] = {'prior': {'loc': [], 'scale': []},
-                                           'approx_post': {'loc': [], 'scale': []}}
-            self.log_probs['state'] = []
-            self.inference_improvement['state'] = []
         if self.agent.observation_variable is not None and self.agent.train_model:
             self.objectives['observation'] = []
             self.metrics['observation'] = {'cll': []}
-            # self.metrics['observation'] = {'cll': [], 'info_gain': [], 'mll': []}
             self.distributions['observation'] = {'pred': {'loc': [], 'scale': []},
                                                  'recon': {'loc': [], 'scale': []}}
         if self.agent.reward_variable is not None and self.agent.train_model:
             self.objectives['reward'] = []
             self.metrics['reward'] = {'cll': []}
-            # self.metrics['reward'] = {'cll': [], 'info_gain': [], 'mll': []}
             self.distributions['reward'] = {'pred': {'loc': [], 'scale': []},
                                             'recon': {'loc': [], 'scale': []}}
-        if self.agent.done_variable is not None and self.agent.train_model:
-            self.objectives['done'] = []
-            self.metrics['done'] = {'cll': [], 'info_gain': [], 'mll': []}
-            self.distributions['done'] = {'pred': {'probs': []}, 'recon': {'probs': []}}
 
-        # self.importance_weights = {'action': [], 'state': []}
         self.importance_weights = {'action': []}
         self.target_q_values = []
         self.qvalues = []
