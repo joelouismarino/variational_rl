@@ -43,19 +43,6 @@ class Optimizer(object):
 
     def step(self, model_only=False):
         # collect and apply inference parameter gradients if necessary
-        if self.model.state_inference_model is not None and not model_only:
-            if self.model.state_variable.approx_post.update == 'iterative':
-                params = self.parameters['state_inference_model']
-                grads = [param.grad for param in params]
-                divide_gradients_by_value(grads, self.model.batch_size)
-                divide_gradients_by_value(grads, self.model.n_inf_iter['state'])
-                if self.clip_grad is not None:
-                    clip_gradients(grads, self.clip_grad)
-                if self.norm_grad is not None:
-                    norm_gradients(grads, self.norm_grad)
-                self.opt['state_inference_model'].step()
-                self.opt['state_inference_model'].zero_grad()
-
         if self.model.action_inference_model is not None and not model_only:
             if self.model.action_variable.approx_post.update == 'iterative' or hasattr(self.model, 'rollout_length'):
                 params = self.parameters['action_inference_model']

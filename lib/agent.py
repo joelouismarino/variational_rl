@@ -2,127 +2,87 @@ import copy
 import torch
 import torch.nn as nn
 import numpy as np
-from abc import abstractmethod
-from misc import one_hot_to_index
 from misc.collector import Collector
-from misc.normalization import Normalizer
+from modules.models import get_model
+from modules.variables import get_variable
+from lib.q_value_estimators import get_q_value_estimator
+from lib.inference_optimizers import get_inference_optimizer
 
 
 class Agent(nn.Module):
     """
     Variational RL Agent
+
+    Args:
+        action_variable_args (dict):
+        action_prior_args (dict):
+        q_value_estimator_args (dict):
+        inference_optimizer_args (dict):
+        misc_args (dict):
     """
     def __init__(self, misc_args):
         super(Agent, self).__init__()
 
-        # models
-        self.action_prior_model = None
-        self.obs_likelihood_model = None
-        self.reward_likelihood_model = None
-        self.action_inference_model = None
-        self.q_value_models = None
-        self.target_q_value_models = None
-        self.target_action_prior_model = None
-        self.target_action_inference_model = None
+        self.action_prior_model = get_model(copy.deepcopy(action_prior_args))
+        self.q_value_estimator = get_q_value_estimator(q_value_estimator_args)
+        self.inference_optimizer = get_inference_optimizer(inference_optimizer_args)
 
-        # variables
-        self.action_variable = None
-        self.observation_variable = None
-        self.reward_variable = None
-        self.done_variable = None
-        self.q_value_variables = None
-        self.target_q_value_variables = None
-        self.target_action_variable = None
+        self.action_variable = get_variable(type='latent', args=copy.deepcopy(action_variable_args))
 
+        # Lagrange multipliers for KL, location KL, and scale KL
         self.log_alphas = nn.ParameterDict({'pi': nn.Parameter(torch.zeros(1)),
                                             'loc': nn.Parameter(torch.zeros(1)),
                                             'scale': nn.Parameter(torch.zeros(1))})
 
         # miscellaneous
-        self.reward_scale = misc_args['reward_scale']
-        self.n_action_samples = misc_args['n_action_samples']
-        self.kl_scale = {'action': misc_args['kl_scale']['action']}
-        self.kl_min = {'action': misc_args['kl_min']['action']}
-        self.kl_min_anneal_rate = {'action': misc_args['kl_min_anneal_rate']['action']}
-        self.kl_factor = {'action': misc_args['kl_factor']['action']}
-        self.kl_factor_anneal_rate = {'action': misc_args['kl_factor_anneal_rate']['action']}
-        self.retrace_lambda = misc_args['retrace_lambda']
         self.epsilons = misc_args['epsilons']
+        self.n_action_samples = misc_args['n_action_samples']
         self.postprocess_action = misc_args['postprocess_action']
-        self.train_model = misc_args['train_model']
+        self.reward_discount = misc_args['reward_discount']
 
         # mode (either 'train' or 'eval')
-        self._mode = 'train'
+        self.mode = 'train'
 
         # collects relevant quantities
         self.collector = Collector(self)
 
-        self._prev_action = None
-        self._prev_obs = None
+        self._prev_state = None
         self.batch_size = 1
-        self.reward_discount = misc_args['reward_discount']
 
-        # normalizers for various quantities
-        self.return_normalizer = None
-        if misc_args['normalize_returns']:
-            self.return_normalizer = Normalizer(shift=False, clip_value=10.)
-        self.advantage_normalizer = None
-        if misc_args['normalize_advantages']:
-            self.advantage_normalizer = Normalizer(clip_value=10.)
-        self.obs_normalizer = None
-        if misc_args['normalize_observations']:
-            observation_size = misc_args['observation_size']
-            # TODO: should set this in a better way, in case of image input
-            self.obs_normalizer = Normalizer(shape=(observation_size), clip_value=10.)
-
-    def act(self, observation, reward=None, done=False, action=None, valid=None, log_prob=None):
-        observation, reward, action, done, valid, log_prob = self._change_device(observation, reward, action, done, valid, log_prob)
-        self.step_action(observation=observation, reward=reward, done=done, valid=valid, action=action)
-        self.action_inference(observation=observation, reward=reward, done=done, valid=valid, action=action)
-        self.estimate_q_values(observation=observation, action=action, reward=reward, done=done, valid=valid)
-        self._prev_obs = observation
-        if self._mode == 'train':
-            self._prev_action = action
-        else:
-            if observation is not None and action is None:
-                action = self.action_variable.sample()
-                self._prev_action = action
-                action = self._convert_action(action)
-        self.collector.collect(observation, reward, done, action, valid, log_prob)
+    def act(self, state, reward=None, done=False, action=None, valid=None, log_prob=None):
+        state, reward, action, done, valid, log_prob = self._change_device(state, reward, action, done, valid, log_prob)
+        self.generate_action_prior(state)
+        self.action_inference(state)
+        # self.estimate_q_values(state=state, action=action, reward=reward, done=done, valid=valid)
+        self._prev_state = state
+        if self.mode != 'train':
+            if state is not None and action is None:
+                action = self.action_variable.sample().detach()
+        self.collector.collect(state, reward, done, action, valid, log_prob)
         if self.postprocess_action:
             action = action.tanh()
         return action.cpu().numpy()
 
-    @abstractmethod
-    def step_action(self, observation, reward, done, valid, action=None):
-        pass
+    def generate_action_prior(self, state):
+        self.action_variable.generative_mode()
+        if self.action_prior_model is not None:
+            prior_input = self.action_prior_model(state=state)
+            self.action_variable.step(prior_input)
+            prior_input = self.target_action_prior_model(state=state)
+            self.target_action_variable.step(prior_input)
 
-    @abstractmethod
-    def action_inference(self, observation, reward, done, valid, action=None):
-        pass
+    def action_inference(self, state):
+        self.action_variable.inference_mode()
+        self.inference_optimizer(state)
 
-    def generate(self):
-        self.generate_observation()
-        self.generate_reward()
-        self.generate_done()
-
-    def generate_observation(self):
-        # generate the conditional likelihood for the observation
-        pass
-
-    def generate_reward(self):
-        # generate the conditional likelihood for the reward
-        pass
-
-    def estimate_q_values(self, done, observation, reward, action, **kwargs):
+    def estimate_q_values(self, done, state, action, **kwargs):
         # estimate the value of the current state
         if action is not None:
             # estimate Q values for off-policy actions sample from the buffer
-            q_value_input = [model(observation=observation, action=action, reward=reward) for model in self.q_value_models]
+            q_value_input = [model(state=state, action=action) for model in self.q_value_models]
             q_values = [variable(inp) for variable, inp in zip(self.q_value_variables, q_value_input)]
             self.collector.qvalues1.append(q_values[0])
             self.collector.qvalues2.append(q_values[1])
-            # self.collector.qvalues.append(torch.min(q_values[0], q_values[1]))
 
         # get on-policy actions and log probs
         if self.target_action_variable is not None:
@@ -134,12 +94,12 @@ class Agent(nn.Module):
         if self.postprocess_action:
             new_action = new_action.tanh()
         self.collector.new_action_log_probs.append(new_action_log_prob)
-        expanded_obs = observation.repeat(self.n_action_samples, 1)
+        expanded_state = state.repeat(self.n_action_samples, 1)
 
         # estimate Q value for on-policy actions sampled from current policy
         new_q_value_models = copy.deepcopy(self.q_value_models)
         new_q_value_variables = copy.deepcopy(self.q_value_variables)
-        new_q_value_input = [model(observation=expanded_obs, action=new_action, reward=reward) for model in new_q_value_models]
+        new_q_value_input = [model(state=expanded_state, action=new_action) for model in new_q_value_models]
         new_q_values = [variable(inp) for variable, inp in zip(new_q_value_variables, new_q_value_input)]
         sample_new_q_values = torch.min(new_q_values[0], new_q_values[1])
         self.collector.sample_new_q_values.append(sample_new_q_values)
@@ -147,7 +107,7 @@ class Agent(nn.Module):
         self.collector.new_q_values.append(avg_new_q_value)
 
         # estimate target Q value for on-policy actions sampled from current policy
-        target_q_value_input = [model(observation=expanded_obs, action=new_action, reward=reward) for model in self.target_q_value_models]
+        target_q_value_input = [model(state=expanded_state, action=new_action) for model in self.target_q_value_models]
         target_q_values = [variable(inp).view(self.n_action_samples, -1, 1).mean(dim=0) for variable, inp in zip(self.target_q_value_variables, target_q_value_input)]
         target_q_value = torch.min(target_q_values[0], target_q_values[1])
         self.collector.target_q_values.append(target_q_value)
@@ -173,18 +133,15 @@ class Agent(nn.Module):
         return self.collector.get_episode()
 
     def _convert_action(self, action):
-        # converts categorical action from one-hot encoding to the action index
-        if self.action_variable.approx_post.dist_type == getattr(torch.distributions, 'Categorical'):
-            action = one_hot_to_index(action)
         return action.detach()
 
-    def _change_device(self, observation, reward, action, done, valid, log_prob):
-        if observation is None:
-            observation = torch.zeros(self.collector.episode['observation'][0].shape)
-        elif type(observation) == np.ndarray:
-            observation = torch.from_numpy(observation.astype('float32')).view(1, -1) # hack
-        if observation.device != self.device:
-            observation = observation.to(self.device)
+    def _change_device(self, state, reward, action, done, valid, log_prob):
+        if state is None:
+            state = torch.zeros(self.collector.episode['state'][0].shape)
+        elif type(state) == np.ndarray:
+            state = torch.from_numpy(state.astype('float32')).view(1, -1) # hack
+        if state.device != self.device:
+            state = state.to(self.device)
         if type(reward) in [float, int]:
             reward = torch.tensor(reward).to(torch.float32).view(1, 1)
         elif type(reward) == np.ndarray:
@@ -208,9 +165,14 @@ class Agent(nn.Module):
             valid = valid.to(self.device)
         if log_prob is not None:
             log_prob = log_prob.to(self.device)
-        return observation, reward, action, done, valid, log_prob
+        return state, reward, action, done, valid, log_prob
 
-    def reset(self, batch_size=1, prev_action=None, prev_obs=None):
+    def reset(self, batch_size=1, prev_action=None, prev_state=None):
+
+        self.q_value_estimator.reset(batch_size, prev_action, prev_state)
+
+
+
         # reset the variables
         self.action_variable.reset(batch_size)
         if self.target_action_variable is not None:
