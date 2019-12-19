@@ -4,7 +4,6 @@ import torch.nn as nn
 import numpy as np
 from misc.collector import Collector
 from modules.models import get_model
-from modules.variables import get_variable
 from lib.q_value_estimators import get_q_value_estimator
 from lib.inference_optimizers import get_inference_optimizer
 
@@ -14,20 +13,27 @@ class Agent(nn.Module):
     Variational RL Agent
 
     Args:
-        action_variable_args (dict):
-        action_prior_args (dict):
+        prior_args (dict):
+        approx_post_args (dict):
+        prior_model_args (dict):
         q_value_estimator_args (dict):
         inference_optimizer_args (dict):
         misc_args (dict):
     """
-    def __init__(self, misc_args):
+    def __init__(self, prior_args, approx_post_args, prior_model_args,
+                 q_value_estimator_args, inference_optimizer_args, misc_args):
         super(Agent, self).__init__()
 
-        self.action_prior_model = get_model(copy.deepcopy(action_prior_args))
-        self.q_value_estimator = get_q_value_estimator(q_value_estimator_args)
-        self.inference_optimizer = get_inference_optimizer(inference_optimizer_args)
+        self.prior = Distribution(prior_args)
+        self.target_prior = copy.deepcopy(self.prior)
+        self.approx_post = Distribution(approx_post_args)
 
-        self.action_variable = get_variable(type='latent', args=copy.deepcopy(action_variable_args))
+        self.prior_model = get_model(prior_model_args)
+        self.target_prior_model = copy.deepcopy(self.prior_model)
+
+        self.q_value_estimator = get_q_value_estimator(q_value_estimator_args)
+
+        self.inference_optimizer = get_inference_optimizer(inference_optimizer_args)
 
         # Lagrange multipliers for KL, location KL, and scale KL
         self.log_alphas = nn.ParameterDict({'pi': nn.Parameter(torch.zeros(1)),
@@ -51,28 +57,24 @@ class Agent(nn.Module):
 
     def act(self, state, reward=None, done=False, action=None, valid=None, log_prob=None):
         state, reward, action, done, valid, log_prob = self._change_device(state, reward, action, done, valid, log_prob)
-        self.generate_action_prior(state)
-        self.action_inference(state)
+        self.generate_prior(state)
+        self.inference(state)
         # self.estimate_q_values(state=state, action=action, reward=reward, done=done, valid=valid)
         self._prev_state = state
         if self.mode != 'train':
             if state is not None and action is None:
-                action = self.action_variable.sample().detach()
+                action = self.approx_post.sample().detach()
         self.collector.collect(state, reward, done, action, valid, log_prob)
         if self.postprocess_action:
             action = action.tanh()
         return action.cpu().numpy()
 
-    def generate_action_prior(self, state):
-        self.action_variable.generative_mode()
-        if self.action_prior_model is not None:
-            prior_input = self.action_prior_model(state=state)
-            self.action_variable.step(prior_input)
-            prior_input = self.target_action_prior_model(state=state)
-            self.target_action_variable.step(prior_input)
+    def generate_prior(self, state):
+        if self.prior_model is not None:
+            self.prior.step(self.prior_model(state=state))
+            self.target_prior.step(self.target_prior_model(state=state))
 
-    def action_inference(self, state):
-        self.action_variable.inference_mode()
+    def inference(self, state):
         self.inference_optimizer(state)
 
     def estimate_q_values(self, done, state, action, **kwargs):
@@ -116,7 +118,6 @@ class Agent(nn.Module):
         # evaluate the objective, collect various metrics for reporting
         objective = self.collector.evaluate()
         objective.backward()
-
         results = {}
         for k, v in self.collector.get_metrics().items():
             results[k] = v
@@ -124,9 +125,6 @@ class Agent(nn.Module):
             results[k] = v
         for k, v in self.collector.get_grads().items():
             results[k] = v
-
-        results['kl_min'] = self.kl_min
-        results['kl_factor'] = self.kl_factor
         return results
 
     def get_episode(self):
@@ -170,8 +168,14 @@ class Agent(nn.Module):
     def reset(self, batch_size=1, prev_action=None, prev_state=None):
 
         self.q_value_estimator.reset(batch_size, prev_action, prev_state)
+        self.inference_optimizer.reset()
 
-
+        self.action_variable.reset(batch_size)
+        self.target_action_variable.reset(batch_size)
+        if self.action_prior_model is not None:
+            self.action_prior_model.reset(batch_size)
+        if self.target_action_prior_model is not None:
+            self.target_action_prior_model.reset(batch_size)
 
         # reset the variables
         self.action_variable.reset(batch_size)
@@ -183,10 +187,7 @@ class Agent(nn.Module):
             self.reward_variable.reset(batch_size)
 
         # reset the networks
-        if self.action_prior_model is not None:
-            self.action_prior_model.reset(batch_size)
-        if self.target_action_prior_model is not None:
-            self.target_action_prior_model.reset(batch_size)
+
         if self.obs_likelihood_model is not None:
             self.obs_likelihood_model.reset(batch_size)
         if self.reward_likelihood_model is not None:
@@ -300,22 +301,10 @@ class Agent(nn.Module):
         return params
 
     def inference_mode(self):
-        self.action_variable.inference_mode()
-        if self.action_prior_model is not None:
-            self.action_prior_model.detach_hidden_state()
-        if self.obs_likelihood_model is not None:
-            self.obs_likelihood_model.detach_hidden_state()
-        if self.reward_likelihood_model is not None:
-            self.reward_likelihood_model.detach_hidden_state()
+        self.approx_post.attach()
 
     def generative_mode(self):
-        self.action_variable.generative_mode()
-        if self.action_prior_model is not None:
-            self.action_prior_model.attach_hidden_state()
-        if self.obs_likelihood_model is not None:
-            self.obs_likelihood_model.attach_hidden_state()
-        if self.reward_likelihood_model is not None:
-            self.reward_likelihood_model.attach_hidden_state()
+        self.approx_post.detach()
 
     def load(self, state_dict):
         # load the state dictionary for the agent
