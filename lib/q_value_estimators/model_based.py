@@ -7,28 +7,38 @@ from misc.retrace import retrace
 
 class ModelBasedEstimator(nn.Module):
     """
-    Estimate the Q-value using a learned model. Uses the Retrace estimator.
+    Estimate the Q-value using a learned model and Q network. Uses the Retrace
+    estimator.
 
     Args:
         agent (Agent): the parent agent
-        network_args (dict): arguments for the direct Q-value network
+        network_args (dict): arguments for the Q network
         model_args (dict): arguments for the dynamics and reward models
         horizon (int): planning horizon
         retrace_lambda (float): smoothing factor for Retrace estimator
+        learn_reward (bool): whether to learn the reward function
     """
-    def __init__(self, agent, network_args, model_args, horizon, retrace_lambda):
+    def __init__(self, agent, network_args, model_args, horizon, retrace_lambda,
+                 learn_reward=True):
         self.agent = agent
         # direct Q-value model
         self.q_value_models = nn.ModuleList([get_model(copy.deepcopy(network_args)) for _ in range(2)])
         self.target_q_value_models = nn.ModuleList([get_model(copy.deepcopy(network_args)) for _ in range(2)])
+        q_model_output = self.q_value_models[0].n_out
+        self.q_value_variables = nn.ModuleList([get_variable(type='value', args={'n_input': q_model_output}) for _ in range(2)])
+        self.target_q_value_variables = nn.ModuleList([get_variable(type='value', args={'n_input': q_model_output}) for _ in range(2)])
 
         # model
-        self.reward_likelihood_model = get_model(model_args['reward_likelihood_args'])
         self.state_likelihood_model = get_model(model_args['state_likelihood_args'])
-        observation_variable_args['n_input'] = self.state_likelihood_model.n_out
+        model_args['state_likelihood_args']['n_input'] = self.state_likelihood_model.n_out
         self.state_variable = get_variable(type='observed', args=model_args['state_variable_args'])
-        reward_variable_args['n_input'] = self.reward_likelihood_model.n_out
-        self.reward_variable = get_variable(type='observed', args=model_args['reward_variable_args'])
+
+        if learn_reward:
+            self.reward_likelihood_model = get_model(model_args['reward_likelihood_args'])
+            model_args['reward_likelihood_args']['n_input'] = self.reward_likelihood_model.n_out
+            self.reward_variable = get_variable(type='observed', args=model_args['reward_variable_args'])
+        else:
+            raise NotImplementedError
 
         # hyper-parameters
         self.horizon = horizon
@@ -41,25 +51,26 @@ class ModelBasedEstimator(nn.Module):
         q_values_list = []
         for _ in range(self.horizon):
             # estimate the Q-value at current state
-            act = act.tanh() if self.agent.postprocess_action else act
-            q_value_input = [model(state=state, action=act) for model in q_value_models]
-            q_values = [variable(inp) for variable, inp in zip(q_value_variables, q_value_input)]
+            action = action.tanh() if self.agent.postprocess_action else action
+            q_value_input = [model(state=state, action=action) for model in self.q_value_models]
+            q_values = [variable(inp) for variable, inp in zip(self.q_value_variables, q_value_input)]
             q_value = torch.min(q_values[0], q_values[1])
             q_values_list.append(q_value)
             # predict state and reward
-            self.generate_observation(obs, act)
-            self.generate_reward(obs, act)
+            self.generate_state(state, action)
+            self.generate_reward(state, action)
             reward = self.reward_variable.sample()
             rewards_list.append(reward)
             # step the action
             state = self.state_variable.sample()
-            self.step_action(state)
-            act = self.action_variable.sample()
+            self.agent.generate_prior(state)
+            # TODO: give option of which distribution to sample from
+            act = self.agent.prior.sample()
 
         # estimate Q-value at final state
-        act = act.tanh() if self.agent.postprocess_action else act
-        q_value_input = [model(state=state, action=act) for model in q_value_models]
-        q_values = [variable(inp) for variable, inp in zip(q_value_variables, q_value_input)]
+        action = action.tanh() if self.agent.postprocess_action else action
+        q_value_input = [model(state=state, action=action) for model in self.q_value_models]
+        q_values = [variable(inp) for variable, inp in zip(self.q_value_variables, q_value_input)]
         q_value = torch.min(q_values[0], q_values[1])
         q_values_list.append(q_value)
 

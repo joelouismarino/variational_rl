@@ -75,44 +75,50 @@ class Agent(nn.Module):
             self.target_prior.step(self.target_prior_model(state=state))
 
     def inference(self, state):
+        self.approx_post.init(self.prior)
         self.inference_optimizer(state)
 
-    def estimate_q_values(self, done, state, action, **kwargs):
-        # estimate the value of the current state
-        if action is not None:
-            # estimate Q values for off-policy actions sample from the buffer
-            q_value_input = [model(state=state, action=action) for model in self.q_value_models]
-            q_values = [variable(inp) for variable, inp in zip(self.q_value_variables, q_value_input)]
-            self.collector.qvalues1.append(q_values[0])
-            self.collector.qvalues2.append(q_values[1])
+    def estimate_objective(self, state, action):
+        kl = kl_divergence(self.approx_post, self.prior, samples=action)
+        cond_log_like = self.q_value_estimator(state, action)
+        return cond_log_like - self.alphas['pi'] * kl
 
-        # get on-policy actions and log probs
-        if self.target_action_variable is not None:
-            new_action = self.target_action_variable.sample(self.n_action_samples)
-        else:
-            new_action = self.action_variable.sample(self.n_action_samples)
-        new_action_log_prob = self.action_variable.approx_post.log_prob(new_action).sum(dim=1).mean()
-        self.collector.new_actions.append(new_action)
-        if self.postprocess_action:
-            new_action = new_action.tanh()
-        self.collector.new_action_log_probs.append(new_action_log_prob)
-        expanded_state = state.repeat(self.n_action_samples, 1)
-
-        # estimate Q value for on-policy actions sampled from current policy
-        new_q_value_models = copy.deepcopy(self.q_value_models)
-        new_q_value_variables = copy.deepcopy(self.q_value_variables)
-        new_q_value_input = [model(state=expanded_state, action=new_action) for model in new_q_value_models]
-        new_q_values = [variable(inp) for variable, inp in zip(new_q_value_variables, new_q_value_input)]
-        sample_new_q_values = torch.min(new_q_values[0], new_q_values[1])
-        self.collector.sample_new_q_values.append(sample_new_q_values)
-        avg_new_q_value = torch.min(new_q_values[0].view(self.n_action_samples, -1, 1).mean(dim=0), new_q_values[1].view(self.n_action_samples, -1, 1).mean(dim=0))
-        self.collector.new_q_values.append(avg_new_q_value)
-
-        # estimate target Q value for on-policy actions sampled from current policy
-        target_q_value_input = [model(state=expanded_state, action=new_action) for model in self.target_q_value_models]
-        target_q_values = [variable(inp).view(self.n_action_samples, -1, 1).mean(dim=0) for variable, inp in zip(self.target_q_value_variables, target_q_value_input)]
-        target_q_value = torch.min(target_q_values[0], target_q_values[1])
-        self.collector.target_q_values.append(target_q_value)
+    # def estimate_q_values(self, done, state, action, **kwargs):
+    #     # estimate the value of the current state
+    #     if action is not None:
+    #         # estimate Q values for off-policy actions sample from the buffer
+    #         q_value_input = [model(state=state, action=action) for model in self.q_value_models]
+    #         q_values = [variable(inp) for variable, inp in zip(self.q_value_variables, q_value_input)]
+    #         self.collector.qvalues1.append(q_values[0])
+    #         self.collector.qvalues2.append(q_values[1])
+    #
+    #     # get on-policy actions and log probs
+    #     if self.target_action_variable is not None:
+    #         new_action = self.target_action_variable.sample(self.n_action_samples)
+    #     else:
+    #         new_action = self.action_variable.sample(self.n_action_samples)
+    #     new_action_log_prob = self.action_variable.approx_post.log_prob(new_action).sum(dim=1).mean()
+    #     self.collector.new_actions.append(new_action)
+    #     if self.postprocess_action:
+    #         new_action = new_action.tanh()
+    #     self.collector.new_action_log_probs.append(new_action_log_prob)
+    #     expanded_state = state.repeat(self.n_action_samples, 1)
+    #
+    #     # estimate Q value for on-policy actions sampled from current policy
+    #     new_q_value_models = copy.deepcopy(self.q_value_models)
+    #     new_q_value_variables = copy.deepcopy(self.q_value_variables)
+    #     new_q_value_input = [model(state=expanded_state, action=new_action) for model in new_q_value_models]
+    #     new_q_values = [variable(inp) for variable, inp in zip(new_q_value_variables, new_q_value_input)]
+    #     sample_new_q_values = torch.min(new_q_values[0], new_q_values[1])
+    #     self.collector.sample_new_q_values.append(sample_new_q_values)
+    #     avg_new_q_value = torch.min(new_q_values[0].view(self.n_action_samples, -1, 1).mean(dim=0), new_q_values[1].view(self.n_action_samples, -1, 1).mean(dim=0))
+    #     self.collector.new_q_values.append(avg_new_q_value)
+    #
+    #     # estimate target Q value for on-policy actions sampled from current policy
+    #     target_q_value_input = [model(state=expanded_state, action=new_action) for model in self.target_q_value_models]
+    #     target_q_values = [variable(inp).view(self.n_action_samples, -1, 1).mean(dim=0) for variable, inp in zip(self.target_q_value_variables, target_q_value_input)]
+    #     target_q_value = torch.min(target_q_values[0], target_q_values[1])
+    #     self.collector.target_q_values.append(target_q_value)
 
     def evaluate(self):
         # evaluate the objective, collect various metrics for reporting
@@ -167,31 +173,14 @@ class Agent(nn.Module):
 
     def reset(self, batch_size=1, prev_action=None, prev_state=None):
 
+        self.prior.reset(batch_size)
+        self.target_prior.reset(batch_size)
+        self.approx_post.reset(batch_size)
+        if self.prior_model is not None:
+            self.prior_model.reset(batch_size)
+            self.target_prior_model.reset(batch_size)
         self.q_value_estimator.reset(batch_size, prev_action, prev_state)
         self.inference_optimizer.reset()
-
-        self.action_variable.reset(batch_size)
-        self.target_action_variable.reset(batch_size)
-        if self.action_prior_model is not None:
-            self.action_prior_model.reset(batch_size)
-        if self.target_action_prior_model is not None:
-            self.target_action_prior_model.reset(batch_size)
-
-        # reset the variables
-        self.action_variable.reset(batch_size)
-        if self.target_action_variable is not None:
-            self.target_action_variable.reset(batch_size)
-        if self.observation_variable is not None:
-            self.observation_variable.reset(batch_size, prev_obs=prev_obs)
-        if self.reward_variable is not None:
-            self.reward_variable.reset(batch_size)
-
-        # reset the networks
-
-        if self.obs_likelihood_model is not None:
-            self.obs_likelihood_model.reset(batch_size)
-        if self.reward_likelihood_model is not None:
-            self.reward_likelihood_model.reset(batch_size)
 
         # reset the collector
         self.collector.reset()
@@ -233,45 +222,22 @@ class Agent(nn.Module):
     def parameters(self):
         param_dict = {}
 
-        if self.action_inference_model is not None:
-            param_dict['action_inference_model'] = nn.ParameterList()
-            param_dict['action_inference_model'].extend(list(self.action_inference_model.parameters()))
-            param_dict['action_inference_model'].extend(list(self.action_variable.inference_parameters()))
+        if 'parameters' in dir(self.inference_optimizer):
+            param_dict['inference_optimizer'] = nn.ParameterList()
+            param_dict['inference_optimizer'].extend(list(self.inference_optimizer.parameters()))
+            param_dict['inference_optimizer'].extend(list(self.approx_post.parameters()))
 
-        if self.target_action_inference_model is not None:
-            param_dict['target_action_inference_model'] = nn.ParameterList()
-            param_dict['target_action_inference_model'].extend(list(self.target_action_inference_model.parameters()))
-            param_dict['target_action_inference_model'].extend(list(self.target_action_variable.inference_parameters()))
+        if self.prior_model is not None:
+            param_dict['prior'] = nn.ParameterList()
+            param_dict['prior'].extend(list(self.prior_model.parameters()))
+            param_dict['prior'].extend(list(self.prior.parameters()))
+            param_dict['target_prior'] = nn.ParameterList()
+            param_dict['target_prior'].extend(list(self.target_prior_model.parameters()))
+            param_dict['target_prior'].extend(list(self.target_prior.parameters()))
 
-        if self.action_prior_model is not None:
-            param_dict['action_prior_model'] = nn.ParameterList()
-            param_dict['action_prior_model'].extend(list(self.action_prior_model.parameters()))
-            param_dict['action_prior_model'].extend(list(self.action_variable.generative_parameters()))
-
-        if self.target_action_prior_model is not None:
-            param_dict['target_action_prior_model'] = nn.ParameterList()
-            param_dict['target_action_prior_model'].extend(list(self.target_action_prior_model.parameters()))
-            param_dict['target_action_prior_model'].extend(list(self.target_action_variable.generative_parameters()))
-
-        if self.obs_likelihood_model is not None:
-            param_dict['obs_likelihood_model'] = nn.ParameterList()
-            param_dict['obs_likelihood_model'].extend(list(self.obs_likelihood_model.parameters()))
-            param_dict['obs_likelihood_model'].extend(list(self.observation_variable.parameters()))
-
-        if self.reward_likelihood_model is not None:
-            param_dict['reward_likelihood_model'] = nn.ParameterList()
-            param_dict['reward_likelihood_model'].extend(list(self.reward_likelihood_model.parameters()))
-            param_dict['reward_likelihood_model'].extend(list(self.reward_variable.parameters()))
-
-        if self.q_value_models is not None:
-            param_dict['q_value_models'] = nn.ParameterList()
-            param_dict['q_value_models'].extend(list(self.q_value_models.parameters()))
-            param_dict['q_value_models'].extend(list(self.q_value_variables.parameters()))
-
-        if self.target_q_value_models is not None:
-            param_dict['target_q_value_models'] = nn.ParameterList()
-            param_dict['target_q_value_models'].extend(list(self.target_q_value_models.parameters()))
-            param_dict['target_q_value_models'].extend(list(self.target_q_value_variables.parameters()))
+        q_value_param_dict = self.q_value_estimator.parameters()
+        for k, v in q_value_param_dict.items():
+            param_dict[k] = v
 
         if self.log_alphas is not None:
             param_dict['log_alphas'] = nn.ParameterList()
@@ -282,22 +248,19 @@ class Agent(nn.Module):
 
     def inference_parameters(self):
         params = nn.ParameterList()
-        if self.action_inference_model is not None:
-            params.extend(list(self.action_inference_model.parameters()))
-            params.extend(list(self.action_variable.inference_parameters()))
+        if 'parameters' in dir(self.inference_optimizer):
+            params.extend(list(self.inference_optimizer.parameters()))
+            params.extend(list(self.approx_post.parameters()))
         return params
 
     def generative_parameters(self):
         params = nn.ParameterList()
-        if self.action_prior_model is not None:
-            params.extend(list(self.action_prior_model.parameters()))
-            params.extend(list(self.action_variable.generative_parameters()))
-        if self.obs_likelihood_model is not None:
-            params.extend(list(self.obs_likelihood_model.parameters()))
-            params.extend(list(self.observation_variable.parameters()))
-        if self.reward_likelihood_model is not None:
-            params.extend(list(self.reward_likelihood_model.parameters()))
-            params.extend(list(self.reward_variable.parameters()))
+        if self.prior_model is not None:
+            params.extend(list(self.prior_model.parameters()))
+            params.extend(list(self.prior.parameters()))
+        q_value_param_dict = self.q_value_estimator.parameters()
+        for _, v in q_value_param_dict.items():
+            params.extend(list(v))
         return params
 
     def inference_mode(self):

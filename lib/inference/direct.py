@@ -12,12 +12,10 @@ class DirectInferenceModel(nn.Module):
     """
     def __init__(self, agent, network_args):
         self.agent = agent
-        self.action_inference_model = get_model(network_args)
+        self.inference_model = get_model(network_args)
 
     def forward(self, state):
-        inf_input = self.action_inference_model(state=state)
-        self.agent.action_variable.infer(inf_input)
-        
+        self.agent.approx_post.step(self.inference_model(state=state))
 
-    def reset(self):
-        pass
+    def reset(self, batch_size):
+        self.inference_model.reset(batch_size)
