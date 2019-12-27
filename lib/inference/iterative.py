@@ -1,5 +1,6 @@
 import torch.nn as nn
 from lib.models import get_model
+from misc import clear_gradients
 
 
 class IterativeInferenceModel(nn.Module):
@@ -28,6 +29,8 @@ class IterativeInferenceModel(nn.Module):
             params, grads = self.agent.approx_post.params_and_grads()
             inf_input = self.inference_model(params=params, grads=grads, state=state)
             self.agent.approx_post.step(inf_input)
+
+        clear_gradients(self.agent.generative_parameters())
 
     def reset(self, batch_size):
         self.inference_model.reset(batch_size)

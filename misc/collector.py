@@ -157,86 +157,78 @@ class Collector:
                 for param_name in dist.param_names:
                     param = getattr(dist.dist, param_name)
                     self.distributions[name][dist_name][param_name].append(param.detach())
-        if self.agent._mode == 'train':
+        if self.agent.mode == 'train':
             self.objectives[name].append(self.agent.alphas['pi'] * obj_kl * (1 - done) * valid)
         self.metrics[name]['kl'].append((kl * (1 - done) * valid).detach())
 
     def _collect_log_probs(self, action, log_prob, valid):
         action = self.agent._convert_action(action)
-        if 'loc' not in dir(self.agent.action_variable.approx_post.dist):
+        if 'loc' not in dir(self.agent.approx_post.dist):
             self.log_probs['action'].append(valid)
             self.importance_weights['action'].append(valid)
         else:
-            action_log_prob = self.agent.action_variable.approx_post.dist.log_prob(action)
-            if self.agent.action_variable.approx_post.dist_type == getattr(torch.distributions, 'Categorical'):
-                action_log_prob = action_log_prob.view(-1, 1)
-            else:
-                action_log_prob = action_log_prob.sum(dim=1, keepdim=True)
+            action_log_prob = self.agent.approx_post.dist.log_prob(action)
+            action_log_prob = action_log_prob.sum(dim=1, keepdim=True)
             self.log_probs['action'].append(action_log_prob * valid)
             action_importance_weight = torch.exp(action_log_prob) / torch.exp(log_prob)
             self.importance_weights['action'].append(action_importance_weight.detach())
 
-    def _collect_episode(self, observation, reward, done, action):
+    def _collect_episode(self, state, reward, done, action):
         """
         Collect the variables for this step of the episode.
         """
         if not done:
-            self.episode['observation'].append(observation)
+            # get relevant variables
+            self.episode['state'].append(state)
             if action is None:
-                action = self.agent.action_variable.sample(n_samples=1).detach()
-                action = self.agent._convert_action(self.agent.action_variable.sample().detach())
+                action = self.agent.approx_post.sample(n_samples=1).detach()
             self.episode['action'].append(action)
-            action_log_prob = self.agent.action_variable.approx_post.log_prob(action)
-            if self.agent.action_variable.approx_post.dist_type == getattr(torch.distributions, 'Categorical'):
-                action_log_prob = action_log_prob.view(-1, 1)
-            else:
-                action_log_prob = action_log_prob.sum(dim=1, keepdim=True)
+            action_log_prob = self.agent.approx_post.log_prob(action).sum(dim=1, keepdim=True)
             self.episode['log_prob'].append(action_log_prob.detach())
         else:
-            obs = self.episode['observation'][0]
+            # fill in with zeros when done
+            state = self.episode['state'][0]
             action = self.episode['action'][0]
             log_prob = self.episode['log_prob'][0]
-            self.episode['observation'].append(obs.new(obs.shape).zero_())
+            self.episode['state'].append(state.new(state.shape).zero_())
             self.episode['action'].append(action.new(action.shape).zero_())
             self.episode['log_prob'].append(log_prob.new(log_prob.shape).zero_())
         self.episode['reward'].append(reward)
         self.episode['done'].append(done)
 
-        if done:
-            self.agent.kl_min['action'] *= self.agent.kl_min_anneal_rate['action']
-            self.agent.kl_factor['action'] *= self.agent.kl_factor_anneal_rate['action']
-            self.agent.kl_factor['action'] = min(self.agent.kl_factor['action'], 1.)
+    def collect(self, state, reward, done, action, valid, log_prob):
+        """
+        Collect objectives and variables for a single time step.
+        """
+        if self.agent.mode == 'train':
+            self.objectives['optimality'].append(-reward * valid)
+        self.metrics['optimality']['cll'].append((-reward * valid).detach())
 
-    def collect(self, observation, reward, done, action, valid, log_prob):
-        optimality_cll = reward
-        if self.agent._mode == 'train':
-            self.objectives['optimality'].append(-optimality_cll * valid)
-        self.metrics['optimality']['cll'].append((-optimality_cll * valid).detach())
-
-        if self.agent.reward_likelihood_model is not None and self.agent.train_model:
-            self._collect_likelihood('reward', reward, self.agent.reward_variable, valid)
-
-        if self.agent.obs_likelihood_model is not None and self.agent.train_model:
-            self._collect_likelihood('observation', observation, self.agent.observation_variable, valid, done)
+        # if self.agent.reward_likelihood_model is not None and self.agent.train_model:
+        #     self._collect_likelihood('reward', reward, self.agent.reward_variable, valid)
+        #
+        # if self.agent.obs_likelihood_model is not None and self.agent.train_model:
+        #     self._collect_likelihood('observation', observation, self.agent.observation_variable, valid, done)
 
         self._collect_kl('action', self.agent.action_variable, valid, done)
 
-        if self.agent._mode == 'train':
+        if self.agent.mode == 'train':
             self._collect_log_probs(action, log_prob, valid)
-            self._get_policy_loss(valid, done)
+            self._eval_inf_opt(valid, done)
             self._get_alpha_losses(valid, done)
         else:
-            self._collect_episode(observation, reward, done, action)
+            self._collect_episode(state, reward, done, action)
 
         self.valid.append(valid)
         self.dones.append(done)
 
-    def _get_policy_loss(self, valid, done):
+    def _eval_inf_opt(self, valid, done):
+        """
+        Evaluates the inference optimizer if there are amortized parameters.
+        """
+
         policy_loss = -self.new_q_values[-1] * valid * (1 - done)
-        if self.agent.action_variable.approx_post.update == 'direct':
-            self.objectives['policy_loss'].append(policy_loss)
-        else:
-            self.objectives['policy_loss'].append(policy_loss * 0.)
+        self.objectives['policy_loss'].append(policy_loss)
         self.metrics['policy_loss'].append(policy_loss.detach())
         self.metrics['new_q_value'].append(self.new_q_values[-1].detach())
 
@@ -360,21 +352,14 @@ class Collector:
         valid = torch.stack(self.valid)
         rewards = -torch.stack(self.objectives['optimality'])[1:]
         action_kl = torch.stack(self.objectives['action'])
-        # action_kl = torch.stack(self.objectives['action_curr_loc'])
-        # new_action_log_probs = torch.stack(self.new_action_log_probs)
-        # alpha = self.agent.alpha['action']
-        # target_values = torch.stack(self.target_q_values) - alpha * new_action_log_probs
         future_q = torch.stack(self.target_q_values) - action_kl
-        # future_q = torch.stack(self.target_q_values)
         future_q = future_q * valid * (1. - dones)
         rewards *= self.agent.reward_scale
         importance_weights = torch.stack(self.importance_weights['action'])
         q_targets = retrace(future_q, rewards, importance_weights, discount=self.agent.reward_discount, l=self.agent.retrace_lambda)
-        # target_values = torch.stack(self.target_q_values) - action_kl
-        # q_targets = self.agent.reward_scale * rewards + self.agent.reward_discount * target_values[1:] * valid[1:] * (1. - dones[1:])
         return q_targets.detach()
 
-    def evaluate_q_loss(self):
+    def train_q_value_estimator(self):
         """
         Get the loss for the Q networks.
         """
@@ -395,7 +380,11 @@ class Collector:
         """
         Combines the objectives for training.
         """
-        self.evaluate_q_loss()
+        self.train_q_value_estimator()
+
+
+
+
         n_steps = len(self.objectives['optimality'])
         n_valid_steps = torch.stack(self.valid).sum(dim=0) - 1
         total_objective = torch.zeros(n_steps-1, self.agent.batch_size, 1).to(self.agent.device)
@@ -436,7 +425,7 @@ class Collector:
                         'alphas': {'pi': []}}
 
 
-        if self.agent.action_prior_model is not None:
+        if self.agent.prior_model is not None:
             self.objectives['action_prev_loc'] = []
             self.objectives['action_prev_scale'] = []
             self.objectives['action_curr_loc'] = []
