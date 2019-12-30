@@ -33,6 +33,7 @@ class ModelBasedEstimator(nn.Module):
         model_args['state_likelihood_args']['n_input'] = self.state_likelihood_model.n_out
         self.state_variable = get_variable(type='observed', args=model_args['state_variable_args'])
 
+        self.reward_likelihood_model = None
         if learn_reward:
             self.reward_likelihood_model = get_model(model_args['reward_likelihood_args'])
             model_args['reward_likelihood_args']['n_input'] = self.reward_likelihood_model.n_out
@@ -44,7 +45,11 @@ class ModelBasedEstimator(nn.Module):
         self.horizon = horizon
         self.retrace_lambda = retrace_lambda
 
+        self._prev_state = None
+
     def forward(self, state, action):
+
+        self._prev_state = state
 
         # roll out the model
         rewards_list = []
@@ -100,4 +105,22 @@ class ModelBasedEstimator(nn.Module):
         self.state_variable.reset(batch_size, prev_state=prev_state)
         self.reward_variable.reset(batch_size)
         self.state_likelihood_model.reset(batch_size)
-        self.reward_likelihood_model.reset(batch_size)
+        if self.reward_likelihood_model is not None:
+            self.reward_likelihood_model.reset(batch_size)
+
+    def parameters(self):
+        param_dict = {}
+        param_dict['q_value_models'] = nn.ParameterList()
+        param_dict['q_value_models'].extend(list(self.q_value_models.parameters()))
+        param_dict['q_value_models'].extend(list(self.q_value_variables.parameters()))
+        param_dict['target_q_value_models'] = nn.ParameterList()
+        param_dict['target_q_value_models'].extend(list(self.target_q_value_models.parameters()))
+        param_dict['target_q_value_models'].extend(list(self.target_q_value_variables.parameters()))
+        param_dict['state_likelihood_model'] = nn.ParameterList()
+        param_dict['state_likelihood_model'].extend(list(self.state_likelihood_model.parameters()))
+        param_dict['state_likelihood_model'].extend(list(self.state_variable.parameters()))
+        if self.reward_likelihood_model is not None:
+            param_dict['reward_likelihood_model'] = nn.ParameterList()
+            param_dict['reward_likelihood_model'].extend(list(self.reward_likelihood_model.parameters()))
+            param_dict['reward_likelihood_model'].extend(list(self.reward_variable.parameters()))
+        return param_dict

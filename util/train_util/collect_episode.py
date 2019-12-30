@@ -17,4 +17,4 @@ def collect_episode(env, agent, random=False):
         state, reward, done, _ = env.step(action)
         n_steps += 1
     agent.act(state, reward, done)
-    return agent.get_episode(), n_steps
+    return agent.collector.get_episode(), n_steps

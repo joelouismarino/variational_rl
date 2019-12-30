@@ -29,3 +29,13 @@ class DirectEstimator(nn.Module):
 
     def reset(self):
         pass
+
+    def parameters(self):
+        param_dict = {}
+        param_dict['q_value_models'] = nn.ParameterList()
+        param_dict['q_value_models'].extend(list(self.q_value_models.parameters()))
+        param_dict['q_value_models'].extend(list(self.q_value_variables.parameters()))
+        param_dict['target_q_value_models'] = nn.ParameterList()
+        param_dict['target_q_value_models'].extend(list(self.target_q_value_models.parameters()))
+        param_dict['target_q_value_models'].extend(list(self.target_q_value_variables.parameters()))
+        return param_dict

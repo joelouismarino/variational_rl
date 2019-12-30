@@ -31,9 +31,9 @@ class Agent(nn.Module):
         self.prior_model = get_model(prior_model_args)
         self.target_prior_model = copy.deepcopy(self.prior_model)
 
-        self.q_value_estimator = get_q_value_estimator(q_value_estimator_args)
+        self.q_value_estimator = get_q_value_estimator(self, q_value_estimator_args)
 
-        self.inference_optimizer = get_inference_optimizer(inference_optimizer_args)
+        self.inference_optimizer = get_inference_optimizer(self, inference_optimizer_args)
 
         # Lagrange multipliers for KL, location KL, and scale KL
         self.log_alphas = nn.ParameterDict({'pi': nn.Parameter(torch.zeros(1)),
@@ -52,7 +52,6 @@ class Agent(nn.Module):
         # collects relevant quantities
         self.collector = Collector(self)
 
-        self._prev_state = None
         self.batch_size = 1
 
     def act(self, state, reward=None, done=False, action=None, valid=None, log_prob=None):
@@ -60,7 +59,6 @@ class Agent(nn.Module):
         self.generate_prior(state)
         self.inference(state)
         # self.estimate_q_values(state=state, action=action, reward=reward, done=done, valid=valid)
-        self._prev_state = state
         if self.mode != 'train':
             if state is not None and action is None:
                 action = self.approx_post.sample().detach()
@@ -70,15 +68,18 @@ class Agent(nn.Module):
         return action.cpu().numpy()
 
     def generate_prior(self, state):
+        # generates the action prior
         if self.prior_model is not None:
             self.prior.step(self.prior_model(state=state))
             self.target_prior.step(self.target_prior_model(state=state))
 
     def inference(self, state):
+        # infers the action approximate posterior
         self.approx_post.init(self.prior)
         self.inference_optimizer(state)
 
     def estimate_objective(self, state, action):
+        # estimates the objective (value)
         kl = kl_divergence(self.approx_post, self.prior, samples=action)
         cond_log_like = self.q_value_estimator(state, action)
         return cond_log_like - self.alphas['pi'] * kl
@@ -132,12 +133,6 @@ class Agent(nn.Module):
         for k, v in self.collector.get_grads().items():
             results[k] = v
         return results
-
-    def get_episode(self):
-        return self.collector.get_episode()
-
-    def _convert_action(self, action):
-        return action.detach()
 
     def _change_device(self, state, reward, action, done, valid, log_prob):
         if state is None:
