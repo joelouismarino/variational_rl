@@ -20,3 +20,6 @@ class NonParametricInference(Object):
 
     def reset(self, *args, **kwargs):
         pass
+
+    def parameters(self):
+        return {}

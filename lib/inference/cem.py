@@ -13,3 +13,6 @@ class CEMInference(Object):
 
     def reset(self):
         pass
+
+    def parameters(self):
+        return {}

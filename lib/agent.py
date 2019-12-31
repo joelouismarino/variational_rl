@@ -58,13 +58,11 @@ class Agent(nn.Module):
         state, reward, action, done, valid, log_prob = self._change_device(state, reward, action, done, valid, log_prob)
         self.generate_prior(state)
         self.inference(state)
-        # self.estimate_q_values(state=state, action=action, reward=reward, done=done, valid=valid)
-        if self.mode != 'train':
+        if self.mode == 'eval':
             if state is not None and action is None:
                 action = self.approx_post.sample().detach()
-        self.collector.collect(state, reward, done, action, valid, log_prob)
-        if self.postprocess_action:
-            action = action.tanh()
+        self.collector.collect(state, action, reward, done, valid, log_prob)
+        action = action.tanh() if self.postprocess_action else action
         return action.cpu().numpy()
 
     def generate_prior(self, state):

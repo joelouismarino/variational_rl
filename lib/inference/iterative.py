@@ -24,7 +24,7 @@ class IterativeInferenceModel(nn.Module):
         for _ in range(self.n_inf_iters):
             actions = self.agent.approx_post.sample(self.n_inf_samples)
             obj = self.agent.estimate_objective(state, actions)
-            obj.backward()
+            obj.backward(retain_graph=True)
 
             params, grads = self.agent.approx_post.params_and_grads()
             inf_input = self.inference_model(params=params, grads=grads, state=state)
