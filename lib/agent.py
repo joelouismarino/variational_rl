@@ -79,7 +79,7 @@ class Agent(nn.Module):
     def estimate_objective(self, state, action):
         # estimates the objective (value)
         kl = kl_divergence(self.approx_post, self.prior, samples=action)
-        cond_log_like = self.q_value_estimator(state, action)
+        cond_log_like = self.q_value_estimator(state, action, detach_params=True)
         return cond_log_like - self.alphas['pi'] * kl
 
     # def estimate_q_values(self, done, state, action, **kwargs):

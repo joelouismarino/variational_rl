@@ -27,6 +27,7 @@ class ModelBasedEstimator(nn.Module):
         q_model_output = self.q_value_models[0].n_out
         self.q_value_variables = nn.ModuleList([get_variable(type='value', args={'n_input': q_model_output}) for _ in range(2)])
         self.target_q_value_variables = nn.ModuleList([get_variable(type='value', args={'n_input': q_model_output}) for _ in range(2)])
+        self.q_values = None
 
         # model
         self.state_likelihood_model = get_model(model_args['state_likelihood_args'])
@@ -47,7 +48,7 @@ class ModelBasedEstimator(nn.Module):
 
         self._prev_state = None
 
-    def forward(self, state, action):
+    def forward(self, state, action, target=False):
 
         self._prev_state = state
 
@@ -102,6 +103,7 @@ class ModelBasedEstimator(nn.Module):
         self.state_variable.generate(likelihood_input)
 
     def reset(self, batch_size, prev_action, prev_state):
+        self.q_values = None
         self.state_variable.reset(batch_size, prev_state=prev_state)
         self.reward_variable.reset(batch_size)
         self.state_likelihood_model.reset(batch_size)

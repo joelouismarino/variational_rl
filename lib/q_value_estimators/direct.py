@@ -19,12 +19,32 @@ class DirectEstimator(nn.Module):
         self.q_value_variables = nn.ModuleList([get_variable(type='value', args={'n_input': q_model_output}) for _ in range(2)])
         self.target_q_value_variables = nn.ModuleList([get_variable(type='value', args={'n_input': q_model_output}) for _ in range(2)])
 
-    def forward(self, state, action):
+    def forward(self, state, action, target=False, both=False, detach_params=False):
+        """
+        Estimates the Q-value using the state and action.
+
+        Args:
+            state (torch.Tensor): the state
+            action (torch.Tensor): the action
+            target (bool): whether to use the target networks
+            both (bool): whether to return both values (or the min value)
+            detach_params (bool): whether to use detached (copied) parameters
+        """
         # estimate q value
+        if target:
+            q_value_models = self.target_q_value_models
+            q_value_variables = self.target_q_value_variables
+        else:
+            q_value_models = self.q_value_models
+            q_value_variables = self.q_value_variables
+        if detach_params:
+            q_value_models = copy.deepcopy(q_value_models)
+            q_value_variables = copy.deepcopy(q_value_variables)
         action = action.tanh() if self.agent.postprocess_action else action
         q_value_input = [model(state=state, action=action) for model in q_value_models]
-        q_values = [variable(inp) for variable, inp in zip(self.q_value_variables, q_value_input)]
-        q_value = torch.min(q_values[0], q_values[1])
+        q_value = [variable(inp) for variable, inp in zip(q_value_variables, q_value_input)]
+        if not both:
+            q_value = torch.min(q_value[0], q_value[1])
         return q_value
 
     def reset(self):

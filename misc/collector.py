@@ -41,11 +41,7 @@ class Collector:
         self.qvalues = []
         self.qvalues1 = []
         self.qvalues2 = []
-        self.new_actions = []
-        self.new_action_log_probs = []
-        self.new_q_values = []
         self.target_q_values = []
-        self.sample_new_q_values = []
 
         self.valid = []
         self.dones = []
@@ -66,22 +62,23 @@ class Collector:
         self.valid.append(valid)
         self.dones.append(done)
 
-    def _collect_train(self, state, action, reward, done, valid, log_prob):
+    def _collect_train(self, state, off_policy_action, reward, done, valid, log_prob):
         """
         Collects objectives and other quantities for training.
         """
+        on_policy_action = self.agent.approx_post.sample()
         # collect inference optimizer objective
-        self._collect_inf_opt_objective(state, action, valid, done)
+        self._collect_inf_opt_objective(state, on_policy_action, valid, done)
         # collect the optimality (reward)
         self._collect_optimality_objective(reward, valid, done)
         # collect KL divergence objectives
-        self._collect_kl_objectives(valid, done)
+        self._collect_kl_objectives(on_policy_action, valid, done)
         # collect alpha objectives
         self._collect_alpha_objectives(valid, done)
         # collect q-value estimator objectives
-        sefl._get_q_value_est_objectives(state, reward, valid, done)
+        sefl._get_q_value_est_objectives(state, off_policy_action, on_policy_action, reward, valid, done)
         # collect log probabilities
-        self._collect_log_probs(action, log_prob, valid)
+        self._collect_log_probs(off_policy_action, log_prob, valid)
 
     def _collect_eval(self, state, action, reward, done):
         """
@@ -124,22 +121,29 @@ class Collector:
 
         #  state and reward conditional likelihoods (if applicable)
         if 'state_likelihood_model' in dir(self.agent.q_value_estimator):
-            # self.distributions[name]['recon']['loc'].append(variable.cond_likelihood.dist.loc.detach())
-            # self.distributions[name]['recon']['scale'].append(variable.cond_likelihood.dist.scale.detach())
-            pass
+            variable = self.agent.q_value_estimator.state_variable
+            self.distributions['state']['loc'].append(variable.cond_likelihood.dist.loc.detach())
+            self.distributions['state']['scale'].append(variable.cond_likelihood.dist.scale.detach())
+
+        if 'reward_likelihood_model' in dir(self.agent.q_value_estimator):
+            variable = self.agent.q_value_estimator.reward_variable
+            self.distributions['reward']['loc'].append(variable.cond_likelihood.dist.loc.detach())
+            self.distributions['reward']['scale'].append(variable.cond_likelihood.dist.scale.detach())
 
     def _collect_optimality_objective(self, reward, valid, done):
         """
-        Collects the reward.
+        Collects the negative log optimality (reward).
         """
         self.objectives['optimality'].append(-reward * valid)
         self.metrics['optimality']['cll'].append((-reward * valid).detach())
 
-    def _collect_inf_opt_objective(self, state, action, valid, done):
+    def _collect_inf_opt_objective(self, state, on_policy_action, valid, done):
         """
         Evaluates the inference optimizer if there are amortized parameters.
         """
-        obj = self.agent.estimate_objective(state, action)
+        # TODO: we need to copy the Q-value estimator to evaluate this;
+        #       we don't want to update the Q-network parameters with this objective
+        obj = self.agent.estimate_objective(state, on_policy_action)
         obj = - obj * valid * (1 - done)
         self.objectives['inf_opt_obj'].append(obj)
 
@@ -170,18 +174,31 @@ class Collector:
             self.metrics['alpha_losses']['scale'].append(alpha_loss_scale.detach())
             self.metrics['alphas']['scale'].append(self.agent.alphas['scale'])
 
-    def _get_q_value_est_objectives(self, state, reward, valid, done):
+    def _get_q_value_est_objectives(self, state, off_policy_action, on_policy_action,
+                                    reward, valid, done):
         """
-        Collects any of the online objectives for the Q-value estimator.
-        Note: only applicable to model-based estimator.
+        Collects the online objectives for the Q-value estimator.
         """
+        # TODO: this is going to not work properly with model-based estimator.
+        #       just want the direct Q-network output
+
+        # collect the q-values for the off-policy action
+        off_policy_q_values = self.agent.q_value_estimator(state, off_policy_action, both=True)
+        self.q_values1.append(off_policy_q_values[0])
+        self.q_values2.append(off_policy_q_values[1])
+        # collect the target q-values for the on-policy action
+        on_policy_q_values = self.agent.q_value_estimator(state, on_policy_action, target=True)
+        self.target_q_values.append(target_q_values)
+        # other terms for model-based Q-value estimator
         if 'state_likelihood_model' in dir(self.agent.q_value_estimator):
-            variable = self.agent.q_value_estimator.state_variable
-            self._collect_likelihood('state', state, variable, valid, done)
+            if self.agent.q_value_estimator.state_likelihood_model is not None:
+                variable = self.agent.q_value_estimator.state_variable
+                self._collect_likelihood('state', state, variable, valid, done)
 
         if 'reward_likelihood_model' in dir(self.agent.q_value_estimator):
-            variable = self.agent.q_value_estimator.reward_variable
-            self._collect_likelihood('reward', reward, variable, valid, done)
+            if self.agent.q_value_estimator.reward_likelihood_model is not None:
+                variable = self.agent.q_value_estimator.reward_variable
+                self._collect_likelihood('reward', reward, variable, valid, done)
 
     def _collect_likelihood(self, name, obs, variable, valid, done=0.):
         """
@@ -191,7 +208,7 @@ class Collector:
         self.objectives[name].append(-cll * (1 - done) * valid)
         self.metrics[name]['cll'].append((-cll * (1 - done) * valid).detach())
 
-    def _collect_kl_objectives(self, valid, done):
+    def _collect_kl_objectives(self, on_policy_action, valid, done):
         """
         Collect the KL divergence objectives to train the prior.
         """
@@ -211,11 +228,11 @@ class Collector:
             # loc KLs
             self.agent.prior.reset(batch_size, dist_params={'loc': current_prior_loc, 'scale': target_prior_scale.detach()})
             kl_prev_loc = kl_divergence(self.agent.target_prior, self.agent.prior, n_samples=self.agent.n_action_samples).sum(dim=1, keepdim=True)
-            kl_curr_loc = kl_divergence(self.agent.approx_post, self.agent.prior, n_samples=self.agent.n_action_samples, sample=sample).sum(dim=1, keepdim=True)
+            kl_curr_loc = kl_divergence(self.agent.approx_post, self.agent.prior, n_samples=self.agent.n_action_samples, sample=on_policy_action).sum(dim=1, keepdim=True)
             # scale KLs
             self.agent.prior.reset(batch_size, dist_params={'loc': target_prior_loc.detach(), 'scale': current_prior_scale})
             kl_prev_scale = kl_divergence(self.agent.target_prior, self.agent.prior, n_samples=self.agent.n_action_samples).sum(dim=1, keepdim=True)
-            kl_curr_scale = kl_divergence(self.agent.approx_post, self.agent.prior, n_samples=self.agent.n_action_samples, sample=sample).sum(dim=1, keepdim=True)
+            kl_curr_scale = kl_divergence(self.agent.approx_post, self.agent.prior, n_samples=self.agent.n_action_samples, sample=on_policy_action).sum(dim=1, keepdim=True)
 
             # append the KL objectives
             self.objectives['action_kl_prev_loc'].append(self.agent.alphas['loc'] * kl_prev_loc * (1 - done) * valid)
@@ -249,16 +266,15 @@ class Collector:
             self.metrics[name]['approx_post_scale'].append(current_post_scale.detach().mean(dim=1, keepdim=True))
 
         # evaluate the KL for reporting
-        kl = kl_divergence(self.agent.approx_post, self.agent.prior, n_samples=self.agent.n_action_samples, sample=sample).sum(dim=1, keepdim=True)
+        kl = kl_divergence(self.agent.approx_post, self.agent.prior, n_samples=self.agent.n_action_samples, sample=on_policy_action).sum(dim=1, keepdim=True)
         self.metrics[name]['kl'].append((kl * (1 - done) * valid).detach())
 
-    def _collect_log_probs(self, action, log_prob, valid):
+    def _collect_log_probs(self, off_policy_action, log_prob, valid):
         """
         Evaluates the log probability of the action under the current policy.
         Evaluates the importance weight from the previous log probability.
         """
-        action_log_prob = self.agent.approx_post.dist.log_prob(action.detach())
-        action_log_prob = action_log_prob.sum(dim=1, keepdim=True)
+        action_log_prob = self.agent.approx_post.dist.log_prob(off_policy_action).sum(dim=1, keepdim=True)
         self.log_probs['action'].append(action_log_prob * valid)
         action_importance_weight = torch.exp(action_log_prob) / torch.exp(log_prob)
         self.importance_weights['action'].append(action_importance_weight.detach())
@@ -355,7 +371,6 @@ class Collector:
         action_kl = torch.stack(self.objectives['action'])
         future_q = torch.stack(self.target_q_values) - action_kl
         future_q = future_q * valid * (1. - dones)
-        rewards *= self.agent.reward_scale
         importance_weights = torch.stack(self.importance_weights['action'])
         q_targets = retrace(future_q, rewards, importance_weights, discount=self.agent.reward_discount, l=self.agent.retrace_lambda)
         return q_targets.detach()
@@ -382,10 +397,6 @@ class Collector:
         Combines the objectives for training.
         """
         self._train_q_value_estimator()
-
-
-
-
         n_steps = len(self.objectives['optimality'])
         n_valid_steps = torch.stack(self.valid).sum(dim=0) - 1
         total_objective = torch.zeros(n_steps-1, self.agent.batch_size, 1).to(self.agent.device)
@@ -416,15 +427,12 @@ class Collector:
         self.episode = {'state': [], 'reward': [], 'done': [],
                         'action': [], 'log_prob': []}
 
-        self.objectives = {'optimality': [], 'action': [], 'policy_loss': [],
+        self.objectives = {'optimality': [], 'action': [], 'inf_opt_obj': [],
                            'alpha_loss_pi': [], 'q_loss': []}
         self.metrics = {'optimality': {'cll': []},
                         'action': {'kl': []},
-                        'policy_loss': [],
-                        'new_q_value': [],
                         'alpha_losses':{'pi': []},
                         'alphas': {'pi': []}}
-
 
         if self.agent.prior_model is not None:
             self.objectives['action_prev_loc'] = []
@@ -455,28 +463,25 @@ class Collector:
         self.distributions['action'] = {'prior': {param_name: [] for param_name in self.agent.prior.param_names},
                                         'approx_post': {param_name: [] for param_name in self.agent.approx_post.param_names}}
 
-        self.inference_improvement = {'action': []}
+        # self.inference_improvement = {'action': []}
         self.log_probs = {'action': []}
 
-        if self.agent.observation_variable is not None and self.agent.train_model:
-            self.objectives['observation'] = []
-            self.metrics['observation'] = {'cll': []}
-            self.distributions['observation'] = {'pred': {'loc': [], 'scale': []},
-                                                 'recon': {'loc': [], 'scale': []}}
-        if self.agent.reward_variable is not None and self.agent.train_model:
-            self.objectives['reward'] = []
-            self.metrics['reward'] = {'cll': []}
-            self.distributions['reward'] = {'pred': {'loc': [], 'scale': []},
-                                            'recon': {'loc': [], 'scale': []}}
+        # model-based Q-value estimator distributions
+        if 'state_likelihood_model' in dir(self.agent.q_value_estimator):
+            if self.agent.q_value_estimator.state_likelihood_model is not None:
+                self.objectives['state'] = []
+                self.metrics['state'] = {'cll': []}
+                self.distributions['state'] = {'loc': [], 'scale': []}
+        if 'reward_likelihood_model' in dir(self.agent.q_value_estimator):
+            if self.agent.q_value_estimator.reward_likelihood_model is not None:
+                self.objectives['reward'] = []
+                self.metrics['reward'] = {'cll': []}
+                self.distributions['reward'] = {'loc': [], 'scale': []}
 
         self.importance_weights = {'action': []}
         self.target_q_values = []
         self.qvalues = []
         self.qvalues1 = []
         self.qvalues2 = []
-        self.new_actions = []
-        self.new_q_values = []
-        self.sample_new_q_values = []
-        self.new_action_log_probs = []
         self.valid = []
         self.dones = []
