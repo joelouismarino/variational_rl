@@ -20,7 +20,7 @@ class Collector:
                         'action': [], 'log_prob': []}
 
         # stores the objectives during training
-        self.objectives = {'optimality': [], 'action': [], 'inf_opt_obj': [],
+        self.objectives = {'optimality': [], 'inf_opt_obj': [],
                            'alpha_loss': [], 'q_loss': []}
         # stores the metrics
         self.metrics = {'optimality': {'cll': []},
@@ -38,9 +38,9 @@ class Collector:
         # stores the importance weights during training
         self.importance_weights = {'action': []}
         # store the values during training
-        self.qvalues = []
-        self.qvalues1 = []
-        self.qvalues2 = []
+        self.q_values = []
+        self.q_values1 = []
+        self.q_values2 = []
         self.target_q_values = []
 
         self.valid = []
@@ -76,7 +76,7 @@ class Collector:
         # collect alpha objectives
         self._collect_alpha_objectives(valid, done)
         # collect q-value estimator objectives
-        sefl._get_q_value_est_objectives(state, off_policy_action, on_policy_action, reward, valid, done)
+        self._get_q_value_est_objectives(state, off_policy_action, on_policy_action, reward, valid, done)
         # collect log probabilities
         self._collect_log_probs(off_policy_action, log_prob, valid)
 
@@ -155,7 +155,7 @@ class Collector:
             target_kl = self.agent.epsilons['pi']
         else:
             # SAC heuristic: target entropy <-- |A|
-            target_kl = self.agent.action_variable.n_variables * (1. + float(np.log(2)))
+            target_kl = self.agent.prior.n_variables * (1. + float(np.log(2)))
         alpha_loss = - (self.agent.log_alphas['pi'].exp() * (self.metrics['action']['kl'][-1] - target_kl).detach()) * valid * (1 - done)
         self.objectives['alpha_loss_pi'].append(alpha_loss)
         self.metrics['alpha_losses']['pi'].append(alpha_loss.detach())
@@ -183,11 +183,11 @@ class Collector:
         #       just want the direct Q-network output
 
         # collect the q-values for the off-policy action
-        off_policy_q_values = self.agent.q_value_estimator(state, off_policy_action, both=True)
+        off_policy_q_values = self.agent.q_value_estimator(self.agent, state, off_policy_action, both=True)
         self.q_values1.append(off_policy_q_values[0])
         self.q_values2.append(off_policy_q_values[1])
         # collect the target q-values for the on-policy action
-        on_policy_q_values = self.agent.q_value_estimator(state, on_policy_action, target=True)
+        target_q_values = self.agent.q_value_estimator(self.agent, state, on_policy_action, target=True)
         self.target_q_values.append(target_q_values)
         # other terms for model-based Q-value estimator
         if 'state_likelihood_model' in dir(self.agent.q_value_estimator):
@@ -241,16 +241,16 @@ class Collector:
             self.objectives['action_kl_curr_scale'].append(self.agent.alphas['pi'] * kl_curr_scale * (1 - done) * valid)
 
             # report the KL divergences
-            self.metrics[name]['action_kl_prev_loc'].append((kl_prev_loc * (1 - done) * valid).detach())
-            self.metrics[name]['action_kl_curr_loc'].append((kl_curr_loc * (1 - done) * valid).detach())
-            self.metrics[name]['action_kl_prev_scale'].append((kl_prev_scale * (1 - done) * valid).detach())
-            self.metrics[name]['action_kl_curr_scale'].append((kl_curr_scale * (1 - done) * valid).detach())
+            self.metrics['action']['kl_prev_loc'].append((kl_prev_loc * (1 - done) * valid).detach())
+            self.metrics['action']['kl_curr_loc'].append((kl_curr_loc * (1 - done) * valid).detach())
+            self.metrics['action']['kl_prev_scale'].append((kl_prev_scale * (1 - done) * valid).detach())
+            self.metrics['action']['kl_curr_scale'].append((kl_curr_scale * (1 - done) * valid).detach())
 
             # report the prior and target prior distribution parameters
-            self.metrics[name]['prior_prev_loc'].append(target_prior_loc.detach().mean(dim=1, keepdim=True))
-            self.metrics[name]['prior_prev_scale'].append(target_prior_scale.detach().mean(dim=1, keepdim=True))
-            self.metrics[name]['prior_curr_loc'].append(current_prior_loc.detach().mean(dim=1, keepdim=True))
-            self.metrics[name]['prior_curr_scale'].append(current_prior_scale.detach().mean(dim=1, keepdim=True))
+            self.metrics['action']['prior_prev_loc'].append(target_prior_loc.detach().mean(dim=1, keepdim=True))
+            self.metrics['action']['prior_prev_scale'].append(target_prior_scale.detach().mean(dim=1, keepdim=True))
+            self.metrics['action']['prior_curr_loc'].append(current_prior_loc.detach().mean(dim=1, keepdim=True))
+            self.metrics['action']['prior_curr_scale'].append(current_prior_scale.detach().mean(dim=1, keepdim=True))
 
             # reset the prior with detached parameters and approx. post. with
             # non-detached parameters to evaluate KL for approx. post.
@@ -262,12 +262,12 @@ class Collector:
             # report the approx. post. distribution parameters
             current_post_loc = self.agent.approx_post.dist.loc
             current_post_scale = self.agent.approx_post.dist.scale
-            self.metrics[name]['approx_post_loc'].append(current_post_loc.detach().mean(dim=1, keepdim=True))
-            self.metrics[name]['approx_post_scale'].append(current_post_scale.detach().mean(dim=1, keepdim=True))
+            self.metrics['action']['approx_post_loc'].append(current_post_loc.detach().mean(dim=1, keepdim=True))
+            self.metrics['action']['approx_post_scale'].append(current_post_scale.detach().mean(dim=1, keepdim=True))
 
         # evaluate the KL for reporting
         kl = kl_divergence(self.agent.approx_post, self.agent.prior, n_samples=self.agent.n_action_samples, sample=on_policy_action).sum(dim=1, keepdim=True)
-        self.metrics[name]['kl'].append((kl * (1 - done) * valid).detach())
+        self.metrics['action']['kl'].append((kl * (1 - done) * valid).detach())
 
     def _collect_log_probs(self, off_policy_action, log_prob, valid):
         """
@@ -368,8 +368,8 @@ class Collector:
         dones = torch.stack(self.dones)
         valid = torch.stack(self.valid)
         rewards = -torch.stack(self.objectives['optimality'])[1:]
-        action_kl = torch.stack(self.objectives['action'])
-        future_q = torch.stack(self.target_q_values) - action_kl
+        action_kl = torch.stack(self.metrics['action']['kl'])
+        future_q = torch.stack(self.target_q_values) - self.agent.alphas['pi'] * action_kl
         future_q = future_q * valid * (1. - dones)
         importance_weights = torch.stack(self.importance_weights['action'])
         q_targets = retrace(future_q, rewards, importance_weights, discount=self.agent.reward_discount, l=self.agent.retrace_lambda)
@@ -380,8 +380,8 @@ class Collector:
         Get the loss for the Q networks.
         """
         valid = torch.stack(self.valid)
-        q_values1 = torch.stack(self.qvalues1)
-        q_values2 = torch.stack(self.qvalues2)
+        q_values1 = torch.stack(self.q_values1)
+        q_values2 = torch.stack(self.q_values2)
         q_targets = self._get_q_targets()
         q_loss1 = 0.5 * (q_values1[:-1] - q_targets).pow(2) * valid[:-1]
         q_loss2 = 0.5 * (q_values2[:-1] - q_targets).pow(2) * valid[:-1]
@@ -427,7 +427,7 @@ class Collector:
         self.episode = {'state': [], 'reward': [], 'done': [],
                         'action': [], 'log_prob': []}
 
-        self.objectives = {'optimality': [], 'action': [], 'inf_opt_obj': [],
+        self.objectives = {'optimality': [], 'inf_opt_obj': [],
                            'alpha_loss_pi': [], 'q_loss': []}
         self.metrics = {'optimality': {'cll': []},
                         'action': {'kl': []},
@@ -435,10 +435,10 @@ class Collector:
                         'alphas': {'pi': []}}
 
         if self.agent.prior_model is not None:
-            self.objectives['action_prev_loc'] = []
-            self.objectives['action_prev_scale'] = []
-            self.objectives['action_curr_loc'] = []
-            self.objectives['action_curr_scale'] = []
+            self.objectives['action_kl_prev_loc'] = []
+            self.objectives['action_kl_prev_scale'] = []
+            self.objectives['action_kl_curr_loc'] = []
+            self.objectives['action_kl_curr_scale'] = []
             self.objectives['alpha_loss_loc'] = []
             self.objectives['alpha_loss_scale'] = []
             self.metrics['action']['kl_prev_loc'] = []
@@ -480,8 +480,8 @@ class Collector:
 
         self.importance_weights = {'action': []}
         self.target_q_values = []
-        self.qvalues = []
-        self.qvalues1 = []
-        self.qvalues2 = []
+        self.q_values = []
+        self.q_values1 = []
+        self.q_values2 = []
         self.valid = []
         self.dones = []

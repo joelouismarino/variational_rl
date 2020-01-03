@@ -75,15 +75,15 @@ class Plotter:
                     mean = mean.squeeze()
                     std = std.squeeze()
                     x, plus, minus = mean, mean + std, mean - std
-                    if key == 'action' and label == 'approx_post' and self.agent_args['action_variable_args']['approx_post_dist'] == 'TanhNormal':
+                    if key == 'action' and label == 'approx_post' and self.agent_args['approx_post_args']['dist_type'] == 'TanhNormal':
                         # Tanh Normal distribution
                         x, plus, minus = np.tanh(x), np.tanh(plus), np.tanh(minus)
-                    if key == 'action' and label == 'prior' and self.agent_args['action_variable_args']['prior_dist'] == 'TanhNormal':
+                    if key == 'action' and label == 'prior' and self.agent_args['prior_args']['dist_type'] == 'TanhNormal':
                         # Tanh Normal distribution
                         x, plus, minus = np.tanh(x), np.tanh(plus), np.tanh(minus)
                     if key == 'action' and self.agent.postprocess_action:
                         x, plus, minus = np.tanh(x), np.tanh(plus), np.tanh(minus)
-                    if key == 'action' and label == 'prior' and self.agent_args['action_variable_args']['prior_dist'] == 'NormalUniform':
+                    if key == 'action' and label == 'prior' and self.agent_args['prior_args']['dist_type'] == 'NormalUniform':
                         # Normal + Uniform distribution
                         x, plus, minus = x, np.minimum(plus, 1.), np.maximum(minus, -1)
                 elif 'low' in statistics:

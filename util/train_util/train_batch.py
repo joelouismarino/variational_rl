@@ -18,7 +18,6 @@ def train_batch(agent, data, optimizer, model_only=False):
     # E-step
     for step in range(n_steps):
         agent.act(state[step], reward[step], done[step], action[step], valid[step], log_prob[step])
-        optimizer.step(model_only=model_only)
     # M-step
     results = agent.evaluate()
     optimizer.apply(model_only=model_only)

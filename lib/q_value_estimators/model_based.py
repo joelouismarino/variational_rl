@@ -1,4 +1,5 @@
 import copy
+import torch
 import torch.nn as nn
 from lib.models import get_model
 from lib.variables import get_variable

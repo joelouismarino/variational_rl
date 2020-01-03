@@ -7,6 +7,7 @@ from lib.models import get_model
 from lib.distributions import Distribution
 from lib.q_value_estimators import get_q_value_estimator
 from lib.inference import get_inference_optimizer
+from lib.distributions import kl_divergence
 
 
 class Agent(nn.Module):
@@ -89,7 +90,7 @@ class Agent(nn.Module):
 
     def estimate_objective(self, state, action):
         # estimates the objective (value)
-        kl = kl_divergence(self.approx_post, self.prior, samples=action)
+        kl = kl_divergence(self.approx_post, self.prior, sample=action)
         cond_log_like = self.q_value_estimator(self, state, action, detach_params=True)
         return cond_log_like - self.alphas['pi'] * kl
 
