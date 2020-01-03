@@ -1,7 +1,7 @@
 import copy
 import torch.nn as nn
 from lib.models import get_model
-from modules.variables import get_variable
+from lib.variables import get_variable
 from misc.retrace import retrace
 
 
@@ -18,9 +18,9 @@ class ModelBasedEstimator(nn.Module):
         retrace_lambda (float): smoothing factor for Retrace estimator
         learn_reward (bool): whether to learn the reward function
     """
-    def __init__(self, agent, network_args, model_args, horizon, retrace_lambda,
-                 learn_reward=True):
-        self.agent = agent
+    def __init__(self, agent, network_args, model_args, horizon, learn_reward=True):
+        super(ModelBasedEstimator, self).__init__()
+        # self.agent = agent
         # direct Q-value model
         self.q_value_models = nn.ModuleList([get_model(copy.deepcopy(network_args)) for _ in range(2)])
         self.target_q_value_models = nn.ModuleList([get_model(copy.deepcopy(network_args)) for _ in range(2)])
@@ -44,11 +44,14 @@ class ModelBasedEstimator(nn.Module):
 
         # hyper-parameters
         self.horizon = horizon
-        self.retrace_lambda = retrace_lambda
+        self.retrace_lambda = agent.retrace_lambda
 
         self._prev_state = None
 
-    def forward(self, state, action, target=False):
+        # remove agent to prevent infinite recursion
+        # del self.__dict__['_modules']['agent']
+
+    def forward(self, agent, state, action, target=False):
 
         self._prev_state = state
 
@@ -57,7 +60,7 @@ class ModelBasedEstimator(nn.Module):
         q_values_list = []
         for _ in range(self.horizon):
             # estimate the Q-value at current state
-            action = action.tanh() if self.agent.postprocess_action else action
+            action = action.tanh() if agent.postprocess_action else action
             q_value_input = [model(state=state, action=action) for model in self.q_value_models]
             q_values = [variable(inp) for variable, inp in zip(self.q_value_variables, q_value_input)]
             q_value = torch.min(q_values[0], q_values[1])
@@ -69,12 +72,12 @@ class ModelBasedEstimator(nn.Module):
             rewards_list.append(reward)
             # step the action
             state = self.state_variable.sample()
-            self.agent.generate_prior(state)
+            agent.generate_prior(state)
             # TODO: give option of which distribution to sample from
             act = self.agent.prior.sample()
 
         # estimate Q-value at final state
-        action = action.tanh() if self.agent.postprocess_action else action
+        action = action.tanh() if agent.postprocess_action else action
         q_value_input = [model(state=state, action=action) for model in self.q_value_models]
         q_values = [variable(inp) for variable, inp in zip(self.q_value_variables, q_value_input)]
         q_value = torch.min(q_values[0], q_values[1])
@@ -83,7 +86,7 @@ class ModelBasedEstimator(nn.Module):
         # add retrace Q-value estimate to the objective
         total_rewards = torch.stack(rewards_list) if len(rewards_list) > 0 else None
         total_q_values = torch.stack(q_values_list)
-        retrace_estimate = retrace(total_q_values, total_rewards, None, discount=self.agent.reward_discount, l=self.retrace_lambda)
+        retrace_estimate = retrace(total_q_values, total_rewards, None, discount=agent.reward_discount, l=self.retrace_lambda)
         retrace_estimate = retrace_estimate.view(-1, self.n_planning_samples, 1)
 
         return retrace_estimate

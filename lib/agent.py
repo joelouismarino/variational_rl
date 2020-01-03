@@ -3,9 +3,10 @@ import torch
 import torch.nn as nn
 import numpy as np
 from misc.collector import Collector
-from modules.models import get_model
+from lib.models import get_model
+from lib.distributions import Distribution
 from lib.q_value_estimators import get_q_value_estimator
-from lib.inference_optimizers import get_inference_optimizer
+from lib.inference import get_inference_optimizer
 
 
 class Agent(nn.Module):
@@ -23,17 +24,26 @@ class Agent(nn.Module):
     def __init__(self, prior_args, approx_post_args, prior_model_args,
                  q_value_estimator_args, inference_optimizer_args, misc_args):
         super(Agent, self).__init__()
-
-        self.prior = Distribution(prior_args)
-        self.target_prior = copy.deepcopy(self.prior)
-        self.approx_post = Distribution(approx_post_args)
-
+        # prior
         self.prior_model = get_model(prior_model_args)
         self.target_prior_model = copy.deepcopy(self.prior_model)
+        if self.prior_model is not None:
+            prior_args['n_input'] = self.prior_model.n_out
+        else:
+            prior_args['n_input'] = None
+        self.prior = Distribution(**prior_args)
+        self.target_prior = Distribution(**prior_args)
 
-        self.q_value_estimator = get_q_value_estimator(self, q_value_estimator_args)
-
+        # approximate posterior
         self.inference_optimizer = get_inference_optimizer(self, inference_optimizer_args)
+        if 'inference_model' in dir(self.inference_optimizer):
+            approx_post_args['n_input'] = self.inference_optimizer.inference_model.n_out
+        else:
+            approx_post_args['n_input'] = None
+        self.approx_post = Distribution(**approx_post_args)
+
+        # Q-value estimator
+        self.q_value_estimator = get_q_value_estimator(self, q_value_estimator_args)
 
         # Lagrange multipliers for KL, location KL, and scale KL
         self.log_alphas = nn.ParameterDict({'pi': nn.Parameter(torch.zeros(1)),
@@ -45,6 +55,7 @@ class Agent(nn.Module):
         self.n_action_samples = misc_args['n_action_samples']
         self.postprocess_action = misc_args['postprocess_action']
         self.reward_discount = misc_args['reward_discount']
+        self.retrace_lambda = misc_args['retrace_lambda']
 
         # mode (either 'train' or 'eval')
         self.mode = 'train'
@@ -74,12 +85,12 @@ class Agent(nn.Module):
     def inference(self, state):
         # infers the action approximate posterior
         self.approx_post.init(self.prior)
-        self.inference_optimizer(state)
+        self.inference_optimizer(self, state)
 
     def estimate_objective(self, state, action):
         # estimates the objective (value)
         kl = kl_divergence(self.approx_post, self.prior, samples=action)
-        cond_log_like = self.q_value_estimator(state, action, detach_params=True)
+        cond_log_like = self.q_value_estimator(self, state, action, detach_params=True)
         return cond_log_like - self.alphas['pi'] * kl
 
     # def estimate_q_values(self, done, state, action, **kwargs):
@@ -173,23 +184,23 @@ class Agent(nn.Module):
             self.prior_model.reset(batch_size)
             self.target_prior_model.reset(batch_size)
         self.q_value_estimator.reset(batch_size, prev_action, prev_state)
-        self.inference_optimizer.reset()
+        self.inference_optimizer.reset(batch_size)
 
         # reset the collector
         self.collector.reset()
 
         self.batch_size = batch_size
-        if prev_action is not None:
-            self._prev_action = prev_action.to(self.device)
-        else:
-            act = self.action_variable.sample()
-            self._prev_action = act.new(act.shape).zero_()
-        if self.observation_variable is not None:
-            if prev_obs is not None:
-                self._prev_obs = prev_obs.to(self.device)
-            else:
-                obs = self.observation_variable.sample()
-                self._prev_obs = obs.new(obs.shape).zero_()
+        # if prev_action is not None:
+        #     self._prev_action = prev_action.to(self.device)
+        # else:
+        #     act = self.prior.sample()
+        #     self._prev_action = act.new(act.shape).zero_()
+        # if self.observation_variable is not None:
+        #     if prev_obs is not None:
+        #         self._prev_obs = prev_obs.to(self.device)
+        #     else:
+        #         obs = self.observation_variable.sample()
+        #         self._prev_obs = obs.new(obs.shape).zero_()
 
         # clamp log-alphas to prevent collapse
         for name, log_alpha in self.log_alphas.items():
@@ -206,11 +217,11 @@ class Agent(nn.Module):
 
     def train(self, *args):
         super(Agent, self).train(*args)
-        self._mode = 'train'
+        self.mode = 'train'
 
     def eval(self, *args):
         super(Agent, self).eval(*args)
-        self._mode = 'eval'
+        self.mode = 'eval'
 
     def parameters(self):
         param_dict = {}

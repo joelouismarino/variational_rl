@@ -14,23 +14,26 @@ class IterativeInferenceModel(nn.Module):
         n_inf_samples (int): number of action samples drawn during inference
     """
     def __init__(self, agent, network_args, n_inf_iters, n_inf_samples):
-        self.agent = agent
+        super(IterativeInferenceModel, self).__init__()
+        # self.agent = agent
         self.inference_model = get_model(network_args)
         self.n_inf_iters = n_inf_iters
         self.n_inf_samples = n_inf_samples
+        # remove agent to prevent infinite recursion
+        # del self.__dict__['_modules']['agent']
 
-    def forward(self, state):
+    def forward(self, agent, state):
 
         for _ in range(self.n_inf_iters):
-            actions = self.agent.approx_post.sample(self.n_inf_samples)
-            obj = self.agent.estimate_objective(state, actions)
+            actions = agent.approx_post.sample(self.n_inf_samples)
+            obj = agent.estimate_objective(state, actions)
             obj.backward(retain_graph=True)
 
-            params, grads = self.agent.approx_post.params_and_grads()
+            params, grads = agent.approx_post.params_and_grads()
             inf_input = self.inference_model(params=params, grads=grads, state=state)
-            self.agent.approx_post.step(inf_input)
+            agent.approx_post.step(inf_input)
 
-        clear_gradients(self.agent.generative_parameters())
+        clear_gradients(agent.generative_parameters())
 
     def reset(self, batch_size):
         self.inference_model.reset(batch_size)

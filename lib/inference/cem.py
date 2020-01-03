@@ -1,7 +1,7 @@
 
 
 
-class CEMInference(Object):
+class CEMInference(object):
     """
     Cross-entropy method inference optimizer.
     """

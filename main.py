@@ -3,7 +3,7 @@ import argparse
 import torch
 import numpy as np
 from util.env_util import create_env
-from agents import create_agent
+from lib import create_agent
 from misc.buffer import Buffer
 from misc.optimizer import Optimizer
 from util.plot_util import Plotter

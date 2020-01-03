@@ -1,7 +1,7 @@
 
 
 
-class NonParametricInference(Object):
+class NonParametricInference(object):
     """
     Estimate the Boltzmann distribution policy (non-parametric).
 

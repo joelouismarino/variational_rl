@@ -1,6 +1,6 @@
 from .direct import DirectInferenceModel
 from .iterative import IterativeInferenceModel
-from .gradient_based import GradientBasedInference
+from .gradient import GradientBasedInference
 from .cem import CEMInference
 from .non_parametric import NonParametricInference
 
@@ -10,7 +10,7 @@ def get_inference_optimizer(agent, kwargs):
         return DirectInferenceModel(agent, **kwargs)
     elif opt_type == 'iterative':
         return IterativeInferenceModel(agent, **kwargs)
-    elif opt_type == 'gradient_based':
+    elif opt_type == 'gradient':
         return GradientBasedInference(agent, **kwargs)
     elif opt_type == 'cem':
         return CEMInference(agent, **kwargs)

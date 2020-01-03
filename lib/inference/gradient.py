@@ -1,7 +1,7 @@
 from torch import optim
 
 
-class GradientBasedInference(Object):
+class GradientBasedInference(object):
     """
     Gradient-based inference optimizer.
 

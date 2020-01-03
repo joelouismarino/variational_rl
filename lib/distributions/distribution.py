@@ -1,11 +1,12 @@
 import torch
 import torch.nn as nn
 import torch.distributions.constraints as constraints
-from .delta import Delta
+from lib.layers import FullyConnectedLayer
 from .tanh_normal import TanhNormal
 from .normal_uniform import NormalUniform
 from .boltzmann import Boltzmann
 
+INIT_W = 1e-3
 
 class Distribution(nn.Module):
     """
@@ -35,9 +36,7 @@ class Distribution(nn.Module):
         self._planning_prev_obs = None
 
         # distribution type
-        if dist_type == 'Delta':
-            self.dist_type = Delta
-        elif dist_type == 'TanhNormal':
+        if dist_type == 'TanhNormal':
             self.dist_type = TanhNormal
         elif dist_type == 'NormalUniform':
             self.dist_type = NormalUniform
@@ -47,9 +46,7 @@ class Distribution(nn.Module):
             self.dist_type = getattr(torch.distributions, dist_type)
 
         # models, initial_params, and update gates
-        param_names = ['logits'] if dist_type in ['Categorical', 'Bernoulli'] else self.dist_type.arg_constraints.keys()
-        if 'logits' in param_names:
-            self.continuous = False
+        param_names = self.dist_type.arg_constraints.keys()
         if dist_type == 'Boltzmann':
             # non-parametric distribution
             param_names = []
@@ -61,6 +58,18 @@ class Distribution(nn.Module):
                 param_names = ['loc']
 
         self.models = nn.ModuleDict({name: None for name in param_names}) if not constant else None
+        if self.update != 'direct':
+            self.gates = nn.ModuleDict({name: None for name in param_names})
+
+        if not constant:
+            for model_name in self.models:
+                self.models[model_name] = FullyConnectedLayer(n_input, n_variables)
+                nn.init.uniform_(self.models[model_name].linear.weight, -INIT_W, INIT_W)
+                nn.init.uniform_(self.models[model_name].linear.bias, -INIT_W, INIT_W)
+
+                if self.update != 'direct':
+                    self.gates[model_name] = FullyConnectedLayer(n_input, n_variables,
+                                                                 non_linearity='sigmoid')
 
         self.initial_params = nn.ParameterDict({name: None for name in param_names})
         for param in self.initial_params:
@@ -75,9 +84,6 @@ class Distribution(nn.Module):
             else:
                 self.initial_params[param] = nn.Parameter(torch.zeros(1, n_variables))
             self.initial_params[param].requires_grad_(req_grad)
-
-        if self.update != 'direct':
-            self.gates = nn.ModuleDict({name: None for name in param_names})
 
     def step(self, input=None, **kwargs):
         """
@@ -117,9 +123,6 @@ class Distribution(nn.Module):
                 if type(constraint) == constraints.greater_than and constraint.lower_bound == 0:
                     # positive value
                     param = torch.exp(torch.clamp(param, self._log_scale_lim[0], self._log_scale_lim[1]))
-                elif constraint == constraints.simplex:
-                    # between 0 and 1 for probabilities
-                    param = nn.Softmax()(param)
 
                 # set the parameter
                 parameters[param_name] = param
@@ -160,22 +163,13 @@ class Distribution(nn.Module):
             # get the appropriate distribution
             d = self.planning_dist if self.planning else self.dist
             # perform the sampling
-            if self.continuous:
-                # sample is of size [n_samples x batch_size x n_variables]
-                if d.has_rsample:
-                    sample = d.rsample([n_samples])
-                else:
-                    sample = d.sample([n_samples])
-                # sample = sample.view(n_samples * self._batch_size, -1)
-                sample = sample.view(-1, self.n_variables)
+            # sample is of size [n_samples x batch_size x n_variables]
+            if d.has_rsample:
+                sample = d.rsample([n_samples])
             else:
                 sample = d.sample([n_samples])
-                sample = sample.view(self._batch_size * n_samples, 1)
-                # convert to one-hot encoding
-                device = self.initial_params['logits'].device
-                one_hot_sample = torch.zeros(sample.shape[0], self.n_variables).to(device)
-                one_hot_sample.scatter_(1, sample, 1.)
-                sample = one_hot_sample
+            # sample = sample.view(n_samples * self._batch_size, -1)
+            sample = sample.view(-1, self.n_variables)
             # update the internal sample
             if self.planning:
                 self._planning_sample = sample
@@ -189,10 +183,6 @@ class Distribution(nn.Module):
 
         if self._detach and not self.planning and detach:
             sample = sample.detach()
-
-        # if n_samples < self._n_samples:
-        #     sample = sample.view(self._n_samples, -1, self.n_variables)
-        #     sample = sample[:n_samples].view(-1, self.n_variables)
 
         return sample
 
@@ -225,6 +215,18 @@ class Distribution(nn.Module):
         d = self.planning_dist if self.planning else self.dist
         return d.entropy()
 
+    def init(self, dist):
+        """
+        Reset the distribution from another distribution.
+
+        Args:
+            dist (Distribution): the distribution to initialize from
+        """
+        batch_size = dist._batch_size
+        dist_params = dist.get_dist_params() if dist.dist_type == self.dist_type else None
+        prev_obs = dist._prev_obs
+        self.reset(batch_size, dist_params, prev_obs)
+
     def reset(self, batch_size=1, dist_params=None, prev_obs=None):
         """
         Reset the distribution parameters.
@@ -242,8 +244,6 @@ class Distribution(nn.Module):
                 v.retain_grad()
         # initialize the distribution
         self.dist = self.dist_type(**dist_params) if len(dist_params.keys()) > 0 else None
-        if self.dist_type == getattr(torch.distributions, 'Categorical'):
-            self.dist.logits = dist_params['logits']
         # reset other quantities
         self._sample = None
         self._batch_size = batch_size

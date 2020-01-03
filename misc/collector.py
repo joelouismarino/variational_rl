@@ -4,7 +4,7 @@ import copy
 import numpy as np
 from torch import optim
 from misc.retrace import retrace
-from modules.distributions import kl_divergence
+from lib.distributions import kl_divergence
 
 
 class Collector:
@@ -20,7 +20,7 @@ class Collector:
                         'action': [], 'log_prob': []}
 
         # stores the objectives during training
-        self.objectives = {'optimality': [], 'action': [], 'policy_loss': [],
+        self.objectives = {'optimality': [], 'action': [], 'inf_opt_obj': [],
                            'alpha_loss': [], 'q_loss': []}
         # stores the metrics
         self.metrics = {'optimality': {'cll': []},
@@ -455,7 +455,7 @@ class Collector:
             self.metrics['action']['prior_curr_loc'] = []
             self.metrics['action']['prior_curr_scale'] = []
 
-        if self.agent.action_inference_model is not None:
+        if 'loc' in self.agent.approx_post.param_names:
             self.metrics['action']['approx_post_loc'] = []
             self.metrics['action']['approx_post_scale'] = []
 

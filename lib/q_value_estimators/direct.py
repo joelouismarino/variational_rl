@@ -1,6 +1,7 @@
 import copy
 import torch.nn as nn
 from lib.models import get_model
+from lib.variables import get_variable
 
 
 class DirectEstimator(nn.Module):
@@ -12,14 +13,17 @@ class DirectEstimator(nn.Module):
         network_args (dict): arguments for the Q network
     """
     def __init__(self, agent, network_args):
-        self.agent = agent
+        super(DirectEstimator, self).__init__()
+        # self.agent = agent
         self.q_value_models = nn.ModuleList([get_model(copy.deepcopy(network_args)) for _ in range(2)])
         self.target_q_value_models = nn.ModuleList([get_model(copy.deepcopy(network_args)) for _ in range(2)])
         q_model_output = self.q_value_models[0].n_out
         self.q_value_variables = nn.ModuleList([get_variable(type='value', args={'n_input': q_model_output}) for _ in range(2)])
         self.target_q_value_variables = nn.ModuleList([get_variable(type='value', args={'n_input': q_model_output}) for _ in range(2)])
+        # remove agent to prevent infinite recursion
+        # del self.__dict__['_modules']['agent']
 
-    def forward(self, state, action, target=False, both=False, detach_params=False):
+    def forward(self, agent, state, action, target=False, both=False, detach_params=False):
         """
         Estimates the Q-value using the state and action.
 
@@ -40,14 +44,14 @@ class DirectEstimator(nn.Module):
         if detach_params:
             q_value_models = copy.deepcopy(q_value_models)
             q_value_variables = copy.deepcopy(q_value_variables)
-        action = action.tanh() if self.agent.postprocess_action else action
+        action = action.tanh() if agent.postprocess_action else action
         q_value_input = [model(state=state, action=action) for model in q_value_models]
         q_value = [variable(inp) for variable, inp in zip(q_value_variables, q_value_input)]
         if not both:
             q_value = torch.min(q_value[0], q_value[1])
         return q_value
 
-    def reset(self):
+    def reset(self, *args):
         pass
 
     def parameters(self):

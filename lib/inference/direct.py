@@ -11,11 +11,14 @@ class DirectInferenceModel(nn.Module):
         network_args (dict): network arguments for inference model
     """
     def __init__(self, agent, network_args):
-        self.agent = agent
+        super(DirectInferenceModel, self).__init__()
+        # self.agent = agent
         self.inference_model = get_model(network_args)
+        # # remove agent to prevent infinite recursion
+        # del self.__dict__['_modules']['agent']
 
-    def forward(self, state):
-        self.agent.approx_post.step(self.inference_model(state=state))
+    def forward(self, agent, state):
+        agent.approx_post.step(self.inference_model(state=state))
 
     def reset(self, batch_size):
         self.inference_model.reset(batch_size)
