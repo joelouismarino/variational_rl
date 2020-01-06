@@ -135,6 +135,7 @@ class Distribution(nn.Module):
             # Boltzmann approximate posterior
             parameters = kwargs
         else:
+            # use the initial parameters
             parameters = self.initial_params
 
         # create a new distribution with the parameters

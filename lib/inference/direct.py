@@ -7,15 +7,11 @@ class DirectInferenceModel(nn.Module):
     Direct amortized inference.
 
     Args:
-        agent (Agent): the parent agent
         network_args (dict): network arguments for inference model
     """
-    def __init__(self, agent, network_args):
+    def __init__(self, network_args):
         super(DirectInferenceModel, self).__init__()
-        # self.agent = agent
         self.inference_model = get_model(network_args)
-        # # remove agent to prevent infinite recursion
-        # del self.__dict__['_modules']['agent']
 
     def forward(self, agent, state):
         agent.approx_post.step(self.inference_model(state=state))

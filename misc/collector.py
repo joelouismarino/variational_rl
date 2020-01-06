@@ -20,8 +20,7 @@ class Collector:
                         'action': [], 'log_prob': []}
 
         # stores the objectives during training
-        self.objectives = {'optimality': [], 'inf_opt_obj': [],
-                           'alpha_loss': [], 'q_loss': []}
+        self.objectives = {'optimality': [], 'alpha_loss': [], 'q_loss': []}
         # stores the metrics
         self.metrics = {'optimality': {'cll': []},
                         'action': {'kl': []},
@@ -66,7 +65,7 @@ class Collector:
         """
         Collects objectives and other quantities for training.
         """
-        on_policy_action = self.agent.approx_post.sample()
+        on_policy_action = self.agent.approx_post.sample(self.agent.n_action_samples)
         # collect inference optimizer objective
         self._collect_inf_opt_objective(state, on_policy_action, valid, done)
         # collect the optimality (reward)
@@ -96,8 +95,8 @@ class Collector:
         if not done:
             # get relevant variables
             self.episode['state'].append(state)
-            # action = self.agent.approx_post.sample(n_samples=1).detach() if action is None else action
             self.episode['action'].append(action)
+            # TODO: this isn't correct for non-parametric
             log_prob = self.agent.approx_post.log_prob(action).sum(dim=1, keepdim=True).detach()
             self.episode['log_prob'].append(log_prob)
         else:
@@ -141,11 +140,11 @@ class Collector:
         """
         Evaluates the inference optimizer if there are amortized parameters.
         """
-        # TODO: we need to copy the Q-value estimator to evaluate this;
-        #       we don't want to update the Q-network parameters with this objective
-        obj = self.agent.estimate_objective(state, on_policy_action)
-        obj = - obj * valid * (1 - done)
-        self.objectives['inf_opt_obj'].append(obj)
+        # TODO: only collect if there are parameters in the inf optimizer?
+        if 'parameters' in dir(self.agent.inference_optimizer):
+            obj = self.agent.estimate_objective(state, on_policy_action)
+            obj = - obj * valid * (1 - done)
+            self.objectives['inf_opt_obj'].append(obj)
 
     def _collect_alpha_objectives(self, valid, done):
         """
@@ -181,13 +180,14 @@ class Collector:
         """
         # TODO: this is going to not work properly with model-based estimator.
         #       just want the direct Q-network output
-
         # collect the q-values for the off-policy action
         off_policy_q_values = self.agent.q_value_estimator(self.agent, state, off_policy_action, both=True)
         self.q_values1.append(off_policy_q_values[0])
         self.q_values2.append(off_policy_q_values[1])
-        # collect the target q-values for the on-policy action
-        target_q_values = self.agent.q_value_estimator(self.agent, state, on_policy_action, target=True)
+        # collect the target q-values for the on-policy actions
+        expanded_state = state.repeat(self.agent.n_action_samples, 1)
+        target_q_values = self.agent.q_value_estimator(self.agent, expanded_state, on_policy_action, target=True)
+        target_q_values = target_q_values.view(self.agent.n_action_samples, -1, 1).mean(dim=0)
         self.target_q_values.append(target_q_values)
         # other terms for model-based Q-value estimator
         if 'state_likelihood_model' in dir(self.agent.q_value_estimator):
@@ -274,10 +274,12 @@ class Collector:
         Evaluates the log probability of the action under the current policy.
         Evaluates the importance weight from the previous log probability.
         """
-        action_log_prob = self.agent.approx_post.dist.log_prob(off_policy_action).sum(dim=1, keepdim=True)
-        self.log_probs['action'].append(action_log_prob * valid)
-        action_importance_weight = torch.exp(action_log_prob) / torch.exp(log_prob)
-        self.importance_weights['action'].append(action_importance_weight.detach())
+        # TODO: fix this
+        # action_log_prob = self.agent.approx_post.dist.log_prob(off_policy_action).sum(dim=1, keepdim=True)
+        # self.log_probs['action'].append(action_log_prob * valid)
+        # action_importance_weight = torch.exp(action_log_prob) / torch.exp(log_prob)
+        # self.importance_weights['action'].append(action_importance_weight.detach())
+        self.importance_weights['action'].append(torch.ones(log_prob.shape[0], 1).to(log_prob.device))
 
     def get_episode(self):
         """
@@ -346,20 +348,20 @@ class Collector:
 
         return metrics
 
-    def get_inf_imp(self):
-        """
-        Collect the inference improvement into a dictionary.
-        """
-        inf_imp = {}
-        valid = torch.stack(self.valid)
-        n_valid_steps = valid.sum(dim=0)
-
-        for name, improvement in self.inference_improvement.items():
-            if len(improvement) > 0:
-                imp = torch.stack(improvement).sum(dim=0).div(n_valid_steps).mean(dim=0)
-                inf_imp[name + '_improvement'] = imp.detach().cpu().item()
-
-        return inf_imp
+    # def get_inf_imp(self):
+    #     """
+    #     Collect the inference improvement into a dictionary.
+    #     """
+    #     inf_imp = {}
+    #     valid = torch.stack(self.valid)
+    #     n_valid_steps = valid.sum(dim=0)
+    #
+    #     for name, improvement in self.inference_improvement.items():
+    #         if len(improvement) > 0:
+    #             imp = torch.stack(improvement).sum(dim=0).div(n_valid_steps).mean(dim=0)
+    #             inf_imp[name + '_improvement'] = imp.detach().cpu().item()
+    #
+    #     return inf_imp
 
     def _get_q_targets(self):
         """
@@ -427,12 +429,15 @@ class Collector:
         self.episode = {'state': [], 'reward': [], 'done': [],
                         'action': [], 'log_prob': []}
 
-        self.objectives = {'optimality': [], 'inf_opt_obj': [],
-                           'alpha_loss_pi': [], 'q_loss': []}
+        self.objectives = {'optimality': [], 'alpha_loss_pi': [], 'q_loss': []}
         self.metrics = {'optimality': {'cll': []},
                         'action': {'kl': []},
                         'alpha_losses':{'pi': []},
                         'alphas': {'pi': []}}
+
+        if 'parameters' in dir(self.agent.inference_optimizer):
+            # amortized inference optimizer
+            self.objectives['inf_opt_obj'] = []
 
         if self.agent.prior_model is not None:
             self.objectives['action_kl_prev_loc'] = []

@@ -5,7 +5,7 @@ class CEMInference(object):
     """
     Cross-entropy method inference optimizer.
     """
-    def __init__(self, agent):
+    def __init__(self):
         pass
 
     def forward(self, state):
@@ -13,6 +13,3 @@ class CEMInference(object):
 
     def reset(self):
         pass
-
-    def parameters(self):
-        return {}

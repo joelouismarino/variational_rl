@@ -10,19 +10,15 @@ class DirectEstimator(nn.Module):
     Estimate the Q-value using a learned model and Q network.
 
     Args:
-        agent (Agent): the parent agent
         network_args (dict): arguments for the Q network
     """
-    def __init__(self, agent, network_args):
+    def __init__(self, network_args):
         super(DirectEstimator, self).__init__()
-        # self.agent = agent
         self.q_value_models = nn.ModuleList([get_model(copy.deepcopy(network_args)) for _ in range(2)])
         self.target_q_value_models = nn.ModuleList([get_model(copy.deepcopy(network_args)) for _ in range(2)])
         q_model_output = self.q_value_models[0].n_out
         self.q_value_variables = nn.ModuleList([get_variable(type='value', args={'n_input': q_model_output}) for _ in range(2)])
         self.target_q_value_variables = nn.ModuleList([get_variable(type='value', args={'n_input': q_model_output}) for _ in range(2)])
-        # remove agent to prevent infinite recursion
-        # del self.__dict__['_modules']['agent']
 
     def forward(self, agent, state, action, target=False, both=False, detach_params=False):
         """

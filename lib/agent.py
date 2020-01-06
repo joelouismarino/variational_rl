@@ -36,7 +36,7 @@ class Agent(nn.Module):
         self.target_prior = Distribution(**prior_args)
 
         # approximate posterior
-        self.inference_optimizer = get_inference_optimizer(self, inference_optimizer_args)
+        self.inference_optimizer = get_inference_optimizer(inference_optimizer_args)
         if 'inference_model' in dir(self.inference_optimizer):
             approx_post_args['n_input'] = self.inference_optimizer.inference_model.n_out
         else:
@@ -44,7 +44,7 @@ class Agent(nn.Module):
         self.approx_post = Distribution(**approx_post_args)
 
         # Q-value estimator
-        self.q_value_estimator = get_q_value_estimator(self, q_value_estimator_args)
+        self.q_value_estimator = get_q_value_estimator(q_value_estimator_args)
 
         # Lagrange multipliers for KL, location KL, and scale KL
         self.log_alphas = nn.ParameterDict({'pi': nn.Parameter(torch.zeros(1)),
@@ -138,8 +138,8 @@ class Agent(nn.Module):
         results = {}
         for k, v in self.collector.get_metrics().items():
             results[k] = v
-        for k, v in self.collector.get_inf_imp().items():
-            results[k] = v
+        # for k, v in self.collector.get_inf_imp().items():
+        #     results[k] = v
         for k, v in self.collector.get_grads().items():
             results[k] = v
         return results

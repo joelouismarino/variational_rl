@@ -12,16 +12,14 @@ class ModelBasedEstimator(nn.Module):
     estimator.
 
     Args:
-        agent (Agent): the parent agent
         network_args (dict): arguments for the Q network
         model_args (dict): arguments for the dynamics and reward models
         horizon (int): planning horizon
         retrace_lambda (float): smoothing factor for Retrace estimator
         learn_reward (bool): whether to learn the reward function
     """
-    def __init__(self, agent, network_args, model_args, horizon, learn_reward=True):
+    def __init__(self, network_args, model_args, horizon, learn_reward=True):
         super(ModelBasedEstimator, self).__init__()
-        # self.agent = agent
         # direct Q-value model
         self.q_value_models = nn.ModuleList([get_model(copy.deepcopy(network_args)) for _ in range(2)])
         self.target_q_value_models = nn.ModuleList([get_model(copy.deepcopy(network_args)) for _ in range(2)])
@@ -48,9 +46,6 @@ class ModelBasedEstimator(nn.Module):
         self.retrace_lambda = agent.retrace_lambda
 
         self._prev_state = None
-
-        # remove agent to prevent infinite recursion
-        # del self.__dict__['_modules']['agent']
 
     def forward(self, agent, state, action, target=False):
 
