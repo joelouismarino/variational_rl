@@ -42,6 +42,7 @@ class ModelBasedEstimator(nn.Module):
         # hyper-parameters and internal attributes
         self.horizon = horizon
         self._prev_state = None
+        self._prev_action = None
 
     def forward(self, agent, state, action, target=False, both=False,
                 detach_params=False, direct=False):
@@ -60,12 +61,12 @@ class ModelBasedEstimator(nn.Module):
             return self.direct_estimate(agent, state, action, target, both, detach_params)
 
         self.planning_mode(agent)
+        # set the previous state for residual state prediction
+        self.state_variable.cond_likelihood.set_prev_x(state)
         # roll out the model
         rewards_list = []
         q_values_list = []
         for _ in range(self.horizon):
-            # set the previous state for residual state prediction
-            self.state_variable.cond_likelihood.set_prev_x(state)
             # estimate the Q-value at current state
             action = action.tanh() if agent.postprocess_action else action
             q_value_input = [model(state=state, action=action) for model in self.q_value_models]
@@ -90,7 +91,7 @@ class ModelBasedEstimator(nn.Module):
         q_value = torch.min(q_values[0], q_values[1])
         q_values_list.append(q_value)
 
-        # add retrace Q-value estimate to the objective
+        # calculate the retrace Q-value estimate
         total_rewards = torch.stack(rewards_list) if len(rewards_list) > 0 else None
         total_q_values = torch.stack(q_values_list)
         retrace_estimate = retrace(total_q_values, total_rewards, None, discount=agent.reward_discount, l=agent.retrace_lambda)
@@ -128,6 +129,14 @@ class ModelBasedEstimator(nn.Module):
             q_value = torch.min(q_value[0], q_value[1])
         return q_value
 
+    def generate(self, agent):
+        """
+        Generate conditional likelihoods for the current state and reward.
+        """
+        prev_act = agent._prev_action.tanh() if agent.postprocess_action else agent._prev_action
+        self.generate_state(agent._prev_state, prev_act)
+        self.generate_reward(agent._prev_state, prev_act)
+
     def generate_reward(self, state, action):
         """
         Generate the conditional likelihood for the reward.
@@ -160,10 +169,12 @@ class ModelBasedEstimator(nn.Module):
         if self.reward_likelihood_model is not None:
             self.reward_variable.acting_mode()
 
-    def reset(self, batch_size, prev_state):
+    def reset(self, batch_size, prev_action, prev_state):
         """
         Reset the model componenets.
         """
+        self._prev_action = prev_action
+        self._prev_state = prev_state
         self.state_variable.reset(batch_size, prev_x=prev_state)
         self.reward_variable.reset(batch_size)
         self.state_likelihood_model.reset(batch_size)

@@ -188,20 +188,19 @@ class Collector:
         self.target_q_values.append(target_q_values)
         # other terms for model-based Q-value estimator
         if 'state_likelihood_model' in dir(self.agent.q_value_estimator):
-            if self.agent.q_value_estimator.state_likelihood_model is not None:
-                variable = self.agent.q_value_estimator.state_variable
-                self._collect_likelihood('state', state, variable, valid, done)
-
-        if 'reward_likelihood_model' in dir(self.agent.q_value_estimator):
+            # generate and evaluate the conditional likelihoods
+            self.agent.q_value_estimator.generate(self.agent)
+            variable = self.agent.q_value_estimator.state_variable
+            self._collect_likelihood('state', state, variable, valid, done)
             if self.agent.q_value_estimator.reward_likelihood_model is not None:
                 variable = self.agent.q_value_estimator.reward_variable
                 self._collect_likelihood('reward', reward, variable, valid, done)
 
-    def _collect_likelihood(self, name, obs, variable, valid, done=0.):
+    def _collect_likelihood(self, name, x, variable, valid, done=0.):
         """
         Collects the log likelihood for a state or reward prediction.
         """
-        cll = variable.cond_log_likelihood(obs).view(-1, 1)
+        cll = variable.cond_log_likelihood(x).view(-1, 1)
         self.objectives[name].append(-cll * (1 - done) * valid)
         self.metrics[name]['cll'].append((-cll * (1 - done) * valid).detach())
 

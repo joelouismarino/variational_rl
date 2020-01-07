@@ -64,7 +64,9 @@ class Agent(nn.Module):
         # collects relevant quantities
         self.collector = Collector(self)
 
+        # internal variables
         self.batch_size = 1
+        self._prev_action = self._prev_state = None
 
     def act(self, state, reward=None, done=False, action=None, valid=None, log_prob=None):
         state, reward, action, done, valid, log_prob = self._change_device(state, reward, action, done, valid, log_prob)
@@ -74,6 +76,7 @@ class Agent(nn.Module):
             if state is not None and action is None:
                 action = self.approx_post.sample().detach()
         self.collector.collect(state, action, reward, done, valid, log_prob)
+        self._prev_action = action; self._prev_state = state
         action = action.tanh() if self.postprocess_action else action
         return action.cpu().numpy()
 
@@ -94,43 +97,6 @@ class Agent(nn.Module):
         expanded_state = state.repeat(self.n_action_samples, 1)
         cond_log_like = self.q_value_estimator(self, expanded_state, action, detach_params=True)
         return cond_log_like - self.alphas['pi'] * kl
-
-    # def estimate_q_values(self, done, state, action, **kwargs):
-    #     # estimate the value of the current state
-    #     if action is not None:
-    #         # estimate Q values for off-policy actions sample from the buffer
-    #         q_value_input = [model(state=state, action=action) for model in self.q_value_models]
-    #         q_values = [variable(inp) for variable, inp in zip(self.q_value_variables, q_value_input)]
-    #         self.collector.qvalues1.append(q_values[0])
-    #         self.collector.qvalues2.append(q_values[1])
-    #
-    #     # get on-policy actions and log probs
-    #     if self.target_action_variable is not None:
-    #         new_action = self.target_action_variable.sample(self.n_action_samples)
-    #     else:
-    #         new_action = self.action_variable.sample(self.n_action_samples)
-    #     new_action_log_prob = self.action_variable.approx_post.log_prob(new_action).sum(dim=1).mean()
-    #     self.collector.new_actions.append(new_action)
-    #     if self.postprocess_action:
-    #         new_action = new_action.tanh()
-    #     self.collector.new_action_log_probs.append(new_action_log_prob)
-    #     expanded_state = state.repeat(self.n_action_samples, 1)
-    #
-    #     # estimate Q value for on-policy actions sampled from current policy
-    #     new_q_value_models = copy.deepcopy(self.q_value_models)
-    #     new_q_value_variables = copy.deepcopy(self.q_value_variables)
-    #     new_q_value_input = [model(state=expanded_state, action=new_action) for model in new_q_value_models]
-    #     new_q_values = [variable(inp) for variable, inp in zip(new_q_value_variables, new_q_value_input)]
-    #     sample_new_q_values = torch.min(new_q_values[0], new_q_values[1])
-    #     self.collector.sample_new_q_values.append(sample_new_q_values)
-    #     avg_new_q_value = torch.min(new_q_values[0].view(self.n_action_samples, -1, 1).mean(dim=0), new_q_values[1].view(self.n_action_samples, -1, 1).mean(dim=0))
-    #     self.collector.new_q_values.append(avg_new_q_value)
-    #
-    #     # estimate target Q value for on-policy actions sampled from current policy
-    #     target_q_value_input = [model(state=expanded_state, action=new_action) for model in self.target_q_value_models]
-    #     target_q_values = [variable(inp).view(self.n_action_samples, -1, 1).mean(dim=0) for variable, inp in zip(self.target_q_value_variables, target_q_value_input)]
-    #     target_q_value = torch.min(target_q_values[0], target_q_values[1])
-    #     self.collector.target_q_values.append(target_q_value)
 
     def evaluate(self):
         # evaluate the objective, collect various metrics for reporting
@@ -185,25 +151,16 @@ class Agent(nn.Module):
         if self.prior_model is not None:
             self.prior_model.reset(batch_size)
             self.target_prior_model.reset(batch_size)
-        self.q_value_estimator.reset(batch_size, prev_state)
+        self.q_value_estimator.reset(batch_size, prev_action, prev_state)
         self.inference_optimizer.reset(batch_size)
 
         # reset the collector
         self.collector.reset()
 
         self.batch_size = batch_size
-        # if prev_action is not None:
-        #     self._prev_action = prev_action.to(self.device)
-        # else:
-        #     act = self.prior.sample()
-        #     self._prev_action = act.new(act.shape).zero_()
-        # if self.observation_variable is not None:
-        #     if prev_obs is not None:
-        #         self._prev_obs = prev_obs.to(self.device)
-        #     else:
-        #         obs = self.observation_variable.sample()
-        #         self._prev_obs = obs.new(obs.shape).zero_()
-
+        self._prev_action = prev_action
+        self._prev_state = prev_state
+        
         # clamp log-alphas to prevent collapse
         for name, log_alpha in self.log_alphas.items():
             log_alpha = torch.clamp(log_alpha, min=-15.)

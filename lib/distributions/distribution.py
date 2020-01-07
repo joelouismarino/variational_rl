@@ -37,7 +37,6 @@ class Distribution(nn.Module):
         self.dist = None
         self.planning_dist = None
         self.planning = False
-        self.continuous = True
 
         self._n_samples = 1
         self._sample = None
