@@ -86,9 +86,7 @@ class Agent(nn.Module):
     def inference(self, state):
         # infers the action approximate posterior
         self.approx_post.init(self.prior)
-        self.inference_mode()
         self.inference_optimizer(self, state)
-        self.generative_mode()
 
     def estimate_objective(self, state, action):
         # estimates the objective (value)
@@ -187,7 +185,7 @@ class Agent(nn.Module):
         if self.prior_model is not None:
             self.prior_model.reset(batch_size)
             self.target_prior_model.reset(batch_size)
-        self.q_value_estimator.reset(batch_size, prev_action, prev_state)
+        self.q_value_estimator.reset(batch_size, prev_state)
         self.inference_optimizer.reset(batch_size)
 
         # reset the collector

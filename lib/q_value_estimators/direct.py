@@ -26,8 +26,8 @@ class DirectEstimator(nn.Module):
         Estimates the Q-value using the state and action.
 
         Args:
-            state (torch.Tensor): the state
-            action (torch.Tensor): the action
+            state (torch.Tensor): the state [batch_size * n_action_samples, state_dim]
+            action (torch.Tensor): the action [batch_size * n_action_samples, action_dim]
             target (bool): whether to use the target networks
             both (bool): whether to return both values (or the min value)
             detach_params (bool): whether to use detached (copied) parameters

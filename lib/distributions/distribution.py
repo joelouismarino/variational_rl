@@ -6,11 +6,23 @@ from .tanh_normal import TanhNormal
 from .normal_uniform import NormalUniform
 from .boltzmann import Boltzmann
 
+# range for weight initialization
 INIT_W = 1e-3
 
 class Distribution(nn.Module):
     """
     Wrapper around PyTorch distributions.
+
+    Args:
+        dist_type (str): the type of distribution
+        n_variables (int): the number of variables
+        n_input (int): number of input dimensions
+        constant (bool): whether to have a constant distribution
+        constant_scale (bool): whether to set the scale parameter as constant
+        residual_loc (bool): whether the location output should be the residual
+        manual_loc (bool): manually include action norm in reward mean estimate (MuJoCo)
+        manual_loc_alpha (float): the alpha parameter for manual specification
+        update (str): the type of updating (direct or iterative)
     """
     def __init__(self, dist_type, n_variables, n_input, constant=False,
                  constant_scale=False, residual_loc=False, manual_loc=False,
@@ -30,7 +42,7 @@ class Distribution(nn.Module):
         self._n_samples = 1
         self._sample = None
         self._planning_sample = None
-        self._detach = True
+        # self._detach = True
         self._batch_size = 1
         self._prev_x = None
         self._planning_prev_x = None
@@ -182,8 +194,8 @@ class Distribution(nn.Module):
 
         sample = self._planning_sample if self.planning else self._sample
 
-        if self._detach and not self.planning and detach:
-            sample = sample.detach()
+        # if self._detach and not self.planning and detach:
+        #     sample = sample.detach()
 
         return sample
 
@@ -267,18 +279,26 @@ class Distribution(nn.Module):
             else:
                 self._planning_prev_x = prev_x
 
-    def planning_mode(self, dist_type=None, dist_params=None):
+    def planning_mode(self, dist_type=None, dist_params=None, n_samples=None):
         """
         Put the distribution in planning mode. Initialize the planning dist.
 
         Args:
+            dist_type (Distribution): the type of distribution for initialization
             dist_params (dict): dictionary of distribution parameters for initialization
+            n_samples (int): number of action samples during planning
         """
         self.planning = True
         self._planning_sample = None
         self.planning_dist = None
         if dist_type is not None:
             self.planning_dist = dist_type(**dist_params)
+        else:
+            if n_samples is not None:
+                dist_params = {k: v.repeat(self._batch_size * n_samples, 1) for k, v in self.initial_params.items()}
+                if self.const_scale:
+                    dist_params['scale'] = self.log_scale.repeat(self._batch_size * n_samples, 1).exp()
+                self.planning_dist = self.dist_type(**dist_params)
 
     def acting_mode(self):
         """

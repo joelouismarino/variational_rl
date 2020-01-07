@@ -5,7 +5,7 @@ def train_batch(agent, data, optimizer, model_only=False):
     """
     optimizer.zero_grad()
     n_steps, batch_size = data['state'].shape[:2]
-    agent.reset(batch_size, prev_action=data['prev_action'], prev_state=data['prev_state'])
+    agent.reset(batch_size, prev_state=data['prev_state'])
     agent.train()
 
     state = data['state']

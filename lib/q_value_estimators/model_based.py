@@ -49,22 +49,23 @@ class ModelBasedEstimator(nn.Module):
         Estimates the Q-value using the state and action using model and Q-networks.
 
         Args:
-            state (torch.Tensor): the state [ ]
-            action (torch.Tensor): the action [ ]
+            state (torch.Tensor): the state [batch_size * n_action_samples, state_dim]
+            action (torch.Tensor): the action [batch_size * n_action_samples, action_dim]
             target (bool): whether to use the target networks
             both (bool): whether to return both values (or the min value)
             detach_params (bool): whether to use detached (copied) parameters
-            direct (bool): whether to get the direct estimate
+            direct (bool): whether to get the direct (network) estimate
         """
         if direct:
             return self.direct_estimate(agent, state, action, target, both, detach_params)
 
-        self._prev_state = state
-
+        self.planning_mode(agent)
         # roll out the model
         rewards_list = []
         q_values_list = []
         for _ in range(self.horizon):
+            # set the previous state for residual state prediction
+            self.state_variable.cond_likelihood.set_prev_x(state)
             # estimate the Q-value at current state
             action = action.tanh() if agent.postprocess_action else action
             q_value_input = [model(state=state, action=action) for model in self.q_value_models]
@@ -76,11 +77,11 @@ class ModelBasedEstimator(nn.Module):
             self.generate_reward(state, action)
             reward = self.reward_variable.sample()
             rewards_list.append(reward)
-            # step the action
             state = self.state_variable.sample()
-            agent.generate_prior(state)
+            # generate the action
             # TODO: give option of which distribution to sample from
-            act = agent.prior.sample()
+            agent.generate_prior(state)
+            action = agent.prior.sample()
 
         # estimate Q-value at final state
         action = action.tanh() if agent.postprocess_action else action
@@ -93,6 +94,8 @@ class ModelBasedEstimator(nn.Module):
         total_rewards = torch.stack(rewards_list) if len(rewards_list) > 0 else None
         total_q_values = torch.stack(q_values_list)
         retrace_estimate = retrace(total_q_values, total_rewards, None, discount=agent.reward_discount, l=agent.retrace_lambda)
+
+        self.acting_mode(agent)
 
         return retrace_estimate
 
@@ -139,11 +142,29 @@ class ModelBasedEstimator(nn.Module):
         likelihood_input = self.state_likelihood_model(state=state, action=action)
         self.state_variable.generate(likelihood_input)
 
-    def reset(self, batch_size, prev_action, prev_state):
+    def planning_mode(self, agent):
+        """
+        Puts the distributions into planning mode.
+        """
+        agent.prior.planning_mode(n_samples=agent.n_action_samples)
+        self.state_variable.planning_mode(agent.n_action_samples)
+        if self.reward_likelihood_model is not None:
+            self.reward_variable.planning_mode(agent.n_action_samples)
+
+    def acting_mode(self, agent):
+        """
+        Puts the distributions into acting mode.
+        """
+        agent.prior.acting_mode()
+        self.state_variable.acting_mode()
+        if self.reward_likelihood_model is not None:
+            self.reward_variable.acting_mode()
+
+    def reset(self, batch_size, prev_state):
         """
         Reset the model componenets.
         """
-        self.state_variable.reset(batch_size, prev_state=prev_state)
+        self.state_variable.reset(batch_size, prev_x=prev_state)
         self.reward_variable.reset(batch_size)
         self.state_likelihood_model.reset(batch_size)
         if self.reward_likelihood_model is not None:
