@@ -322,6 +322,40 @@ class Distribution(nn.Module):
             gradients[parameter_name] = getattr(self.dist, parameter_name).grad
         return gradients
 
+    def params_and_grads(self, concat=False, normalize=True, norm_type='layer'):
+        """
+        Get the current distribution parameters and gradients for the approx post.
+
+        Args:
+            concat (bool): whether to concatenate the parameters and gradients
+            normalize (bool): whether to normalize the parameters and gradients
+            norm_type (str): the type of normalization (either batch or layer)
+        """
+        param_dict = self.get_dist_params()
+        grad_dict = self.get_dist_param_grads()
+        params = [param.detach() for _, param in param_dict.items()]
+        grads = [grad.detach() for _, grad in grad_dict.items()]
+        if normalize:
+            norm_dim = -1
+            if norm_type == 'batch':
+                norm_dim = 0
+            elif norm_type == 'layer':
+                norm_dim = 1
+            else:
+                raise NotImplementedError
+            for ind, grad in enumerate(grads):
+                mean = grad.mean(dim=norm_dim, keepdim=True)
+                std = grad.std(dim=norm_dim, keepdim=True)
+                grads[ind] = (grad - mean) / (std + 1e-7)
+            for ind, param in enumerate(params):
+                mean = param.mean(dim=norm_dim, keepdim=True)
+                std = param.std(dim=norm_dim, keepdim=True)
+                params[ind] = (param - mean) / (std + 1e-7)
+        if concat:
+            return torch.cat(params + grads, dim=1)
+        else:
+            return torch.cat(params, dim=1), torch.cat(grads, dim=1)
+
     def attach(self):
         """
         Do not detach samples.

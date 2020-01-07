@@ -22,11 +22,13 @@ class IterativeInferenceModel(nn.Module):
         for _ in range(self.n_inf_iters):
             actions = agent.approx_post.sample(agent.n_action_samples)
             obj = agent.estimate_objective(state, actions)
-            obj.backward(retain_graph=True)
+            obj = obj.view(agent.n_action_samples, -1, 1).mean(dim=0)
+            obj.sum().backward(retain_graph=True)
 
             params, grads = agent.approx_post.params_and_grads()
             inf_input = self.inference_model(params=params, grads=grads, state=state)
             agent.approx_post.step(inf_input)
+            agent.approx_post.retain_grads()
 
         clear_gradients(agent.generative_parameters())
 

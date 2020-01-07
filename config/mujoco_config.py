@@ -8,11 +8,11 @@ def get_mujoco_config(env):
     """
     agent_args = {}
 
-    agent_args['misc_args'] = {'n_action_samples': 20,
+    agent_args['misc_args'] = {'n_action_samples': 10,
                                'reward_discount': 0.99,
                                'retrace_lambda': 0.75,
                                'epsilons': dict(pi=None, loc=5e-3, scale=1e-5),
-                               'postprocess_action': True,
+                               'postprocess_action': False,
                                'train_model': False}
 
     state_size = np.prod(env.observation_space.shape)
@@ -20,8 +20,8 @@ def get_mujoco_config(env):
     n_action_variables = env.action_space.shape[0]
 
     # distribution types: 'Uniform', 'Normal', 'TanhNormal', 'Boltzmann', 'NormalUniform'
-    action_prior_dist = 'Normal'
-    action_approx_post_dist = 'Boltzmann'
+    action_prior_dist = 'Uniform'
+    action_approx_post_dist = 'TanhNormal'
 
     ## PRIOR
     constant_prior = False
@@ -48,7 +48,7 @@ def get_mujoco_config(env):
                                       'n_variables': n_action_variables}
 
     ## INFERENCE OPTIMIZER
-    optimizer_type = 'direct'
+    optimizer_type = 'iterative'
     optimizer_type = 'non_parametric' if action_approx_post_dist == 'Boltzmann' else optimizer_type
 
     inf_opt_args = {'opt_type': optimizer_type}

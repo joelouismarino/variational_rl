@@ -143,6 +143,7 @@ class Collector:
         # TODO: only collect if there are parameters in the inf optimizer?
         if 'parameters' in dir(self.agent.inference_optimizer):
             obj = self.agent.estimate_objective(state, on_policy_action)
+            obj = obj.view(self.agent.n_action_samples, -1, 1).mean(dim=0)
             obj = - obj * valid * (1 - done)
             self.objectives['inf_opt_obj'].append(obj)
 
