@@ -8,7 +8,7 @@ def get_mujoco_config(env):
     """
     agent_args = {}
 
-    agent_args['misc_args'] = {'n_action_samples': 10,
+    agent_args['misc_args'] = {'n_action_samples': 1,
                                'reward_discount': 0.99,
                                'retrace_lambda': 0.75,
                                'epsilons': dict(pi=None, loc=5e-3, scale=1e-5),
@@ -48,7 +48,7 @@ def get_mujoco_config(env):
                                       'n_variables': n_action_variables}
 
     ## INFERENCE OPTIMIZER
-    optimizer_type = 'iterative'
+    optimizer_type = 'direct'
     optimizer_type = 'non_parametric' if action_approx_post_dist == 'Boltzmann' else optimizer_type
 
     inf_opt_args = {'opt_type': optimizer_type}
@@ -86,7 +86,7 @@ def get_mujoco_config(env):
     agent_args['inference_optimizer_args'] = inf_opt_args
 
     ## Q-VALUE ESTIMATOR
-    estimator_type = 'direct'
+    estimator_type = 'model_based'
 
     estimator_args = {'estimator_type': estimator_type}
     estimator_args['network_args'] = {'type': 'fully_connected',

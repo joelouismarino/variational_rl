@@ -34,9 +34,9 @@ def get_n_input(config_dict):
 
     # model network(s)
     if config_dict['q_value_estimator_args']['estimator_type'] == 'model_based':
-        model_dicts.append(config_dict['q_value_estimator_args']['state_likelihood_args'])
+        model_dicts.append(config_dict['q_value_estimator_args']['model_args']['state_likelihood_args'])
         if config_dict['q_value_estimator_args']['learn_reward']:
-            model_dicts.append(config_dict['q_value_estimator_args']['reward_likelihood_args'])
+            model_dicts.append(config_dict['q_value_estimator_args']['model_args']['reward_likelihood_args'])
 
     for model_dict in model_dicts:
         inputs = model_dict['inputs']

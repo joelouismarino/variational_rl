@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
-from modules.distributions import Distribution
-from modules.distributions import kl_divergence as kl
+from lib.distributions import Distribution
+from lib.distributions import kl_divergence as kl
 
 
 class LatentVariable(nn.Module):

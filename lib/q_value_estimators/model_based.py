@@ -15,7 +15,6 @@ class ModelBasedEstimator(nn.Module):
         network_args (dict): arguments for the Q network
         model_args (dict): arguments for the dynamics and reward models
         horizon (int): planning horizon
-        retrace_lambda (float): smoothing factor for Retrace estimator
         learn_reward (bool): whether to learn the reward function
     """
     def __init__(self, network_args, model_args, horizon, learn_reward=True):
@@ -26,28 +25,39 @@ class ModelBasedEstimator(nn.Module):
         q_model_output = self.q_value_models[0].n_out
         self.q_value_variables = nn.ModuleList([get_variable(type='value', args={'n_input': q_model_output}) for _ in range(2)])
         self.target_q_value_variables = nn.ModuleList([get_variable(type='value', args={'n_input': q_model_output}) for _ in range(2)])
-        self.q_values = None
 
         # model
         self.state_likelihood_model = get_model(model_args['state_likelihood_args'])
-        model_args['state_likelihood_args']['n_input'] = self.state_likelihood_model.n_out
+        model_args['state_variable_args']['n_input'] = self.state_likelihood_model.n_out
         self.state_variable = get_variable(type='observed', args=model_args['state_variable_args'])
 
         self.reward_likelihood_model = None
         if learn_reward:
             self.reward_likelihood_model = get_model(model_args['reward_likelihood_args'])
-            model_args['reward_likelihood_args']['n_input'] = self.reward_likelihood_model.n_out
+            model_args['reward_variable_args']['n_input'] = self.reward_likelihood_model.n_out
             self.reward_variable = get_variable(type='observed', args=model_args['reward_variable_args'])
         else:
             raise NotImplementedError
 
-        # hyper-parameters
+        # hyper-parameters and internal attributes
         self.horizon = horizon
-        self.retrace_lambda = agent.retrace_lambda
-
         self._prev_state = None
 
-    def forward(self, agent, state, action, target=False):
+    def forward(self, agent, state, action, target=False, both=False,
+                detach_params=False, direct=False):
+        """
+        Estimates the Q-value using the state and action using model and Q-networks.
+
+        Args:
+            state (torch.Tensor): the state [ ]
+            action (torch.Tensor): the action [ ]
+            target (bool): whether to use the target networks
+            both (bool): whether to return both values (or the min value)
+            detach_params (bool): whether to use detached (copied) parameters
+            direct (bool): whether to get the direct estimate
+        """
+        if direct:
+            return self.direct_estimate(agent, state, action, target, both, detach_params)
 
         self._prev_state = state
 
@@ -70,7 +80,7 @@ class ModelBasedEstimator(nn.Module):
             state = self.state_variable.sample()
             agent.generate_prior(state)
             # TODO: give option of which distribution to sample from
-            act = self.agent.prior.sample()
+            act = agent.prior.sample()
 
         # estimate Q-value at final state
         action = action.tanh() if agent.postprocess_action else action
@@ -82,10 +92,38 @@ class ModelBasedEstimator(nn.Module):
         # add retrace Q-value estimate to the objective
         total_rewards = torch.stack(rewards_list) if len(rewards_list) > 0 else None
         total_q_values = torch.stack(q_values_list)
-        retrace_estimate = retrace(total_q_values, total_rewards, None, discount=agent.reward_discount, l=self.retrace_lambda)
-        retrace_estimate = retrace_estimate.view(-1, self.n_planning_samples, 1)
+        retrace_estimate = retrace(total_q_values, total_rewards, None, discount=agent.reward_discount, l=agent.retrace_lambda)
 
         return retrace_estimate
+
+    def direct_estimate(self, agent, state, action, target=False, both=False,
+                        detach_params=False):
+        """
+        Estimates the Q-value using the state and action.
+
+        Args:
+            state (torch.Tensor): the state
+            action (torch.Tensor): the action
+            target (bool): whether to use the target networks
+            both (bool): whether to return both values (or the min value)
+            detach_params (bool): whether to use detached (copied) parameters
+        """
+        # estimate q value
+        if target:
+            q_value_models = self.target_q_value_models
+            q_value_variables = self.target_q_value_variables
+        else:
+            q_value_models = self.q_value_models
+            q_value_variables = self.q_value_variables
+        if detach_params:
+            q_value_models = copy.deepcopy(q_value_models)
+            q_value_variables = copy.deepcopy(q_value_variables)
+        action = action.tanh() if agent.postprocess_action else action
+        q_value_input = [model(state=state, action=action) for model in q_value_models]
+        q_value = [variable(inp) for variable, inp in zip(q_value_variables, q_value_input)]
+        if not both:
+            q_value = torch.min(q_value[0], q_value[1])
+        return q_value
 
     def generate_reward(self, state, action):
         """
@@ -102,7 +140,9 @@ class ModelBasedEstimator(nn.Module):
         self.state_variable.generate(likelihood_input)
 
     def reset(self, batch_size, prev_action, prev_state):
-        self.q_values = None
+        """
+        Reset the model componenets.
+        """
         self.state_variable.reset(batch_size, prev_state=prev_state)
         self.reward_variable.reset(batch_size)
         self.state_likelihood_model.reset(batch_size)

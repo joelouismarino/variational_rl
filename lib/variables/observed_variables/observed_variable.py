@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import numpy as np
-from modules.distributions import Distribution
+from lib.distributions import Distribution
 import torch.distributions.constraints as constraints
 
 
@@ -130,8 +130,8 @@ class ObservedVariable(nn.Module):
         self.cond_likelihood.acting_mode()
         self._n_planning_samples = 1
 
-    def reset(self, batch_size=1, prev_obs=None):
-        self.cond_likelihood.reset(batch_size, prev_obs=prev_obs)
+    def reset(self, batch_size=1, prev_state=None):
+        self.cond_likelihood.reset(batch_size, prev_x=prev_state)
         self.planning = False
         self._batch_size = batch_size
 

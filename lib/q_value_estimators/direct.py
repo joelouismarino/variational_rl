@@ -20,7 +20,8 @@ class DirectEstimator(nn.Module):
         self.q_value_variables = nn.ModuleList([get_variable(type='value', args={'n_input': q_model_output}) for _ in range(2)])
         self.target_q_value_variables = nn.ModuleList([get_variable(type='value', args={'n_input': q_model_output}) for _ in range(2)])
 
-    def forward(self, agent, state, action, target=False, both=False, detach_params=False):
+    def forward(self, agent, state, action, target=False, both=False,
+                detach_params=False, *args):
         """
         Estimates the Q-value using the state and action.
 

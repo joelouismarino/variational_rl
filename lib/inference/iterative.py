@@ -20,16 +20,19 @@ class IterativeInferenceModel(nn.Module):
     def forward(self, agent, state):
 
         for _ in range(self.n_inf_iters):
+            # sample actions, evaluate objective, backprop to get gradients
             actions = agent.approx_post.sample(agent.n_action_samples)
             obj = agent.estimate_objective(state, actions)
             obj = obj.view(agent.n_action_samples, -1, 1).mean(dim=0)
             obj.sum().backward(retain_graph=True)
 
+            # update the approximate posterior using the iterative inference model
             params, grads = agent.approx_post.params_and_grads()
             inf_input = self.inference_model(params=params, grads=grads, state=state)
             agent.approx_post.step(inf_input)
             agent.approx_post.retain_grads()
 
+        # clear any gradients in the generative parameters
         clear_gradients(agent.generative_parameters())
 
     def reset(self, batch_size):

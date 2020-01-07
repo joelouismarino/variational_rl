@@ -42,7 +42,14 @@ class Optimizer(object):
         self._n_steps = 0
 
     def apply(self, model_only=False):
-        # TODO: need to divide optimizer gradients by number of iterations
+
+        # divide optimizer gradients by number of inference iterations and batch size
+        if 'inference_optimizer' in self.parameters.keys():
+            params = self.parameters['inference_optimizer']
+            grads = [param.grad for param in params]
+            divide_gradients_by_value(grads, self.agent.inference_optimizer.n_inf_iters)
+            divide_gradients_by_value(grads, self.agent.batch_size)
+
         grads = []
         for model_name, params in self.parameters.items():
             grads += [param.grad for param in params]

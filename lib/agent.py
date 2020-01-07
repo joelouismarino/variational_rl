@@ -86,8 +86,9 @@ class Agent(nn.Module):
     def inference(self, state):
         # infers the action approximate posterior
         self.approx_post.init(self.prior)
-        self.approx_post.attach()
+        self.inference_mode()
         self.inference_optimizer(self, state)
+        self.generative_mode()
 
     def estimate_objective(self, state, action):
         # estimates the objective (value)

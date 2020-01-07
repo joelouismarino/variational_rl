@@ -32,8 +32,8 @@ class Distribution(nn.Module):
         self._planning_sample = None
         self._detach = True
         self._batch_size = 1
-        self._prev_obs = None
-        self._planning_prev_obs = None
+        self._prev_x = None
+        self._planning_prev_x = None
 
         # distribution type
         if dist_type == 'TanhNormal':
@@ -116,8 +116,8 @@ class Distribution(nn.Module):
 
                 if param_name == 'loc' and self.residual_loc:
                     # residual estimation of location parameter
-                    prev_obs = self._planning_prev_obs if self.planning else self._prev_obs
-                    param = param + prev_obs
+                    prev_x = self._planning_prev_x if self.planning else self._prev_x
+                    param = param + prev_x
 
                 # satisfy any constraints on the parameter value
                 if type(constraint) == constraints.greater_than and constraint.lower_bound == 0:
@@ -175,7 +175,7 @@ class Distribution(nn.Module):
             if self.planning:
                 self._planning_sample = sample
                 if self.residual_loc:
-                    self._planning_prev_obs = sample
+                    self._planning_prev_x = sample
             else:
                 self._sample = sample
             self._n_samples = n_samples
@@ -225,10 +225,10 @@ class Distribution(nn.Module):
         """
         batch_size = dist._batch_size
         dist_params = dist.get_dist_params() if dist.dist_type == self.dist_type else None
-        prev_obs = dist._prev_obs
-        self.reset(batch_size, dist_params, prev_obs)
+        prev_x = dist._prev_x
+        self.reset(batch_size, dist_params, prev_x)
 
-    def reset(self, batch_size=1, dist_params=None, prev_obs=None):
+    def reset(self, batch_size=1, dist_params=None, prev_x=None):
         """
         Reset the distribution parameters.
 
@@ -249,23 +249,23 @@ class Distribution(nn.Module):
         self._sample = None
         self._batch_size = batch_size
         if self.residual_loc:
-            if prev_obs is not None:
+            if prev_x is not None:
                 device = self.initial_params[list(self.initial_params.keys())[0]].device
-                self._prev_obs = prev_obs.to(device)
+                self._prev_x = prev_x.to(device)
             else:
                 obs = self.sample()
-                self._prev_obs = obs.new(obs.shape).zero_()
-            self._planning_prev_obs = None
+                self._prev_x = obs.new(obs.shape).zero_()
+            self._planning_prev_x = None
 
-    def set_prev_obs(self, prev_obs):
+    def set_prev_x(self, prev_x):
         """
         Sets the previous observation (for residual loc).
         """
         if self.residual_loc:
             if not self.planning:
-                self._prev_obs = prev_obs
+                self._prev_x = prev_x
             else:
-                self._planning_prev_obs = prev_obs
+                self._planning_prev_x = prev_x
 
     def planning_mode(self, dist_type=None, dist_params=None):
         """
@@ -287,7 +287,7 @@ class Distribution(nn.Module):
         self.planning = False
         self._planning_sample = None
         self.planning_dist = None
-        self._planning_prev_obs = None
+        self._planning_prev_x = None
 
     def parameters(self):
         """

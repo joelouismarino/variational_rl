@@ -12,6 +12,7 @@ class DirectInferenceModel(nn.Module):
     def __init__(self, network_args):
         super(DirectInferenceModel, self).__init__()
         self.inference_model = get_model(network_args)
+        self.n_inf_iters = 1
 
     def forward(self, agent, state):
         agent.approx_post.step(self.inference_model(state=state))
