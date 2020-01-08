@@ -69,11 +69,11 @@ class Collector:
         # collect the optimality (reward)
         self._collect_optimality_objective(reward, valid, done)
         # collect KL divergence objectives
-        self._collect_kl_objectives(on_policy_action, valid, done)
+        self._collect_kl_objectives(on_policy_action.detach(), valid, done)
         # collect alpha objectives
         self._collect_alpha_objectives(valid, done)
         # collect q-value estimator objectives
-        self._get_q_value_est_objectives(state, off_policy_action, on_policy_action, reward, valid, done)
+        self._get_q_value_est_objectives(state, off_policy_action, on_policy_action.detach(), reward, valid, done)
         # collect log probabilities
         self._collect_log_probs(off_policy_action, log_prob, valid)
 
@@ -109,6 +109,9 @@ class Collector:
         self.episode['done'].append(done)
 
     def _collect_distributions(self):
+        """
+        Collect the distribution parameters.
+        """
         # action prior and approximate posterior
         for dist_name in ['prior', 'approx_post']:
             dist = getattr(self.agent, dist_name)
@@ -139,11 +142,21 @@ class Collector:
         Evaluates the inference optimizer if there are amortized parameters.
         """
         if 'parameters' in dir(self.agent.inference_optimizer):
-            # TODO: this is going to get messed up if we average over batch in one setting but not another...
+            # detach the prior
+            if self.agent.prior_model is not None:
+                batch_size = self.agent.prior._batch_size
+                loc = self.agent.prior.dist.loc
+                scale = self.agent.prior.dist.scale
+                self.agent.prior.reset(batch_size, dist_params={'loc': loc.detach(), 'scale': scale.detach()})
+            # evaluate the objective
             obj = self.agent.estimate_objective(state, on_policy_action)
             obj = obj.view(self.agent.n_action_samples, -1, 1).mean(dim=0)
-            obj = - obj * valid * (1 - done)
+            # note: multiply by batch size because we divide later (in optimizer)
+            obj = - obj * valid * (1 - done) * self.agent.batch_size
             self.objectives['inf_opt_obj'].append(obj)
+            # re-attach the prior
+            if self.agent.prior_model is not None:
+                self.agent.prior.reset(batch_size, dist_params={'loc': loc, 'scale': scale})
 
     def _collect_alpha_objectives(self, valid, done):
         """
@@ -216,9 +229,9 @@ class Collector:
             current_prior_loc = self.agent.prior.dist.loc
             current_prior_scale = self.agent.prior.dist.scale
             if 'loc' in dir(self.agent.approx_post.dist):
-                current_post_loc = self.agent.approx_post.dist.loc
-                current_post_scale = self.agent.approx_post.dist.scale
-                self.agent.approx_post.reset(batch_size, dist_params={'loc': current_post_loc.detach(), 'scale': current_post_scale.detach()})
+                post_loc = self.agent.approx_post.dist.loc
+                post_scale = self.agent.approx_post.dist.scale
+                self.agent.approx_post.reset(batch_size, dist_params={'loc': post_loc.detach(), 'scale': post_scale.detach()})
 
             # decoupled updates on the prior
             # loc KLs
@@ -252,7 +265,7 @@ class Collector:
             # non-detached parameters to evaluate KL for approx. post.
             self.agent.prior.reset(batch_size, dist_params={'loc': current_prior_loc.detach(), 'scale': current_prior_scale.detach()})
             if 'loc' in dir(self.agent.approx_post.dist):
-                self.agent.approx_post.reset(batch_size, dist_params={'loc': current_post_loc, 'scale': current_post_scale})
+                self.agent.approx_post.reset(batch_size, dist_params={'loc': post_loc, 'scale': post_scale})
 
         if 'loc' in dir(self.agent.approx_post.dist):
             # report the approx. post. distribution parameters

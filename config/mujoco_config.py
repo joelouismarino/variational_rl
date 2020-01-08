@@ -11,9 +11,10 @@ def get_mujoco_config(env):
     agent_args['misc_args'] = {'n_action_samples': 1,
                                'reward_discount': 0.99,
                                'retrace_lambda': 0.75,
-                               'epsilons': dict(pi=None, loc=5e-3, scale=1e-5),
                                'postprocess_action': False,
-                               'train_model': False}
+                               'epsilons': dict(pi=None, loc=5e-3, scale=1e-5)}
+                               # RERPI epsilons: pi=0.1, loc=5e-4, scale=1e-5
+                               # use pi=None for SAC heuristic
 
     state_size = np.prod(env.observation_space.shape)
     agent_args['misc_args']['state_size'] = state_size
@@ -34,12 +35,13 @@ def get_mujoco_config(env):
         agent_args['prior_args']['constant'] = True
     else:
         agent_args['prior_model_args'] = {'type': 'fully_connected',
-                                          'n_layers': 2,
+                                          'n_layers': 3,
                                           'inputs': ['state'],
                                           'n_units': 256,
                                           'connectivity': 'sequential',
                                           'batch_norm': False,
-                                          'non_linearity': 'relu',
+                                          'non_linearity': ['tanh', 'elu', 'elu'],
+                                          'layer_norm': [True, False, False],
                                           'dropout': None,
                                           'separate_networks': False}
 
@@ -48,6 +50,7 @@ def get_mujoco_config(env):
                                       'n_variables': n_action_variables}
 
     ## INFERENCE OPTIMIZER
+    # optimizer type can be 'direct', 'iterative', 'gradient', 'non_parametric', 'cem'
     optimizer_type = 'direct'
     optimizer_type = 'non_parametric' if action_approx_post_dist == 'Boltzmann' else optimizer_type
 
@@ -79,22 +82,26 @@ def get_mujoco_config(env):
         inf_opt_args['n_inf_iters'] = 10
         inf_opt_args['lr'] = 1e-3
     elif optimizer_type == 'non_parametric':
-        pass
+        assert action_approx_post_dist == 'Boltzmann'
     elif optimizer_type == 'cem':
-        pass
+        assert action_approx_post_dist == 'Normal'
+        inf_opt_args['n_top_samples'] = 10
+        inf_opt_args['n_inf_iters'] = 3
 
     agent_args['inference_optimizer_args'] = inf_opt_args
 
     ## Q-VALUE ESTIMATOR
-    estimator_type = 'model_based'
+    # estimator type can be 'direct' or 'model_based'
+    estimator_type = 'direct'
 
     estimator_args = {'estimator_type': estimator_type}
     estimator_args['network_args'] = {'type': 'fully_connected',
-                                      'n_layers': 2,
+                                      'n_layers': 3,
                                       'inputs': ['state', 'action'],
-                                      'n_units': 256,
+                                      'n_units': 512,
                                       'connectivity': 'sequential',
-                                      'non_linearity': 'relu',
+                                      'non_linearity': ['tanh', 'elu', 'elu'],
+                                      'layer_norm': [True, False, False],
                                       'dropout': None}
     if estimator_type == 'model_based':
         learn_reward = True

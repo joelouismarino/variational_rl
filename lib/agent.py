@@ -144,7 +144,14 @@ class Agent(nn.Module):
         return state, reward, action, done, valid, log_prob
 
     def reset(self, batch_size=1, prev_action=None, prev_state=None):
+        """
+        Reset the agent.
 
+        Args:
+            batch_size (int): the batch size of the data
+            prev_action (torch.Tensor): previous actions (used for training model)
+            prev_state (torch.Tensor): previous states (used for training model)
+        """
         self.prior.reset(batch_size)
         self.target_prior.reset(batch_size)
         self.approx_post.reset(batch_size)
@@ -160,7 +167,7 @@ class Agent(nn.Module):
         self.batch_size = batch_size
         self._prev_action = prev_action
         self._prev_state = prev_state
-        
+
         # clamp log-alphas to prevent collapse
         for name, log_alpha in self.log_alphas.items():
             log_alpha = torch.clamp(log_alpha, min=-15.)
@@ -225,12 +232,6 @@ class Agent(nn.Module):
         for _, v in q_value_param_dict.items():
             params.extend(list(v))
         return params
-
-    def inference_mode(self):
-        self.approx_post.attach()
-
-    def generative_mode(self):
-        self.approx_post.detach()
 
     def load(self, state_dict):
         # load the state dictionary for the agent

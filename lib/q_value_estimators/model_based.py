@@ -78,6 +78,7 @@ class ModelBasedEstimator(nn.Module):
             self.generate_reward(state, action)
             reward = self.reward_variable.sample()
             rewards_list.append(reward)
+            # TODO: give option for deterministic sampling?
             state = self.state_variable.sample()
             # generate the action
             # TODO: give option of which distribution to sample from

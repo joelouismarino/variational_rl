@@ -72,7 +72,7 @@ class Distribution(nn.Module):
         if self.update != 'direct':
             self.gates = nn.ModuleDict({name: None for name in param_names})
 
-        if not constant:
+        if not constant and n_input is not None:
             for model_name in self.models:
                 self.models[model_name] = FullyConnectedLayer(n_input, n_variables)
                 nn.init.uniform_(self.models[model_name].linear.weight, -INIT_W, INIT_W)
@@ -175,12 +175,11 @@ class Distribution(nn.Module):
             # get the appropriate distribution
             d = self.planning_dist if self.planning else self.dist
             # perform the sampling
-            # sample is of size [n_samples x batch_size x n_variables]
+            # sample is of size [n_samples, batch_size, n_variables]
             if d.has_rsample:
                 sample = d.rsample([n_samples])
             else:
                 sample = d.sample([n_samples])
-            # sample = sample.view(n_samples * self._batch_size, -1)
             sample = sample.view(-1, self.n_variables)
             # update the internal sample
             if self.planning:
@@ -264,8 +263,8 @@ class Distribution(nn.Module):
                 device = self.initial_params[list(self.initial_params.keys())[0]].device
                 self._prev_x = prev_x.to(device)
             else:
-                obs = self.sample()
-                self._prev_x = obs.new(obs.shape).zero_()
+                x = self.sample()
+                self._prev_x = x.new(x.shape).zero_()
             self._planning_prev_x = None
 
     def set_prev_x(self, prev_x):
@@ -375,14 +374,14 @@ class Distribution(nn.Module):
         else:
             return torch.cat(params, dim=1), torch.cat(grads, dim=1)
 
-    def attach(self):
-        """
-        Do not detach samples.
-        """
-        self._detach = False
-
-    def detach(self):
-        """
-        Detach samples.
-        """
-        self._detach = True
+    # def attach(self):
+    #     """
+    #     Do not detach samples.
+    #     """
+    #     self._detach = False
+    #
+    # def detach(self):
+    #     """
+    #     Detach samples.
+    #     """
+    #     self._detach = True
