@@ -93,10 +93,10 @@ class Agent(nn.Module):
 
     def estimate_objective(self, state, action):
         # estimates the objective (value)
-        kl = kl_divergence(self.approx_post, self.prior, sample=action).sum(dim=1, keepdim=True)
+        kl = kl_divergence(self.approx_post, self.prior, n_samples=self.n_action_samples, sample=action).sum(dim=1, keepdim=True)
         expanded_state = state.repeat(self.n_action_samples, 1)
         cond_log_like = self.q_value_estimator(self, expanded_state, action, detach_params=True)
-        return cond_log_like - self.alphas['pi'] * kl
+        return cond_log_like - self.alphas['pi'] * kl.repeat(self.n_action_samples, 1)
 
     def evaluate(self):
         # evaluate the objective, collect various metrics for reporting
