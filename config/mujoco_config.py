@@ -11,7 +11,7 @@ def get_mujoco_config(env):
     agent_args['misc_args'] = {'n_action_samples': 20,
                                'reward_discount': 0.99,
                                'retrace_lambda': 0.75,
-                               'postprocess_action': True,
+                               'postprocess_action': False,
                                'epsilons': dict(pi=None, loc=5e-3, scale=1e-5)}
                                # RERPI epsilons: pi=0.1, loc=5e-4, scale=1e-5
                                # use pi=None for SAC heuristic
@@ -22,7 +22,7 @@ def get_mujoco_config(env):
 
     # distribution types: 'Uniform', 'Normal', 'TanhNormal', 'Boltzmann', 'NormalUniform'
     action_prior_dist = 'Uniform'
-    action_approx_post_dist = 'Normal'
+    action_approx_post_dist = 'TanhNormal'
 
     ## PRIOR
     constant_prior = False
@@ -51,7 +51,7 @@ def get_mujoco_config(env):
 
     ## INFERENCE OPTIMIZER
     # optimizer type can be 'direct', 'iterative', 'gradient', 'non_parametric', 'cem'
-    optimizer_type = 'cem'
+    optimizer_type = 'direct'
     optimizer_type = 'non_parametric' if action_approx_post_dist == 'Boltzmann' else optimizer_type
 
     inf_opt_args = {'opt_type': optimizer_type}
@@ -96,12 +96,12 @@ def get_mujoco_config(env):
 
     estimator_args = {'estimator_type': estimator_type}
     estimator_args['network_args'] = {'type': 'fully_connected',
-                                      'n_layers': 3,
+                                      'n_layers': 2,
                                       'inputs': ['state', 'action'],
-                                      'n_units': 512,
+                                      'n_units': 256,
                                       'connectivity': 'sequential',
-                                      'non_linearity': ['tanh', 'elu', 'elu'],
-                                      'layer_norm': [True, False, False],
+                                      'non_linearity': 'relu',
+                                      'layer_norm': False,
                                       'dropout': None}
     if estimator_type == 'model_based':
         learn_reward = True

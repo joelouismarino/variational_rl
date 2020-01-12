@@ -81,6 +81,8 @@ class Distribution(nn.Module):
                 if self.update != 'direct':
                     self.gates[model_name] = FullyConnectedLayer(n_input, n_variables,
                                                                  non_linearity='sigmoid')
+                    nn.init.uniform_(self.gates[model_name].linear.weight, -INIT_W, INIT_W)
+                    nn.init.uniform_(self.gates[model_name].linear.bias, -INIT_W, INIT_W)
 
         self.initial_params = nn.ParameterDict({name: None for name in param_names})
         for param in self.initial_params:
@@ -235,6 +237,9 @@ class Distribution(nn.Module):
         """
         batch_size = dist._batch_size
         dist_params = dist.get_dist_params() if dist.dist_type == self.dist_type else None
+        if dist_params is not None:
+            for param_name, param in dist_params.items():
+                dist_params[param_name] = param.detach().clone().requires_grad_()
         prev_x = dist._prev_x
         self.reset(batch_size, dist_params, prev_x)
 
@@ -351,6 +356,10 @@ class Distribution(nn.Module):
         """
         param_dict = self.get_dist_params()
         grad_dict = self.get_dist_param_grads()
+        # use log-scale as input instead of scale itself
+        grad_dict['scale'] = grad_dict['scale'] * param_dict['scale']
+        param_dict['scale'] = param_dict['scale'].log()
+        # convert to lists
         params = [param.detach() for _, param in param_dict.items()]
         grads = [grad.detach() for _, grad in grad_dict.items()]
         if normalize:

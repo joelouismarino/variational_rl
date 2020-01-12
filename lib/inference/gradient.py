@@ -14,6 +14,8 @@ class GradientBasedInference(object):
         self.optimizer = optim.SGD
         self.lr = lr
         self.n_inf_iters = n_inf_iters
+        # keep track of estimated objectives for reporting
+        self.estimated_objectives = []
 
     def forward(self, agent, state):
         dist_params = agent.approx_post.get_dist_params()
@@ -24,11 +26,13 @@ class GradientBasedInference(object):
         for _ in range(self.n_inf_iters):
             actions = agent.approx_post.sample(agent.n_action_samples)
             obj = agent.estimate_objective(state, actions)
-            obj.backward(retain_graph=True)
+            obj = obj.view(agent.n_action_samples, -1, 1).mean(dim=0)
+            self.estimated_objectives.append(obj.detach())
+            obj.sum().backward(retain_graph=True)
             act_opt.step()
             act_opt.zero_grad()
 
         clear_gradients(agent.generative_parameters())
 
-    def reset(self):
-        pass
+    def reset(self, *args, **kwargs):
+        self.estimated_objectives = []

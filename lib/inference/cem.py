@@ -12,6 +12,8 @@ class CEMInference(object):
     def __init__(self, n_top_samples, n_inf_iters):
         self.n_top = n_top_samples
         self.n_inf_iters = n_inf_iters
+        # keep track of estimated objectives for reporting
+        self.estimated_objectives = []
 
     def __call__(self, agent, state):
 
@@ -20,6 +22,7 @@ class CEMInference(object):
             actions = agent.approx_post.sample(agent.n_action_samples)
             obj = agent.estimate_objective(state, actions)
             obj = obj.view(agent.n_action_samples, -1, 1)
+            self.estimated_objectives.append(obj.mean(dim=0).detach())
             # keep top samples, fit mean and std. dev.
             _, top_inds = obj.topk(self.n_top, dim=0)
             actions = actions.view(agent.n_action_samples, -1, agent.approx_post.n_variables)
@@ -31,4 +34,4 @@ class CEMInference(object):
                                     dist_params={'loc': loc.detach(), 'scale': scale.detach()})
 
     def reset(self, *args, **kwargs):
-        pass
+        self.estimated_objectives = []

@@ -29,7 +29,7 @@ class Collector:
         # stores the distributions
         self.distributions = {'action': {'prior': {}, 'approx_post': {}}}
         # stores inference improvement during training
-        self.inference_improvement = {'action': []}
+        self.inference_improvement = []
         # stores the log probabilities during training
         self.log_probs = {'action': []}
         # stores the importance weights during training
@@ -151,6 +151,12 @@ class Collector:
             # evaluate the objective
             obj = self.agent.estimate_objective(state, on_policy_action)
             obj = obj.view(self.agent.n_action_samples, -1, 1).mean(dim=0)
+            if 'n_inf_iters' in dir(self.agent.inference_optimizer):
+                # append final objective, calculate inference improvement
+                self.agent.inference_optimizer.estimated_objectives.append(obj.detach())
+                objectives = torch.stack(self.agent.inference_optimizer.estimated_objectives)
+                inf_imp = - objectives[0] + objectives[-1]
+                self.inference_improvement.append(inf_imp)
             # note: multiply by batch size because we divide later (in optimizer)
             obj = - obj * valid * (1 - done) * self.agent.batch_size
             self.objectives['inf_opt_obj'].append(obj)
@@ -312,12 +318,9 @@ class Collector:
                     else:
                         results['metrics'][k][kk] = []
         # get the inference improvements
-        results['inf_imp'] = {}
-        for k, v in self.inference_improvement.items():
-            if len(v) > 0:
-                results['inf_imp'][k] = torch.cat(v, dim=0).detach().cpu()
-            else:
-                results['inf_imp'][k] = []
+        results['inf_imp'] = {'action': []}
+        if len(self.inference_improvement) > 0:
+            results['inf_imp']['action'] = torch.cat(self.inference_improvement, dim=0).detach().cpu()
         # get the distribution parameters
         results['distributions'] = {}
         for k, v in self.distributions.items():
@@ -357,20 +360,19 @@ class Collector:
 
         return metrics
 
-    # def get_inf_imp(self):
-    #     """
-    #     Collect the inference improvement into a dictionary.
-    #     """
-    #     inf_imp = {}
-    #     valid = torch.stack(self.valid)
-    #     n_valid_steps = valid.sum(dim=0)
-    #
-    #     for name, improvement in self.inference_improvement.items():
-    #         if len(improvement) > 0:
-    #             imp = torch.stack(improvement).sum(dim=0).div(n_valid_steps).mean(dim=0)
-    #             inf_imp[name + '_improvement'] = imp.detach().cpu().item()
-    #
-    #     return inf_imp
+    def get_inf_imp(self):
+        """
+        Collect the inference improvement into a dictionary.
+        """
+        inf_imp = {}
+        valid = torch.stack(self.valid)
+        n_valid_steps = valid.sum(dim=0)
+
+        if len(self.inference_improvement) > 0:
+            imp = torch.stack(self.inference_improvement).sum(dim=0).div(n_valid_steps).mean(dim=0)
+            inf_imp['inference_improvement'] = imp.detach().cpu().item()
+
+        return inf_imp
 
     def _get_q_targets(self):
         """
@@ -493,6 +495,7 @@ class Collector:
                 self.distributions['reward'] = {'cond_like': {'loc': [], 'scale': []}}
 
         self.importance_weights = {'action': []}
+        self.inference_improvement = []
         self.target_q_values = []
         self.q_values = []
         self.q_values1 = []

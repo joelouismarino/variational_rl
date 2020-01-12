@@ -16,6 +16,8 @@ class IterativeInferenceModel(nn.Module):
         super(IterativeInferenceModel, self).__init__()
         self.inference_model = get_model(network_args)
         self.n_inf_iters = n_inf_iters
+        # keep track of estimated objectives for reporting
+        self.estimated_objectives = []
 
     def forward(self, agent, state):
 
@@ -24,6 +26,8 @@ class IterativeInferenceModel(nn.Module):
             actions = agent.approx_post.sample(agent.n_action_samples)
             obj = agent.estimate_objective(state, actions)
             obj = obj.view(agent.n_action_samples, -1, 1).mean(dim=0)
+            self.estimated_objectives.append(obj.detach())
+            # TODO: should this be multiplied by valid and done?
             obj.sum().backward(retain_graph=True)
 
             # update the approximate posterior using the iterative inference model
@@ -37,3 +41,4 @@ class IterativeInferenceModel(nn.Module):
 
     def reset(self, batch_size):
         self.inference_model.reset(batch_size)
+        self.estimated_objectives = []

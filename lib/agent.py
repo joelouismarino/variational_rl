@@ -105,8 +105,8 @@ class Agent(nn.Module):
         results = {}
         for k, v in self.collector.get_metrics().items():
             results[k] = v
-        # for k, v in self.collector.get_inf_imp().items():
-        #     results[k] = v
+        for k, v in self.collector.get_inf_imp().items():
+            results[k] = v
         for k, v in self.collector.get_grads().items():
             results[k] = v
         return results
