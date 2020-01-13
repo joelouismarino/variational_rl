@@ -54,6 +54,7 @@ class Agent(nn.Module):
         # miscellaneous
         self.epsilons = misc_args['epsilons']
         self.n_action_samples = misc_args['n_action_samples']
+        self.n_q_action_samples = misc_args['n_q_action_samples']
         self.postprocess_action = misc_args['postprocess_action']
         self.reward_discount = misc_args['reward_discount']
         self.retrace_lambda = misc_args['retrace_lambda']

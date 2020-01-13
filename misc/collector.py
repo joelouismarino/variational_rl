@@ -203,7 +203,7 @@ class Collector:
         # collect the target q-values for the on-policy actions
         expanded_state = state.repeat(self.agent.n_action_samples, 1)
         target_q_values = self.agent.q_value_estimator(self.agent, expanded_state, on_policy_action, target=True, direct=True)
-        target_q_values = target_q_values.view(self.agent.n_action_samples, -1, 1).mean(dim=0)
+        target_q_values = target_q_values.view(self.agent.n_action_samples, -1, 1)[:self.agent.n_q_action_samples].mean(dim=0)
         self.target_q_values.append(target_q_values)
         # other terms for model-based Q-value estimator
         if 'state_likelihood_model' in dir(self.agent.q_value_estimator):
