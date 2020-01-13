@@ -26,7 +26,7 @@ class GradientBasedInference(object):
         for _ in range(self.n_inf_iters):
             actions = agent.approx_post.sample(agent.n_action_samples)
             obj = agent.estimate_objective(state, actions)
-            obj = obj.view(agent.n_action_samples, -1, 1).mean(dim=0)
+            obj = - obj.view(agent.n_action_samples, -1, 1).mean(dim=0)
             self.estimated_objectives.append(obj.detach())
             obj.sum().backward(retain_graph=True)
             act_opt.step()

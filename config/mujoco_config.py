@@ -8,7 +8,7 @@ def get_mujoco_config(env):
     """
     agent_args = {}
 
-    agent_args['misc_args'] = {'n_action_samples': 20,
+    agent_args['misc_args'] = {'n_action_samples': 1,
                                'reward_discount': 0.99,
                                'retrace_lambda': 0.75,
                                'postprocess_action': False,

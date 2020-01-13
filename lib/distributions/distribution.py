@@ -89,7 +89,7 @@ class Distribution(nn.Module):
             req_grad = False if constant else True
             constraint = self.dist_type.arg_constraints[param]
             if type(constraint) == constraints.greater_than and constraint.lower_bound == 0:
-                self.initial_params[param] = nn.Parameter(torch.ones(1, n_variables))
+                self.initial_params[param] = nn.Parameter(0.5 * torch.ones(1, n_variables))
             elif constraint == constraints.dependent and param == 'low':
                 self.initial_params[param] = nn.Parameter(-torch.ones(1, n_variables), requires_grad=False)
             elif constraint == constraints.dependent and param == 'high':
@@ -321,8 +321,8 @@ class Distribution(nn.Module):
             params.extend(list(self.models[model_name].parameters()))
             if self.update != 'direct':
                 params.extend(list(self.gates[model_name].parameters()))
-        for param_name in self.initial_params:
-            params.append(self.initial_params[param_name])
+        # for param_name in self.initial_params:
+        #     params.append(self.initial_params[param_name])
         if self.const_scale:
             params.append(self.log_scale)
         return params

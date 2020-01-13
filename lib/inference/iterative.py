@@ -25,7 +25,7 @@ class IterativeInferenceModel(nn.Module):
             # sample actions, evaluate objective, backprop to get gradients
             actions = agent.approx_post.sample(agent.n_action_samples)
             obj = agent.estimate_objective(state, actions)
-            obj = obj.view(agent.n_action_samples, -1, 1).mean(dim=0)
+            obj = - obj.view(agent.n_action_samples, -1, 1).mean(dim=0)
             self.estimated_objectives.append(obj.detach())
             # TODO: should this be multiplied by valid and done?
             obj.sum().backward(retain_graph=True)
