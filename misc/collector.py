@@ -151,7 +151,7 @@ class Collector:
             # evaluate the objective
             obj = self.agent.estimate_objective(state, on_policy_action)
             obj = obj.view(self.agent.n_action_samples, -1, 1).mean(dim=0)
-            if 'n_inf_iters' in dir(self.agent.inference_optimizer):
+            if self.agent.inference_optimizer.n_inf_iters > 1:
                 # append final objective, calculate inference improvement
                 self.agent.inference_optimizer.estimated_objectives.append(obj.detach())
                 objectives = torch.stack(self.agent.inference_optimizer.estimated_objectives)
