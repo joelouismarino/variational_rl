@@ -49,7 +49,10 @@ class DirectEstimator(nn.Module):
             q_value = torch.min(q_value[0], q_value[1])
         return q_value
 
-    def reset(self, *args):
+    def reset(self, *args, **kwargs):
+        pass
+
+    def set_prev_state(self, *args, **kwargs):
         pass
 
     def parameters(self):

@@ -69,5 +69,8 @@ class ObservedVariable(nn.Module):
         self.planning = False
         self._batch_size = batch_size
 
+    def set_prev_x(self, prev_x):
+        self.cond_likelihood.set_prev_x(prev_x)
+
     def parameters(self):
         return self.cond_likelihood.parameters()

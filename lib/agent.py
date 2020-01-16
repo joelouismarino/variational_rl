@@ -78,6 +78,7 @@ class Agent(nn.Module):
                 action = self.approx_post.sample().detach()
         self.collector.collect(state, action, reward, done, valid, log_prob)
         self._prev_action = action; self._prev_state = state
+        self.q_value_estimator.set_prev_state(state)
         action = action.tanh() if self.postprocess_action else action
         return action.cpu().numpy()
 
@@ -153,6 +154,9 @@ class Agent(nn.Module):
             prev_action (torch.Tensor): previous actions (used for training model)
             prev_state (torch.Tensor): previous states (used for training model)
         """
+        if prev_action is not None:
+            prev_action = prev_action.to(self.device)
+            prev_state = prev_state.to(self.device)
         self.prior.reset(batch_size)
         self.target_prior.reset(batch_size)
         self.approx_post.reset(batch_size)

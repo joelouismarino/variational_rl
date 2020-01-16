@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 from lib.models import get_model
 from lib.variables import get_variable
+from lib.distributions import kl_divergence
 from misc.retrace import retrace
 
 
@@ -41,8 +42,6 @@ class ModelBasedEstimator(nn.Module):
 
         # hyper-parameters and internal attributes
         self.horizon = horizon
-        self._prev_state = None
-        self._prev_action = None
 
     def forward(self, agent, state, action, target=False, both=False,
                 detach_params=False, direct=False):
@@ -81,9 +80,17 @@ class ModelBasedEstimator(nn.Module):
             # TODO: give option for deterministic sampling?
             state = self.state_variable.sample()
             # generate the action
-            # TODO: give option of which distribution to sample from
             agent.generate_prior(state)
-            action = agent.prior.sample()
+            if agent.prior_model is not None:
+                # sample from the learned prior
+                action = agent.prior.sample()
+            else:
+                # estimate approximate posterior
+                agent.inference(state)
+                # calculate KL divergence
+                action = agent.approx_post.sample(agent.n_action_samples)
+                kl = kl_divergence(agent.approx_post, agent.prior, n_samples=agent.n_action_samples, sample=action).sum(dim=1, keepdim=True)
+                raise NotImplementedError
 
         # estimate Q-value at final state
         action = action.tanh() if agent.postprocess_action else action
@@ -157,6 +164,8 @@ class ModelBasedEstimator(nn.Module):
         Puts the distributions into planning mode.
         """
         agent.prior.planning_mode(n_samples=agent.n_action_samples)
+        agent.target_prior.planning_mode(n_samples=agent.n_action_samples)
+        agent.approx_post.planning_mode(n_samples=agent.n_action_samples)
         self.state_variable.planning_mode(agent.n_action_samples)
         if self.reward_likelihood_model is not None:
             self.reward_variable.planning_mode(agent.n_action_samples)
@@ -166,6 +175,8 @@ class ModelBasedEstimator(nn.Module):
         Puts the distributions into acting mode.
         """
         agent.prior.acting_mode()
+        agent.target_prior.acting_mode()
+        agent.approx_post.acting_mode()
         self.state_variable.acting_mode()
         if self.reward_likelihood_model is not None:
             self.reward_variable.acting_mode()
@@ -174,13 +185,17 @@ class ModelBasedEstimator(nn.Module):
         """
         Reset the model componenets.
         """
-        self._prev_action = prev_action
-        self._prev_state = prev_state
         self.state_variable.reset(batch_size, prev_x=prev_state)
         self.reward_variable.reset(batch_size)
         self.state_likelihood_model.reset(batch_size)
         if self.reward_likelihood_model is not None:
             self.reward_likelihood_model.reset(batch_size)
+
+    def set_prev_state(self, prev_state):
+        """
+        Sets the previous state in the state variable.
+        """
+        self.state_variable.set_prev_x(prev_state)
 
     def parameters(self):
         param_dict = {}

@@ -49,7 +49,8 @@ def train(agent, env, buffer, optimizer, plotter, args):
 
             print('Training...')
             # train the agent
-            for update in range(n_updates):
+            # for update in range(n_updates):
+            for update in range(5):
                 print(' Batch: ' + str(update + 1) + ' of ' + str(n_updates) + '.')
                 t_start = time.time()
                 batch = buffer.sample()

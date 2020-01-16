@@ -123,6 +123,7 @@ class Collector:
         if 'state_likelihood_model' in dir(self.agent.q_value_estimator):
             variable = self.agent.q_value_estimator.state_variable
             self.distributions['state']['cond_like']['loc'].append(variable.cond_likelihood.dist.loc.detach())
+            print(variable.cond_likelihood.dist.loc.detach())
             self.distributions['state']['cond_like']['scale'].append(variable.cond_likelihood.dist.scale.detach())
 
         if 'reward_likelihood_model' in dir(self.agent.q_value_estimator):
