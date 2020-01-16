@@ -77,8 +77,7 @@ class Agent(nn.Module):
             if state is not None and action is None:
                 action = self.approx_post.sample().detach()
         self.collector.collect(state, action, reward, done, valid, log_prob)
-        self._prev_action = action; self._prev_state = state
-        self.q_value_estimator.set_prev_state(state)
+        self.step(state, action)
         action = action.tanh() if self.postprocess_action else action
         return action.cpu().numpy()
 
@@ -99,6 +98,10 @@ class Agent(nn.Module):
         expanded_state = state.repeat(self.n_action_samples, 1)
         cond_log_like = self.q_value_estimator(self, expanded_state, action, detach_params=True)
         return cond_log_like - self.alphas['pi'] * kl.repeat(self.n_action_samples, 1)
+
+    def step(self, state, action):
+        self._prev_action = action; self._prev_state = state
+        self.q_value_estimator.set_prev_state(state)
 
     def evaluate(self):
         # evaluate the objective, collect various metrics for reporting

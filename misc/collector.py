@@ -121,15 +121,16 @@ class Collector:
 
         #  state and reward conditional likelihoods (if applicable)
         if 'state_likelihood_model' in dir(self.agent.q_value_estimator):
+            if self.agent._prev_action is not None:
+                # predict the current state and reward
+                self.agent.q_value_estimator.generate(self.agent)
             variable = self.agent.q_value_estimator.state_variable
             self.distributions['state']['cond_like']['loc'].append(variable.cond_likelihood.dist.loc.detach())
-            print(variable.cond_likelihood.dist.loc.detach())
             self.distributions['state']['cond_like']['scale'].append(variable.cond_likelihood.dist.scale.detach())
-
-        if 'reward_likelihood_model' in dir(self.agent.q_value_estimator):
-            variable = self.agent.q_value_estimator.reward_variable
-            self.distributions['reward']['cond_like']['loc'].append(variable.cond_likelihood.dist.loc.detach())
-            self.distributions['reward']['cond_like']['scale'].append(variable.cond_likelihood.dist.scale.detach())
+            if self.agent.q_value_estimator.reward_likelihood_model is not None:
+                variable = self.agent.q_value_estimator.reward_variable
+                self.distributions['reward']['cond_like']['loc'].append(variable.cond_likelihood.dist.loc.detach())
+                self.distributions['reward']['cond_like']['scale'].append(variable.cond_likelihood.dist.scale.detach())
 
     def _collect_optimality_objective(self, reward, valid, done):
         """
