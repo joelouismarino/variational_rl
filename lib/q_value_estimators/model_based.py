@@ -59,6 +59,16 @@ class ModelBasedEstimator(nn.Module):
         if direct:
             return self.direct_estimate(agent, state, action, target, both, detach_params)
 
+        if target:
+            q_value_models = self.target_q_value_models
+            q_value_variables = self.target_q_value_variables
+        else:
+            q_value_models = self.q_value_models
+            q_value_variables = self.q_value_variables
+        if detach_params:
+            q_value_models = copy.deepcopy(q_value_models)
+            q_value_variables = copy.deepcopy(q_value_variables)
+
         self.planning_mode(agent)
         # set the previous state for residual state prediction
         self.state_variable.cond_likelihood.set_prev_x(state)
@@ -68,24 +78,25 @@ class ModelBasedEstimator(nn.Module):
         for _ in range(self.horizon):
             # estimate the Q-value at current state
             action = action.tanh() if agent.postprocess_action else action
-            q_value_input = [model(state=state, action=action) for model in self.q_value_models]
-            q_values = [variable(inp) for variable, inp in zip(self.q_value_variables, q_value_input)]
+            q_value_input = [model(state=state, action=action) for model in q_value_models]
+            q_values = [variable(inp) for variable, inp in zip(q_value_variables, q_value_input)]
             q_value = torch.min(q_values[0], q_values[1])
             q_values_list.append(q_value)
             # predict state and reward
-            self.generate_state(state, action)
-            self.generate_reward(state, action)
+            self.generate_state(state, action, detach_params)
+            self.generate_reward(state, action, detach_params)
             reward = self.reward_variable.sample()
             rewards_list.append(reward)
             # TODO: give option for deterministic sampling?
             state = self.state_variable.sample()
             # generate the action
-            agent.generate_prior(state)
+            agent.generate_prior(state, detach_params)
             if agent.prior_model is not None:
                 # sample from the learned prior
                 action = agent.prior.sample()
             else:
                 # estimate approximate posterior
+                # TODO: detach params for inference as well
                 agent.inference(state)
                 # calculate KL divergence
                 action = agent.approx_post.sample(agent.n_action_samples)
@@ -94,8 +105,8 @@ class ModelBasedEstimator(nn.Module):
 
         # estimate Q-value at final state
         action = action.tanh() if agent.postprocess_action else action
-        q_value_input = [model(state=state, action=action) for model in self.q_value_models]
-        q_values = [variable(inp) for variable, inp in zip(self.q_value_variables, q_value_input)]
+        q_value_input = [model(state=state, action=action) for model in q_value_models]
+        q_values = [variable(inp) for variable, inp in zip(q_value_variables, q_value_input)]
         q_value = torch.min(q_values[0], q_values[1])
         q_values_list.append(q_value)
 
@@ -137,27 +148,48 @@ class ModelBasedEstimator(nn.Module):
             q_value = torch.min(q_value[0], q_value[1])
         return q_value
 
-    def generate(self, agent):
+    def generate(self, agent, detach_params=False):
         """
         Generate conditional likelihoods for the current state and reward.
-        """
-        prev_act = agent._prev_action.tanh() if agent.postprocess_action else agent._prev_action
-        self.generate_state(agent._prev_state, prev_act)
-        self.generate_reward(agent._prev_state, prev_act)
 
-    def generate_reward(self, state, action):
+        Args:
+            agent (Agent): the agent used to generate state and reward predictions
+            detach_params (bool): whether to use detached (copied) parameters
+        """
+        self.generate_state(agent._prev_state, agent._prev_action, detach_params)
+        self.generate_reward(agent._prev_state, agent._prev_action, detach_params)
+
+    def generate_reward(self, state, action, detach_params=False):
         """
         Generate the conditional likelihood for the reward.
-        """
-        likelihood_input = self.reward_likelihood_model(state=state, action=action)
-        self.reward_variable.generate(likelihood_input, action=action)
 
-    def generate_state(self, state, action):
+        Args:
+            state (torch.Tensor): the input state [batch_size, state_dim]
+            action (torch.Tensor): the input action [batch_size, action_dim]
+            detach_params (bool): whether to use detached (copied) parameters
+        """
+        if detach_params:
+            reward_likelihood_model = copy.deepcopy(self.reward_likelihood_model)
+        else:
+            reward_likelihood_model = self.reward_likelihood_model
+        likelihood_input = reward_likelihood_model(state=state, action=action)
+        self.reward_variable.generate(likelihood_input, action=action, detach_params=detach_params)
+
+    def generate_state(self, state, action, detach_params=False):
         """
         Generate the conditional likelihood for the state.
+
+        Args:
+            state (torch.Tensor): the input state [batch_size, state_dim]
+            action (torch.Tensor): the input action [batch_size, action_dim]
+            detach_params (bool): whether to use detached (copied) parameters
         """
-        likelihood_input = self.state_likelihood_model(state=state, action=action)
-        self.state_variable.generate(likelihood_input)
+        if detach_params:
+            state_likelihood_model = copy.deepcopy(self.state_likelihood_model)
+        else:
+            state_likelihood_model = self.state_likelihood_model
+        likelihood_input = state_likelihood_model(state=state, action=action)
+        self.state_variable.generate(likelihood_input, detach_params=detach_params)
 
     def planning_mode(self, agent):
         """
@@ -181,7 +213,7 @@ class ModelBasedEstimator(nn.Module):
         if self.reward_likelihood_model is not None:
             self.reward_variable.acting_mode()
 
-    def reset(self, batch_size, prev_action, prev_state):
+    def reset(self, batch_size, prev_state):
         """
         Reset the model componenets.
         """

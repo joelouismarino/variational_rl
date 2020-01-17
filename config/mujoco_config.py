@@ -134,7 +134,7 @@ def get_mujoco_config(env):
                                                           'residual_loc': False}
         estimator_args['model_args'] = model_args
         estimator_args['learn_reward'] = learn_reward
-        estimator_args['horizon'] = 10
+        estimator_args['horizon'] = 2
 
     agent_args['q_value_estimator_args'] = estimator_args
 

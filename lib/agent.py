@@ -78,14 +78,20 @@ class Agent(nn.Module):
                 action = self.approx_post.sample().detach()
         self.collector.collect(state, action, reward, done, valid, log_prob)
         self.step(state, action)
-        action = action.tanh() if self.postprocess_action else action
+        action = action.tanh() if self.postprocess_action and self.mode == 'eval' else action
         return action.cpu().numpy()
 
-    def generate_prior(self, state):
+    def generate_prior(self, state, detach_params=False):
         # generates the action prior
         if self.prior_model is not None:
-            self.prior.step(self.prior_model(state=state))
-            self.target_prior.step(self.target_prior_model(state=state))
+            if detach_params:
+                prior_model = copy.deepcopy(self.prior_model)
+                target_prior_model = copy.deepcopy(self.target_prior_model)
+            else:
+                prior_model = self.prior_model
+                target_prior_model = self.target_prior_model
+            self.prior.step(prior_model(state=state), detach_params=detach_params)
+            self.target_prior.step(target_prior_model(state=state), detach_params=detach_params)
 
     def inference(self, state):
         # infers the action approximate posterior
@@ -100,6 +106,8 @@ class Agent(nn.Module):
         return cond_log_like - self.alphas['pi'] * kl.repeat(self.n_action_samples, 1)
 
     def step(self, state, action):
+        # updates the previous state and action (for state and reward prediction)
+        action = action.tanh() if self.postprocess_action and self.mode == 'eval' else action
         self._prev_action = action; self._prev_state = state
         self.q_value_estimator.set_prev_state(state)
 
@@ -166,7 +174,7 @@ class Agent(nn.Module):
         if self.prior_model is not None:
             self.prior_model.reset(batch_size)
             self.target_prior_model.reset(batch_size)
-        self.q_value_estimator.reset(batch_size, prev_action, prev_state)
+        self.q_value_estimator.reset(batch_size, prev_state)
         self.inference_optimizer.reset(batch_size)
 
         # reset the collector

@@ -1,3 +1,4 @@
+import copy
 import torch
 import torch.nn as nn
 import torch.distributions.constraints as constraints
@@ -98,20 +99,36 @@ class Distribution(nn.Module):
                 self.initial_params[param] = nn.Parameter(torch.zeros(1, n_variables))
             self.initial_params[param].requires_grad_(req_grad)
 
-    def step(self, input=None, **kwargs):
+    def step(self, input=None, detach_params=False, **kwargs):
         """
         Update the distribution parameters by applying the models to the input.
 
         Args:
             input (torch.Tensor, optional): the input to the linear layers to
                                             the distribution parameters
+            detach_params (bool): whether to use detached (copied) parameters
         """
+        if detach_params:
+            models = {model_name: copy.deepcopy(model) for model_name, model in self.models.items()}
+            initial_params = {param_name: copy.deepcopy(param) for param_name, param in self.initial_params.items()}
+            if self.update != 'direct':
+                gates = {gate_name: copy.deepcopy(gate) for gate_name, gate in self.gates.items()}
+            if self.const_scale:
+                const_log_scale = copy.deepcopy(self.log_scale)
+        else:
+            models = self.models
+            initial_params = self.initial_params
+            if self.update != 'direct':
+                gates = self.gates
+            if self.const_scale:
+                const_log_scale = self.log_scale
+
         parameters = {}
         if input is not None:
-            for ind, param_name in enumerate(self.models):
+            for ind, param_name in enumerate(models):
                 constraint = self.dist.arg_constraints[param_name]
                 param_input = input[ind] if type(input) == list else input
-                param_update = self.models[param_name](param_input)
+                param_update = models[param_name](param_input)
                 if self.update == 'direct':
                     param = param_update
                 else:
@@ -119,7 +136,7 @@ class Distribution(nn.Module):
                     if type(constraint) == constraints.greater_than and constraint.lower_bound == 0:
                         # convert to log-space (for scale parameters)
                         param = torch.log(param)
-                    gate = self.gates[param_name](param_input)
+                    gate = gates[param_name](param_input)
                     param = gate * param + (1. - gate) * param_update
 
                 if param_name == 'loc' and self.manual_loc:
@@ -141,7 +158,7 @@ class Distribution(nn.Module):
                 parameters[param_name] = param
 
             if self.const_scale:
-                log_scale = self.log_scale.repeat(input.shape[0], 1)
+                log_scale = const_log_scale.repeat(input.shape[0], 1)
                 scale = torch.exp(torch.clamp(log_scale, self._log_scale_lim[0], self._log_scale_lim[1]))
                 parameters['scale'] = scale
         elif kwargs is not None:
@@ -149,7 +166,7 @@ class Distribution(nn.Module):
             parameters = kwargs
         else:
             # use the initial parameters
-            parameters = self.initial_params
+            parameters = initial_params
 
         # create a new distribution with the parameters
         if not self.planning:
