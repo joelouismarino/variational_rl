@@ -62,7 +62,7 @@ class Optimizer(object):
             if 'target' in model_name:
                 # do not update the target models with gradients
                 continue
-            elif model_name not in ['state_likelihood_model', 'reward_likelihood_model'] and model_only:
+            elif model_name not in ['state_likelihood_model', 'reward_likelihood_model', 'q_value_models'] and model_only:
                 # if we only want to train the model, then skip the others
                 continue
             opt.step()
@@ -77,7 +77,8 @@ class Optimizer(object):
                 else:
                     target_param.data.copy_(self.policy_tau * current_param.data + (1. - self.policy_tau) * target_param.data)
 
-        if self.agent.q_value_estimator.target_q_value_models is not None and not model_only:
+        # if self.agent.q_value_estimator.target_q_value_models is not None and not model_only:
+        if self.agent.q_value_estimator.target_q_value_models is not None:
             # copy over current value parameters to the target model
             target_params = self.parameters['target_q_value_models']
             current_params = self.parameters['q_value_models']

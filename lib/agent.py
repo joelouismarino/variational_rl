@@ -93,10 +93,10 @@ class Agent(nn.Module):
             self.prior.step(prior_model(state=state), detach_params=detach_params)
             self.target_prior.step(target_prior_model(state=state), detach_params=detach_params)
 
-    def inference(self, state):
+    def inference(self, state, detach_params=False):
         # infers the action approximate posterior
         self.approx_post.init(self.prior)
-        self.inference_optimizer(self, state)
+        self.inference_optimizer(self, state, detach_params=detach_params)
 
     def estimate_objective(self, state, action):
         # estimates the objective (value)

@@ -1,3 +1,4 @@
+import copy
 import torch.nn as nn
 from lib.models import get_model
 
@@ -14,8 +15,12 @@ class DirectInferenceModel(nn.Module):
         self.inference_model = get_model(network_args)
         self.n_inf_iters = 1
 
-    def forward(self, agent, state):
-        agent.approx_post.step(self.inference_model(state=state))
+    def forward(self, agent, state, detach_params=False, **kwargs):
+        if detach_params:
+            inference_model = copy.deepcopy(self.inference_model)
+        else:
+            inference_model = self.inference_model
+        agent.approx_post.step(inference_model(state=state), detach_params)
 
     def reset(self, batch_size):
         self.inference_model.reset(batch_size)

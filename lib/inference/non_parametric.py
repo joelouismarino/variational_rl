@@ -7,7 +7,7 @@ class NonParametricInference(object):
     def __init__(self):
         pass
 
-    def __call__(self, agent, state):
+    def __call__(self, agent, state, **kwargs):
         # sample the actions
         actions = agent.target_prior.sample(agent.n_action_samples)
         # calculate the prior log probabilities

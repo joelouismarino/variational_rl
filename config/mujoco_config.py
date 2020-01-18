@@ -12,8 +12,8 @@ def get_mujoco_config(env):
                                'n_q_action_samples': 1,
                                'reward_discount': 0.99,
                                'retrace_lambda': 0.75,
-                               'postprocess_action': True,
-                               'epsilons': dict(pi=0.1, loc=5e-4, scale=1e-5)}
+                               'postprocess_action': False,
+                               'epsilons': dict(pi=None, loc=5e-4, scale=1e-5)}
                                # RERPI epsilons: pi=0.1, loc=5e-4, scale=1e-5
                                # use pi=None for SAC heuristic
 
@@ -22,8 +22,8 @@ def get_mujoco_config(env):
     n_action_variables = env.action_space.shape[0]
 
     # distribution types: 'Uniform', 'Normal', 'TanhNormal', 'Boltzmann', 'NormalUniform'
-    action_prior_dist = 'Normal'
-    action_approx_post_dist = 'Normal'
+    action_prior_dist = 'Uniform'
+    action_approx_post_dist = 'TanhNormal'
 
     ## PRIOR
     constant_prior = False
@@ -52,7 +52,7 @@ def get_mujoco_config(env):
 
     ## INFERENCE OPTIMIZER
     # optimizer type can be 'direct', 'iterative', 'gradient', 'non_parametric', 'cem'
-    optimizer_type = 'iterative'
+    optimizer_type = 'direct'
     optimizer_type = 'non_parametric' if action_approx_post_dist == 'Boltzmann' else optimizer_type
 
     inf_opt_args = {'opt_type': optimizer_type}

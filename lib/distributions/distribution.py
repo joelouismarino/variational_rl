@@ -216,7 +216,7 @@ class Distribution(nn.Module):
 
         return sample
 
-    def log_prob(self, x, non_planning=False):
+    def log_prob(self, x):
         """
         Evaluate the log probability at x.
 
@@ -224,9 +224,10 @@ class Distribution(nn.Module):
             x (torch.Tensor): the point of evaluation [batch_size * n_x_samples, n_variables]
         """
         # get the appropriate distribution
-        d = self.planning_dist if self.planning and not non_planning else self.dist
-        n_x_samples = int(x.shape[0] / self._batch_size)
-        n_d_samples = int(d.batch_shape[0] / self._batch_size)
+        d = self.planning_dist if self.planning else self.dist
+        batch_size = self.planning_dist.batch_shape[0] if self.planning else self._batch_size
+        n_x_samples = int(x.shape[0] / batch_size)
+        n_d_samples = int(d.batch_shape[0] / batch_size)
         if n_x_samples == 1:
             # expand x
             x = torch.cat(n_d_samples * [x], dim=0)
@@ -276,9 +277,15 @@ class Distribution(nn.Module):
             for _, v in dist_params.items():
                 v.retain_grad()
         # initialize the distribution
-        self.dist = self.dist_type(**dist_params) if len(dist_params.keys()) > 0 else None
+        d = self.dist_type(**dist_params) if len(dist_params.keys()) > 0 else None
+        if self.planning:
+            self.planning_dist = d
+            self.planning_sample = None
+        else:
+            self.dist = d
+            self._sample = None
+
         # reset other quantities
-        self._sample = None
         self._batch_size = batch_size
         if self.residual_loc:
             if prev_x is not None:

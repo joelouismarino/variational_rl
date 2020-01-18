@@ -15,7 +15,7 @@ class CEMInference(object):
         # keep track of estimated objectives for reporting
         self.estimated_objectives = []
 
-    def __call__(self, agent, state):
+    def __call__(self, agent, state, **kwargs):
 
         for _ in range(self.n_inf_iters):
             # sample actions, evaluate objective

@@ -21,9 +21,8 @@ def kl_divergence(dist1, dist2, n_samples=1, sample=None):
             w = w.view(n_s, -1, 1).repeat(1, 1, s.shape[-1])
         else:
             w = 1.
-
             s = sample if sample is not None else d1.sample(n_s)
-        kl = d1.log_prob(s, non_planning=True) - d2.log_prob(s, non_planning=True)
+        kl = d1.log_prob(s) - d2.log_prob(s)
         kl = w * kl
         # NOTE: this n_s might not be the same as the number of samples, in which
         #       case the view will be wrong...
@@ -31,10 +30,6 @@ def kl_divergence(dist1, dist2, n_samples=1, sample=None):
         return kl.mean(dim=0)
 
     try:
-        kl = torch.distributions.kl_divergence(dist1.dist, dist2.dist)
-        # if sample is not None:
-        #     n_samples = int(sample.shape[0] / kl.shape[0])
-        # return kl.repeat(n_samples, 1)
-        return kl
+        return torch.distributions.kl_divergence(dist1.dist, dist2.dist)
     except NotImplementedError:
         return numerical_approx(dist1, dist2, n_samples)

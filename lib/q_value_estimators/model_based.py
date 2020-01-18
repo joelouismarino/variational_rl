@@ -96,12 +96,11 @@ class ModelBasedEstimator(nn.Module):
                 action = agent.prior.sample()
             else:
                 # estimate approximate posterior
-                # TODO: detach params for inference as well
-                agent.inference(state)
+                agent.inference(state, detach_params)
+                action = agent.approx_post.sample()
                 # calculate KL divergence
-                action = agent.approx_post.sample(agent.n_action_samples)
-                kl = kl_divergence(agent.approx_post, agent.prior, n_samples=agent.n_action_samples, sample=action).sum(dim=1, keepdim=True)
-                raise NotImplementedError
+                kl = kl_divergence(agent.approx_post, agent.prior, n_samples=1, sample=action).sum(dim=1, keepdim=True)
+                q_values_list[-1] = q_values_list[-1] - agent.alphas['pi'] * kl
 
         # estimate Q-value at final state
         action = action.tanh() if agent.postprocess_action else action

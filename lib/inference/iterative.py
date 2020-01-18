@@ -19,7 +19,7 @@ class IterativeInferenceModel(nn.Module):
         # keep track of estimated objectives for reporting
         self.estimated_objectives = []
 
-    def forward(self, agent, state):
+    def forward(self, agent, state, **kwargs):
 
         for _ in range(self.n_inf_iters):
             # sample actions, evaluate objective, backprop to get gradients
