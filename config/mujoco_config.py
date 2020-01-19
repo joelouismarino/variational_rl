@@ -97,15 +97,17 @@ def get_mujoco_config(env):
 
     estimator_args = {'estimator_type': estimator_type}
     estimator_args['network_args'] = {'type': 'fully_connected',
-                                      'n_layers': 3,
+                                      'n_layers': 2,
                                       'inputs': ['state', 'action'],
-                                      'n_units': 512,
+                                      'n_units': 256,
                                       'connectivity': 'sequential',
-                                      'non_linearity': ['tanh', 'elu', 'elu'],
-                                      'layer_norm': [True, False, False],
+                                      'non_linearity': 'relu',
+                                      'layer_norm': False,
                                       'dropout': None}
     if estimator_type == 'model_based':
         learn_reward = True
+        stochastic_state = False
+        stochastic_reward = False
         model_args = {}
         model_args['state_likelihood_args'] = {'type': 'fully_connected',
                                                        'n_layers': 2,
@@ -117,6 +119,7 @@ def get_mujoco_config(env):
         model_args['state_variable_args'] = {'type': 'fully_connected',
                                                      'likelihood_dist': 'Normal',
                                                      'n_variables': state_size,
+                                                     'stochastic': stochastic_state,
                                                      'constant_scale': False,
                                                      'residual_loc': True}
         if learn_reward:
@@ -130,6 +133,7 @@ def get_mujoco_config(env):
             model_args['reward_variable_args'] = {'type': 'fully_connected',
                                                           'likelihood_dist': 'Normal',
                                                           'n_variables': 1,
+                                                          'stochastic': stochastic_reward,
                                                           'constant_scale': False,
                                                           'residual_loc': False}
         estimator_args['model_args'] = model_args

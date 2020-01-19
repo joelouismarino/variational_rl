@@ -18,6 +18,7 @@ class Distribution(nn.Module):
         dist_type (str): the type of distribution
         n_variables (int): the number of variables
         n_input (int): number of input dimensions
+        stochastic (bool): whether to sample stochastically
         constant (bool): whether to have a constant distribution
         constant_scale (bool): whether to set the scale parameter as constant
         residual_loc (bool): whether the location output should be the residual
@@ -25,11 +26,12 @@ class Distribution(nn.Module):
         manual_loc_alpha (float): the alpha parameter for manual specification
         update (str): the type of updating (direct or iterative)
     """
-    def __init__(self, dist_type, n_variables, n_input, constant=False,
-                 constant_scale=False, residual_loc=False, manual_loc=False,
-                 manual_loc_alpha=0., update='direct'):
+    def __init__(self, dist_type, n_variables, n_input, stochastic=True,
+                 constant=False, constant_scale=False, residual_loc=False,
+                 manual_loc=False, manual_loc_alpha=0., update='direct'):
         super(Distribution, self).__init__()
         self.n_variables = n_variables
+        self.stochastic = stochastic
         self.const_scale = constant_scale
         self.residual_loc = residual_loc
         self.manual_loc = manual_loc
@@ -195,10 +197,13 @@ class Distribution(nn.Module):
             d = self.planning_dist if self.planning else self.dist
             # perform the sampling
             # sample is of size [n_samples, batch_size, n_variables]
-            if d.has_rsample:
-                sample = d.rsample([n_samples])
+            if self.stochastic:
+                if d.has_rsample:
+                    sample = d.rsample([n_samples])
+                else:
+                    sample = d.sample([n_samples])
             else:
-                sample = d.sample([n_samples])
+                sample = torch.cat(n_samples * [d.loc], dim=0)
             sample = sample.view(-1, self.n_variables)
             # update the internal sample
             if self.planning:

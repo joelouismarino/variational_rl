@@ -5,12 +5,13 @@ from ...layers import FullyConnectedLayer
 
 class FullyConnectedObservedVariable(ObservedVariable):
 
-    def __init__(self, likelihood_dist, n_variables, n_input,
+    def __init__(self, likelihood_dist, n_variables, n_input, stochastic=True,
                  constant_scale=False, sigmoid_loc=False, residual_loc=False,
                  manual_loc=False, manual_loc_alpha=0.):
         super(FullyConnectedObservedVariable, self).__init__(likelihood_dist,
                                                              n_variables,
                                                              n_input,
+                                                             stochastic,
                                                              constant_scale,
                                                              residual_loc,
                                                              manual_loc,

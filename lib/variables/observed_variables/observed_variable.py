@@ -16,10 +16,11 @@ class ObservedVariable(nn.Module):
         constant_scale (bool): whether to use a constant scale
         residual_loc (bool): whether to use a residual mapping for loc parameter
     """
-    def __init__(self, likelihood_dist, n_variables, n_input, constant_scale,
-                 residual_loc, manual_loc, manual_loc_alpha):
+    def __init__(self, likelihood_dist, n_variables, n_input, stochastic,
+                 constant_scale, residual_loc, manual_loc, manual_loc_alpha):
         super(ObservedVariable, self).__init__()
         self.cond_likelihood = Distribution(likelihood_dist, n_variables, n_input,
+                                            stochastic=stochastic,
                                             constant_scale=constant_scale,
                                             residual_loc=residual_loc,
                                             manual_loc=manual_loc,
