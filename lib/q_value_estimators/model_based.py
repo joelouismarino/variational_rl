@@ -112,9 +112,9 @@ class ModelBasedEstimator(nn.Module):
         # calculate the retrace Q-value estimate
         total_rewards = torch.stack(rewards_list) if len(rewards_list) > 0 else None
         total_q_values = torch.stack(q_values_list)
-        # retrace_estimate = retrace(total_q_values, total_rewards, None, discount=agent.reward_discount, l=agent.retrace_lambda)
+        retrace_estimate = retrace(total_q_values, total_rewards, None, discount=agent.reward_discount, l=agent.retrace_lambda)
         # import ipdb; ipdb.set_trace()
-        retrace_estimate = total_rewards[:-1].sum(dim=0, keepdim=True) + total_q_values[-1:]
+        # retrace_estimate = total_rewards[:-1].sum(dim=0, keepdim=True) + total_q_values[-1:]
         self.acting_mode(agent)
 
         return retrace_estimate
