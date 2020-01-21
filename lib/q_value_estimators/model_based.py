@@ -96,6 +96,7 @@ class ModelBasedEstimator(nn.Module):
             if agent.prior_model is not None:
                 # sample from the learned prior
                 action = agent.prior.sample()
+                # TODO: change this to a tensor, will break currently
                 kl_list.append(0.)
             else:
                 # estimate approximate posterior
@@ -118,13 +119,13 @@ class ModelBasedEstimator(nn.Module):
         total_q_values = torch.stack(q_values_list)
 
         if self.value_estimate == 'n_step':
-            estimate = n_step(total_q_values, total_rewards, discount=agent.reward_discount)
+            estimate = n_step(total_q_values, total_rewards, total_kl, discount=agent.reward_discount)
         elif self.value_estimate == 'average_n_step':
-            estimate = average_n_step(total_q_values, total_rewards, discount=agent.reward_discount)
+            estimate = average_n_step(total_q_values, total_rewards, total_kl, discount=agent.reward_discount)
         elif self.value_estimate == 'exp_average_n_step':
-            estimate = exp_average_n_step(total_q_values, total_rewards, discount=agent.reward_discount, factor=1.)
+            estimate = exp_average_n_step(total_q_values, total_rewards, total_kl, discount=agent.reward_discount, factor=1.)
         elif self.value_estimate == 'retrace':
-            estimate = retrace_n_step(total_q_values, total_rewards, None, discount=agent.reward_discount, l=agent.retrace_lambda)
+            estimate = retrace_n_step(total_q_values, total_rewards, total_kl, discount=agent.reward_discount, factor=agent.retrace_lambda)
         else:
             raise NotImplementedError
 
