@@ -1,10 +1,75 @@
 import torch
 
+def n_step_returns(q_values, rewards, kls, discount=0.99):
+    """
+    Calculates all n-step returns.
 
-def retrace(q_values, rewards, importance_weights=None, discount=0.9, l=0.9):
-    # RETRACE: equation 3
-    # assert len(q_values.shape) == 3
-    # assert len(rewards.shape) == 3
+    Args:
+        q_values (torch.Tensor): the Q-value estimates at each time step [time_steps+1, batch_size, 1]
+        rewards (torch.Tensor): the rewards at each time step [time_steps, batch_size, 1]
+        kls (torch.Tensor): the scaled kl divergences at each time step [time_steps, batch_size, 1]
+        discount (float): the temporal discount factor
+    """
+    discounts = torch.cat([(discount*torch.ones_like(q_values[:1]))**i for i in range(rewards.shape[0])], 0)
+    rewards[1:] = rewards[1:] - kls[:-1]
+    discounted_returns = torch.cumsum(discounts * rewards, dim=0)
+    terminal_values = discount * discounts * (q_values[1:] - kls)
+    return torch.cat([q_values[:1], discounted_returns + terminal_values], dim=0)
+
+def n_step(q_values, rewards, kls, discount=0.99):
+    """
+    Discounted n-step Monte Carlo return.
+    """
+    q_estimates = n_step_returns(q_values, rewards, kls, discount=discount)
+    # get the final n-step return
+    return q_estimates[-1:]
+
+def average_n_step(q_values, rewards, kls, discount=0.99):
+    """
+    Average of n-step returns.
+    """
+    q_estimates = n_step_returns(q_values, rewards, kls, discount=discount)
+    # simple average over all n-step returns
+    return q_estimates.mean(dim=0, keepdim=True)
+
+def exp_average_n_step(q_values, rewards, kls, discount=0.99, factor=1.):
+    """
+    Exponential average of n-step returns.
+
+    Args:
+        factor (float): the exponential weighting factor
+    """
+    q_estimates = n_step_returns(q_values, rewards, kls, discount=discount)
+    # exponential average over all n-step returns
+    weights = torch.cat([(factor*torch.ones_like(q_values[:1]))**(i+1) for i in range(rewards.shape[0])], 0)
+    weighted_estimates = weights * q_estimates[:-1]
+    return (1. - factor) * weighted_estimates + factor * q_estimates[-1:]
+
+def retrace_n_step(q_values, rewards, kls, discount=0.99, factor=0.9):
+    """
+    n-step retrace estimate (Munos et al., 2016).
+
+    Args:
+        factor (float): the weighting factor (lambda)
+    """
+    deltas = rewards + discount * (q_values[1:] - kls) - q_values[:-1]
+    weights = factor * torch.ones_like(q_values)[:-2]
+    weights = torch.cat([torch.ones_like(q_values[:1]), weights], 0)
+    discounts = torch.cat([(discount*torch.ones_like(q_values[:1]))**i for i in range(q_values.shape[0])], 0)
+    q_estimates = q_values[:1] + torch.sum(discounts[:-1] * torch.cumprod(weights, 0) * deltas, 0, keepdim=True)
+    return q_estimates
+
+def retrace(q_values, rewards, importance_weights=None, discount=0.99, l=0.75):
+    """
+    Retrace estimate (Munos et al., 2016).
+
+    Args:
+        q_values (torch.Tensor): the Q-value estimates at each time step [time_steps+1, batch_size, 1]
+        rewards (torch.Tensor): the rewards at each time step [time_steps, batch_size, 1]
+        importance_weights (torch.Tensor): the importance weights at each time step [time_steps, batch_size, 1]
+        discount (float): the temporal discount factor
+        l (float): the lambda weighting factor
+    """
     if q_values.shape[0] == 1 or l == -1:
         # degenerate case
         return q_values

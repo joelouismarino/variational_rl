@@ -3,7 +3,7 @@ import torch.nn as nn
 import copy
 import numpy as np
 from torch import optim
-from misc.retrace import retrace
+from misc.estimators import retrace
 from lib.distributions import kl_divergence
 
 

@@ -106,6 +106,7 @@ def get_mujoco_config(env):
                                       'dropout': None}
     if estimator_type == 'model_based':
         learn_reward = True
+        value_estimate = 'retrace'
         stochastic_state = False
         stochastic_reward = False
         model_args = {}
@@ -138,7 +139,8 @@ def get_mujoco_config(env):
                                                           'residual_loc': False}
         estimator_args['model_args'] = model_args
         estimator_args['learn_reward'] = learn_reward
-        estimator_args['horizon'] = 2
+        estimator_args['value_estimate'] = value_estimate
+        estimator_args['horizon'] = 5
 
     agent_args['q_value_estimator_args'] = estimator_args
 

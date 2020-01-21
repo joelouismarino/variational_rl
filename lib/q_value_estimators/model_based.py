@@ -4,7 +4,7 @@ import torch.nn as nn
 from lib.models import get_model
 from lib.variables import get_variable
 from lib.distributions import kl_divergence
-from misc.retrace import retrace
+from misc.estimators import n_step, average_n_step, exp_average_n_step, retrace_n_step
 
 
 class ModelBasedEstimator(nn.Module):
@@ -18,7 +18,8 @@ class ModelBasedEstimator(nn.Module):
         horizon (int): planning horizon
         learn_reward (bool): whether to learn the reward function
     """
-    def __init__(self, network_args, model_args, horizon, learn_reward=True):
+    def __init__(self, network_args, model_args, horizon, learn_reward=True,
+                 value_estimate='retrace'):
         super(ModelBasedEstimator, self).__init__()
         # direct Q-value model
         self.q_value_models = nn.ModuleList([get_model(copy.deepcopy(network_args)) for _ in range(2)])
@@ -42,6 +43,7 @@ class ModelBasedEstimator(nn.Module):
 
         # hyper-parameters and internal attributes
         self.horizon = horizon
+        self.value_estimate = value_estimate
 
     def forward(self, agent, state, action, target=False, both=False,
                 detach_params=False, direct=False):
@@ -74,6 +76,7 @@ class ModelBasedEstimator(nn.Module):
         self.state_variable.cond_likelihood.set_prev_x(state)
         # roll out the model
         rewards_list = []
+        kl_list = []
         q_values_list = []
         for _ in range(self.horizon):
             # estimate the Q-value at current state
@@ -87,20 +90,20 @@ class ModelBasedEstimator(nn.Module):
             self.generate_reward(state, action, detach_params)
             reward = self.reward_variable.sample()
             rewards_list.append(reward)
-            # TODO: give option for deterministic sampling?
             state = self.state_variable.sample()
             # generate the action
             agent.generate_prior(state, detach_params)
             if agent.prior_model is not None:
                 # sample from the learned prior
                 action = agent.prior.sample()
+                kl_list.append(0.)
             else:
                 # estimate approximate posterior
                 agent.inference(state, detach_params)
                 action = agent.approx_post.sample()
                 # calculate KL divergence
                 kl = kl_divergence(agent.approx_post, agent.prior, n_samples=1, sample=action).sum(dim=1, keepdim=True)
-                q_values_list[-1] = q_values_list[-1] - agent.alphas['pi'] * kl
+                kl_list.append(agent.alphas['pi'] * kl)
 
         # estimate Q-value at final state
         action = action.tanh() if agent.postprocess_action else action
@@ -109,15 +112,25 @@ class ModelBasedEstimator(nn.Module):
         q_value = torch.min(q_values[0], q_values[1])
         q_values_list.append(q_value)
 
-        # calculate the retrace Q-value estimate
-        total_rewards = torch.stack(rewards_list) if len(rewards_list) > 0 else None
+        # calculate the Q-value estimate
+        total_rewards = torch.stack(rewards_list)
+        total_kl = torch.stack(kl_list)
         total_q_values = torch.stack(q_values_list)
-        retrace_estimate = retrace(total_q_values, total_rewards, None, discount=agent.reward_discount, l=agent.retrace_lambda)
-        # import ipdb; ipdb.set_trace()
-        # retrace_estimate = total_rewards[:-1].sum(dim=0, keepdim=True) + total_q_values[-1:]
+
+        if self.value_estimate == 'n_step':
+            estimate = n_step(total_q_values, total_rewards, discount=agent.reward_discount)
+        elif self.value_estimate == 'average_n_step':
+            estimate = average_n_step(total_q_values, total_rewards, discount=agent.reward_discount)
+        elif self.value_estimate == 'exp_average_n_step':
+            estimate = exp_average_n_step(total_q_values, total_rewards, discount=agent.reward_discount, factor=1.)
+        elif self.value_estimate == 'retrace':
+            estimate = retrace_n_step(total_q_values, total_rewards, None, discount=agent.reward_discount, l=agent.retrace_lambda)
+        else:
+            raise NotImplementedError
+
         self.acting_mode(agent)
 
-        return retrace_estimate
+        return estimate
 
     def direct_estimate(self, agent, state, action, target=False, both=False,
                         detach_params=False):
