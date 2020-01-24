@@ -100,10 +100,11 @@ class ModelBasedEstimator(nn.Module):
                 kl_list.append(0.)
             else:
                 # estimate approximate posterior
-                agent.inference(state, detach_params)
-                action = agent.approx_post.sample()
+                agent.inference(state, detach_params, direct=True)
+                dist = agent.direct_approx_post if agent.direct_approx_post is not None else agent.approx_post
+                action = dist.sample()
                 # calculate KL divergence
-                kl = kl_divergence(agent.approx_post, agent.prior, n_samples=1, sample=action).sum(dim=1, keepdim=True)
+                kl = kl_divergence(dist, agent.prior, n_samples=1, sample=action).sum(dim=1, keepdim=True)
                 kl_list.append(agent.alphas['pi'] * kl)
 
         # estimate Q-value at final state
@@ -215,6 +216,8 @@ class ModelBasedEstimator(nn.Module):
         self.state_variable.planning_mode(agent.n_action_samples)
         if self.reward_likelihood_model is not None:
             self.reward_variable.planning_mode(agent.n_action_samples)
+        if agent.direct_approx_post is not None:
+            agent.direct_approx_post.planning_mode(n_samples=agent.n_action_samples)
 
     def acting_mode(self, agent):
         """
@@ -226,6 +229,8 @@ class ModelBasedEstimator(nn.Module):
         self.state_variable.acting_mode()
         if self.reward_likelihood_model is not None:
             self.reward_variable.acting_mode()
+        if agent.direct_approx_post is not None:
+            agent.direct_approx_post.acting_mode()
 
     def reset(self, batch_size, prev_state):
         """

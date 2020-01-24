@@ -32,6 +32,10 @@ def get_n_input(config_dict):
     if config_dict['inference_optimizer_args']['opt_type'] in ['direct', 'iterative']:
         model_dicts.append(config_dict['inference_optimizer_args']['network_args'])
 
+    # direct inference optimizer network
+    if config_dict['direct_inference_optimizer_args'] is not None:
+        model_dicts.append(config_dict['direct_inference_optimizer_args']['network_args'])
+
     # model network(s)
     if config_dict['q_value_estimator_args']['estimator_type'] == 'model_based':
         model_dicts.append(config_dict['q_value_estimator_args']['model_args']['state_likelihood_args'])

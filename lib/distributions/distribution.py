@@ -66,7 +66,7 @@ class Distribution(nn.Module):
             param_names = []
         self.param_names = param_names
         if 'scale' in param_names:
-            self._log_scale_lim = [-15, 0]
+            self._log_scale_lim = [-15, 15]
             if self.const_scale:
                 self.log_scale = nn.Parameter(torch.zeros(1, self.n_variables))
                 param_names = ['loc']

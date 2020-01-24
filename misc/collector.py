@@ -166,6 +166,12 @@ class Collector:
             if self.agent.prior_model is not None:
                 self.agent.prior.reset(batch_size, dist_params={'loc': loc, 'scale': scale})
 
+        if self.agent.direct_approx_post is not None:
+            # train the direct inference model using on policy actions
+            log_prob = self.agent.direct_approx_post.log_prob(on_policy_action).sum(dim=2)
+            log_prob = log_prob.view(self.agent.n_action_samples, -1, 1).mean(dim=0)
+            self.objectives['direct_inf_opt_obj'].append(-log_prob * valid * (1 - done))
+
     def _collect_alpha_objectives(self, valid, done):
         """
         Collect the objectives for the Lagrange multipliers using the target epsilons.
@@ -451,6 +457,10 @@ class Collector:
         if 'parameters' in dir(self.agent.inference_optimizer):
             # amortized inference optimizer
             self.objectives['inf_opt_obj'] = []
+
+        if self.agent.direct_inference_optimizer is not None:
+            # direct amortized inference optimizer (for planning)
+            self.objectives['direct_inf_opt_obj'] = []
 
         if self.agent.prior_model is not None:
             self.objectives['action_kl_prev_loc'] = []

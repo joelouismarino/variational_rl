@@ -11,7 +11,7 @@ def get_mujoco_config(env):
     agent_args['misc_args'] = {'n_action_samples': 50,
                                'n_q_action_samples': 1,
                                'reward_discount': 0.99,
-                               'retrace_lambda': 0.75,
+                               'retrace_lambda': 0.9,
                                'postprocess_action': False,
                                'epsilons': dict(pi=None, loc=5e-4, scale=1e-5)}
                                # RERPI epsilons: pi=0.1, loc=5e-4, scale=1e-5
@@ -52,8 +52,9 @@ def get_mujoco_config(env):
 
     ## INFERENCE OPTIMIZER
     # optimizer type can be 'direct', 'iterative', 'gradient', 'non_parametric', 'cem'
-    optimizer_type = 'direct'
+    optimizer_type = 'iterative'
     optimizer_type = 'non_parametric' if action_approx_post_dist == 'Boltzmann' else optimizer_type
+    use_direct_inference_optimizer = True
 
     inf_opt_args = {'opt_type': optimizer_type}
     if optimizer_type == 'direct':
@@ -90,6 +91,25 @@ def get_mujoco_config(env):
         inf_opt_args['n_inf_iters'] = 3
 
     agent_args['inference_optimizer_args'] = inf_opt_args
+
+    if use_direct_inference_optimizer:
+        agent_args['direct_approx_post_args'] = {'dist_type': action_approx_post_dist,
+                                                 'n_variables': n_action_variables,
+                                                 'update': 'direct'}
+        inf_opt_args = {'opt_type': 'direct'}
+        inf_opt_args['network_args'] = {'type': 'fully_connected',
+                                                'n_layers': 2,
+                                                'inputs': ['state'],
+                                                'n_units': 256,
+                                                'connectivity': 'sequential',
+                                                'batch_norm': False,
+                                                'non_linearity': 'relu',
+                                                'dropout': None,
+                                                'separate_networks': False}
+        agent_args['direct_inference_optimizer_args'] = inf_opt_args
+    else:
+        agent_args['direct_approx_post_args'] = None
+        agent_args['direct_inference_optimizer_args'] = None
 
     ## Q-VALUE ESTIMATOR
     # estimator type can be 'direct' or 'model_based'

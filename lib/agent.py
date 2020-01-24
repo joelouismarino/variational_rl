@@ -21,9 +21,12 @@ class Agent(nn.Module):
         q_value_estimator_args (dict):
         inference_optimizer_args (dict):
         misc_args (dict):
+        direct_inference_optimizer_args (dict):
+        direct_approx_post_args (dict):
     """
     def __init__(self, prior_args, approx_post_args, prior_model_args,
-                 q_value_estimator_args, inference_optimizer_args, misc_args):
+                 q_value_estimator_args, inference_optimizer_args, misc_args,
+                 direct_inference_optimizer_args, direct_approx_post_args):
         super(Agent, self).__init__()
         # prior
         self.prior_model = get_model(prior_model_args)
@@ -42,6 +45,13 @@ class Agent(nn.Module):
         else:
             approx_post_args['n_input'] = None
         self.approx_post = Distribution(**approx_post_args)
+
+        # optional direct inference optimizer for model-based value estimation
+        self.direct_inference_optimizer = self.direct_approx_post = None
+        if direct_inference_optimizer_args is not None:
+            self.direct_inference_optimizer = get_inference_optimizer(direct_inference_optimizer_args)
+            direct_approx_post_args['n_input'] = self.inference_optimizer.inference_model.n_out
+            self.direct_approx_post = Distribution(**direct_approx_post_args)
 
         # Q-value estimator
         self.q_value_estimator = get_q_value_estimator(q_value_estimator_args)
@@ -93,10 +103,15 @@ class Agent(nn.Module):
             self.prior.step(prior_model(state=state), detach_params=detach_params)
             self.target_prior.step(target_prior_model(state=state), detach_params=detach_params)
 
-    def inference(self, state, detach_params=False):
+    def inference(self, state, detach_params=False, direct=False):
         # infers the action approximate posterior
-        self.approx_post.init(self.prior)
-        self.inference_optimizer(self, state, detach_params=detach_params)
+        if self.direct_inference_optimizer is not None:
+            self.direct_approx_post.init(self.prior)
+            self.direct_inference_optimizer(self, state, detach_params=detach_params, direct=direct)
+        if self.inference_optimizer.n_inf_iters == 1 or not direct:
+            # run the inference model if it is already direct
+            self.approx_post.init(self.prior)
+            self.inference_optimizer(self, state, detach_params=detach_params)
 
     def estimate_objective(self, state, action):
         # estimates the objective (value)
@@ -176,6 +191,9 @@ class Agent(nn.Module):
             self.target_prior_model.reset(batch_size)
         self.q_value_estimator.reset(batch_size, prev_state)
         self.inference_optimizer.reset(batch_size)
+        if self.direct_approx_post is not None:
+            self.direct_approx_post.reset(batch_size)
+            self.direct_inference_optimizer.reset(batch_size)
 
         # reset the collector
         self.collector.reset()
@@ -221,6 +239,11 @@ class Agent(nn.Module):
             param_dict['target_prior'].extend(list(self.target_prior_model.parameters()))
             param_dict['target_prior'].extend(list(self.target_prior.parameters()))
 
+        if self.direct_approx_post is not None:
+            param_dict['direct_inference_optimizer'] = nn.ParameterList()
+            param_dict['direct_inference_optimizer'].extend(list(self.direct_inference_optimizer.parameters()))
+            param_dict['direct_inference_optimizer'].extend(list(self.direct_approx_post.parameters()))
+
         q_value_param_dict = self.q_value_estimator.parameters()
         for k, v in q_value_param_dict.items():
             param_dict[k] = v
@@ -237,6 +260,9 @@ class Agent(nn.Module):
         if 'parameters' in dir(self.inference_optimizer):
             params.extend(list(self.inference_optimizer.parameters()))
             params.extend(list(self.approx_post.parameters()))
+        if self.direct_approx_post is not None:
+            params.extend(list(self.direct_inference_optimizer.parameters()))
+            params.extend(list(self.direct_approx_post.parameters()))
         return params
 
     def generative_parameters(self):
