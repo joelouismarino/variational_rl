@@ -274,15 +274,3 @@ class Agent(nn.Module):
         for _, v in q_value_param_dict.items():
             params.extend(list(v))
         return params
-
-    def load(self, state_dict):
-        # load the state dictionary for the agent
-        for k, v in state_dict.items():
-            if hasattr(self, k):
-                attr = getattr(self, k)
-                try:
-                    attr.load_state_dict(v)
-                except:
-                    print('WARNING: could not load ' + k + '.')
-            else:
-                raise ValueError
