@@ -174,8 +174,9 @@ class Plotter:
         """
         print('Checkpointing the agent...')
         state_dict = self.agent.state_dict()
+        cpu_state_dict = {k: v.cpu() for k, v in state_dict.items()}
         ckpt_path = os.path.join('./ckpt_step_'+ str(step) + '.ckpt')
-        torch.save(state_dict, ckpt_path)
+        torch.save(cpu_state_dict, ckpt_path)
         self.experiment.log_asset(ckpt_path)
         os.remove(ckpt_path)
         print('Done.')
