@@ -31,10 +31,10 @@ class Buffer(object):
         seq_len = self.sequence_length
         if seq_len <= 0:
             # use entire episodes
-            seq_len = max(episode['observation'].shape[0] for episode in episodes)
+            seq_len = max(episode['state'].shape[0] for episode in episodes)
         batch = {k: torch.zeros([seq_len, self.batch_size] + list(v.shape[1:])) for k, v in episodes[0].items()}
         batch['valid'] = torch.zeros(seq_len, self.batch_size, 1)
-        batch['prev_obs'] = torch.zeros([self.batch_size] + list(episodes[0]['observation'].shape[1:]))
+        batch['prev_state'] = torch.zeros([self.batch_size] + list(episodes[0]['state'].shape[1:]))
         batch['prev_action'] = torch.zeros([self.batch_size] + list(episodes[0]['action'].shape[1:]))
         for batch_ind, episode in enumerate(episodes):
             episode_len = len(episode[list(episode.keys())[0]])
@@ -50,7 +50,7 @@ class Buffer(object):
             for k in episode:
                 batch[k][:l, batch_ind] = episode[k][start_ind:end_ind]
             batch['valid'][:l, batch_ind] = torch.ones(l, 1)
-            batch['prev_obs'][batch_ind] = episode['observation'][start_ind-1]
+            batch['prev_state'][batch_ind] = episode['state'][start_ind-1]
             batch['prev_action'][batch_ind] = episode['action'][start_ind-1]
         # self.buffer = []
         return batch
@@ -75,7 +75,7 @@ class Buffer(object):
         if len(self.buffer) >= self.capacity:
             self.buffer = self.buffer[-self.capacity+1:-1]
         self.buffer.append(episode)
-        self.total_steps += episode['observation'].shape[0]
+        self.total_steps += episode['state'].shape[0]
 
     def empty(self):
         """

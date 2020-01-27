@@ -1,8 +1,7 @@
 import torch
 import torch.nn as nn
-import torch.distributions.constraints as constraints
-from modules.distributions import Distribution
-from modules.distributions import kl_divergence as kl
+from lib.distributions import Distribution
+from lib.distributions import kl_divergence as kl
 
 
 class LatentVariable(nn.Module):
@@ -16,10 +15,9 @@ class LatentVariable(nn.Module):
         n_input (list): the size of the inputs to the prior and approximate posterior respectively
         constant_prior (bool): whether to set the prior as a constant
         inference_type (str): direct or iterative
-        norm_samples (bool): whether to layer normalize samples
     """
     def __init__(self, prior_dist, approx_post_dist, n_variables, n_input,
-                 constant_prior=False, inference_type='direct', norm_samples=False,
+                 constant_prior=False, inference_type='direct',
                  constant_prior_scale=False):
         super(LatentVariable, self).__init__()
         self.prior = Distribution(prior_dist, n_variables, n_input[0], constant=constant_prior, constant_scale=constant_prior_scale)
@@ -27,10 +25,6 @@ class LatentVariable(nn.Module):
         self.approx_post = None
         if approx_post_dist is not None:
             self.approx_post = Distribution(approx_post_dist, n_variables, n_input[1], update=inference_type)
-
-        self.layer_norm = None
-        if norm_samples:
-            self.layer_norm = nn.LayerNorm(n_variables)
 
         self.n_variables = n_variables
         self.planning = False
@@ -71,9 +65,6 @@ class LatentVariable(nn.Module):
         else:
             sample = self.prior.sample(n_samples)
 
-        if self.layer_norm is not None:
-            sample = self.layer_norm(sample)
-
         return sample
 
     def init_approx_post(self):
@@ -82,19 +73,16 @@ class LatentVariable(nn.Module):
         """
         if self.approx_post is not None:
             # if self.approx_post.update != 'direct':
-            if True:
-                parameters = {}
-                if self.approx_post.dist_type == self.prior.dist_type:
-                    # initialize from the prior
-                    prior_params = self.prior.get_dist_params()
-                    for param_name, param in prior_params.items():
-                        parameters[param_name] = param.detach().clone().requires_grad_()
-                    self.approx_post.reset(batch_size=self.prior._batch_size,
-                                           dist_params=parameters)
-                else:
-                    #initialize from the initial parameters
-                    self.approx_post.reset(batch_size=self.prior._batch_size)
+            parameters = {}
+            if self.approx_post.dist_type == self.prior.dist_type:
+                # initialize from the prior
+                prior_params = self.prior.get_dist_params()
+                for param_name, param in prior_params.items():
+                    parameters[param_name] = param.detach().clone().requires_grad_()
+                self.approx_post.reset(batch_size=self.prior._batch_size,
+                                       dist_params=parameters)
             else:
+                #initialize from the initial parameters
                 self.approx_post.reset(batch_size=self.prior._batch_size)
 
     def kl_divergence(self, analytical=True, n_samples=1, sample=None):

@@ -3,7 +3,7 @@ import argparse
 import torch
 import numpy as np
 from util.env_util import create_env
-from agents import create_agent
+from lib import create_agent
 from misc.buffer import Buffer
 from misc.optimizer import Optimizer
 from util.plot_util import Plotter
@@ -25,8 +25,8 @@ parser.add_argument('--value_tau', default=5e-3, type=float, help='value update 
 parser.add_argument('--value_update', default='soft', type=str, help='value target update type; hard or soft')
 parser.add_argument('--policy_tau', default=2e-3, type=float, help='policy update rate')
 parser.add_argument('--policy_update', default='hard', type=str, help='policy prior target update type; hard or soft')
-parser.add_argument('--n_initial_batches', default=1, type=int, help='number of initial batches')
-parser.add_argument('--n_pretrain_updates', default=0, type=int, help='number of pre-training iterations for the model')
+parser.add_argument('--n_initial_batches', default=5, type=int, help='number of initial batches')
+parser.add_argument('--n_pretrain_updates', default=1000, type=int, help='number of pre-training iterations for the model')
 parser.add_argument('--update_factor', default=1, type=int, help='number of updates to perform per training step')
 parser.add_argument('--checkpoint_exp_key', default=None, type=str, help='experiment key for the checkpoint to load')
 parser.add_argument('--checkpoint_interval', default=1e5, type=int, help='frequency of model checkpointing in environment steps')

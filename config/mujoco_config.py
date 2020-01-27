@@ -1,4 +1,3 @@
-import gym.spaces as spaces
 import numpy as np
 from .get_n_input import get_n_input
 
@@ -9,395 +8,162 @@ def get_mujoco_config(env):
     """
     agent_args = {}
 
-    agent_args['agent_type'] = 'model_based'
-
-    agent_args['misc_args'] = {'kl_scale': dict(state=1., action=1.),
-                               'reward_scale': 1.,
-                               'n_action_samples': 1,
-                               'n_inf_iter': dict(state=1, action=2),
-                               'inference_type': dict(state='direct', action='iterative'),
-                               'kl_min': dict(state=0., action=0.),
-                               'kl_min_anneal_rate': dict(state=1., action=1.),
-                               'kl_factor': dict(state=1., action=1.),
-                               'kl_factor_anneal_rate': dict(state=1., action=1.),
+    agent_args['misc_args'] = {'n_action_samples': 50,
+                               'n_q_action_samples': 1,
                                'reward_discount': 0.99,
-                               'normalize_returns': False,
-                               'normalize_advantages': False,
-                               'normalize_observations': False,
-                               'retrace_lambda': 0.75,
-                               'epsilons': dict(pi=None, loc=5e-3, scale=1e-5),
+                               'retrace_lambda': 0.9,
                                'postprocess_action': False,
-                               'train_model': False}
+                               'epsilons': dict(pi=None, loc=5e-4, scale=1e-5)}
+                               # RERPI epsilons: pi=0.1, loc=5e-4, scale=1e-5
+                               # use pi=None for SAC heuristic
 
-    if agent_args['agent_type'] == 'generative':
-        agent_args['misc_args']['marginal_factor'] = 0.01
-        agent_args['misc_args']['marginal_factor_anneal_rate'] = 1.002
+    state_size = np.prod(env.observation_space.shape)
+    agent_args['misc_args']['state_size'] = state_size
+    n_action_variables = env.action_space.shape[0]
 
-    if agent_args['agent_type'] in ['model_based', 'generative']:
-        # planning configuration
-        agent_args['misc_args']['n_planning_samples'] = 200
-        agent_args['misc_args']['rollout_length'] = 0
+    # distribution types: 'Uniform', 'Normal', 'TanhNormal', 'Boltzmann', 'NormalUniform'
+    action_prior_dist = 'Uniform'
+    action_approx_post_dist = 'TanhNormal'
 
-    observation_size = np.prod(env.observation_space.shape)
-    agent_args['misc_args']['observation_size'] = observation_size
-    action_space = env.action_space
-    discrete_actions = False
-    if type(action_space) == spaces.Discrete:
-        # discrete control
-        # TODO: used reparameterized categorical?
-        action_prior_dist = 'Categorical'
-        action_approx_post_dist = 'Categorical'
-        # n_action_variables = env.action_space.n
-        n_action_variables = 3
-        discrete_actions = True
-    elif type(action_space) == spaces.Box:
-        # continuous control
-        if env.action_space.low.min() == -1 and env.action_space.high.max() == 1:
-            action_prior_dist = 'Uniform'
-            # action_prior_dist = 'Normal'
-            # action_prior_dist = 'NormalUniform'
-            # action_prior_dist = 'TanhNormal'
-            # action_approx_post_dist = 'Normal'
-            # action_approx_post_dist = 'NormalUniform'
-            action_approx_post_dist = 'TanhNormal'
-            # action_approx_post_dist = 'Boltzmann'
-        else:
-            action_prior_dist = 'Normal'
-            action_approx_post_dist = 'Normal'
-        n_action_variables = env.action_space.shape[0]
-        discrete_actions = False
+    ## PRIOR
+    constant_prior = False
+    agent_args['prior_args'] = {'dist_type': action_prior_dist,
+                                'n_variables': n_action_variables,
+                                'constant': constant_prior}
+
+    if action_prior_dist == 'Uniform' or constant_prior:
+        agent_args['prior_model_args'] = None
+        agent_args['prior_args']['constant'] = True
     else:
-        raise NotImplementedError
-
-    if agent_args['agent_type'] == 'baseline':
-        # action
-        agent_args['action_variable_args'] = {'type': 'fully_connected',
-                                              'prior_dist': action_prior_dist,
-                                              'approx_post_dist': action_approx_post_dist,
-                                              'n_variables': n_action_variables,
-                                              'constant_prior': True,
-                                              'inference_type': 'direct',
-                                              'constant_prior_scale': False}
-
-        if agent_args['action_variable_args']['constant_prior']:
-            agent_args['action_prior_args'] = None
-        else:
-            agent_args['action_prior_args'] = {'type': 'fully_connected',
-                                               'n_layers': 2,
-                                               'inputs': ['observation'],
-                                               'n_units': 256,
-                                               'connectivity': 'sequential',
-                                               'batch_norm': False,
-                                               'non_linearity': 'relu',
-                                               'dropout': None,
-                                               'separate_networks': False}
-
-        if action_approx_post_dist == 'Boltzmann':
-            # no inference model for non-parametric approximate posterior
-            agent_args['action_inference_args'] = None
-        else:
-            agent_args['action_inference_args'] = {'type': 'fully_connected',
-                                                   'n_layers': 2,
-                                                   'inputs': ['observation'],
-                                                   'n_units': 256,
-                                                   'connectivity': 'sequential',
-                                                   'batch_norm': False,
-                                                   'non_linearity': 'relu',
-                                                   'dropout': None,
-                                                   'separate_networks': False}
-
-        agent_args['q_value_model_args'] = {'type': 'fully_connected',
-                                          'n_layers': 2,
-                                          'inputs': ['observation', 'action'],
+        agent_args['prior_model_args'] = {'type': 'fully_connected',
+                                          'n_layers': 3,
+                                          'inputs': ['state'],
                                           'n_units': 256,
                                           'connectivity': 'sequential',
-                                          'non_linearity': 'relu',
-                                          'dropout': None}
+                                          'batch_norm': False,
+                                          'non_linearity': ['tanh', 'elu', 'elu'],
+                                          'layer_norm': [True, False, False],
+                                          'dropout': None,
+                                          'separate_networks': False}
 
-    elif agent_args['agent_type'] == 'model_based':
+    ## APPROXIMATE POSTERIOR
+    agent_args['approx_post_args'] = {'dist_type': action_approx_post_dist,
+                                      'n_variables': n_action_variables}
 
-        # action
-        agent_args['action_variable_args'] = {'type': 'fully_connected',
-                                              'prior_dist': action_prior_dist,
-                                              'approx_post_dist': action_approx_post_dist,
-                                              'n_variables': n_action_variables,
-                                              'constant_prior': True,
-                                              'inference_type': agent_args['misc_args']['inference_type']['action'],
-                                              'constant_prior_scale': False}
+    ## INFERENCE OPTIMIZER
+    # optimizer type can be 'direct', 'iterative', 'gradient', 'non_parametric', 'cem'
+    optimizer_type = 'direct'
+    optimizer_type = 'non_parametric' if action_approx_post_dist == 'Boltzmann' else optimizer_type
+    use_direct_inference_optimizer = False
 
-        if agent_args['action_variable_args']['constant_prior']:
-            agent_args['action_prior_args'] = None
-        else:
-            agent_args['action_prior_args'] = {'type': 'fully_connected',
-                                               'n_layers': 2,
-                                               'inputs': ['observation'],
-                                               'n_units': 256,
-                                               'connectivity': 'sequential',
-                                               'batch_norm': False,
-                                               'non_linearity': 'relu',
-                                               'dropout': None}
-
-        agent_args['action_inference_args'] = {'type': 'fully_connected',
-                                               'n_layers': 2,
-                                               'n_units': 256,
-                                               'connectivity': 'sequential',
-                                               'batch_norm': False,
-                                               'non_linearity': 'relu',
-                                               'dropout': None}
-
-        if agent_args['misc_args']['inference_type']['action'] == 'iterative':
-            agent_args['action_inference_args']['inputs'] = ['observation', 'params', 'grads']
-        else:
-            agent_args['action_inference_args']['inputs'] = ['observation']
-
-        # observation (state)
-        agent_args['observation_variable_args'] = {'type': 'fully_connected',
-                                                   'likelihood_dist': 'Normal',
-                                                   'n_variables': observation_size,
-                                                   'constant_scale': False,
-                                                   'sigmoid_loc': False,
-                                                   'residual_loc': True}
-
-        agent_args['obs_likelihood_args'] = {'type': 'fully_connected',
-                                             'n_layers': 2,
-                                             'inputs': ['observation', 'action'],
-                                             'n_units': 256,
-                                             'connectivity': 'sequential',
-                                             'batch_norm': False,
-                                             'non_linearity': 'relu'}
-
-        # reward
-        agent_args['reward_variable_args'] = {'type': 'fully_connected',
-                                              'likelihood_dist': 'Normal',
-                                              'n_variables': 1,
-                                              'constant_scale': False,
-                                              'sigmoid_loc': False,
-                                              'residual_loc': False}
-
-        agent_args['reward_likelihood_args'] = {'type': 'fully_connected',
+    inf_opt_args = {'opt_type': optimizer_type}
+    if optimizer_type == 'direct':
+        agent_args['approx_post_args']['update'] = 'direct'
+        inf_opt_args['network_args'] = {'type': 'fully_connected',
                                                 'n_layers': 2,
-                                                'inputs': ['observation', 'action'],
+                                                'inputs': ['state'],
                                                 'n_units': 256,
                                                 'connectivity': 'sequential',
                                                 'batch_norm': False,
                                                 'non_linearity': 'relu',
-                                                'dropout': None}
+                                                'dropout': None,
+                                                'separate_networks': False}
+    elif optimizer_type == 'iterative':
+        inf_opt_args['n_inf_iters'] = 2
+        agent_args['approx_post_args']['update'] = 'iterative'
+        inf_opt_args['network_args'] = {'type': 'fully_connected',
+                                                'n_layers': 2,
+                                                'inputs': ['state', 'params', 'grads'],
+                                                'n_units': 256,
+                                                'connectivity': 'sequential',
+                                                'batch_norm': False,
+                                                'non_linearity': 'relu',
+                                                'dropout': None,
+                                                'separate_networks': False}
+    elif optimizer_type == 'gradient':
+        inf_opt_args['n_inf_iters'] = 10
+        inf_opt_args['lr'] = 1e-3
+    elif optimizer_type == 'non_parametric':
+        assert action_approx_post_dist == 'Boltzmann'
+    elif optimizer_type == 'cem':
+        assert action_approx_post_dist == 'Normal'
+        inf_opt_args['n_top_samples'] = 10
+        inf_opt_args['n_inf_iters'] = 3
 
-        agent_args['q_value_model_args'] = {'type': 'fully_connected',
-                                          'n_layers': 2,
-                                          'inputs': ['observation', 'action'],
-                                          'n_units': 256,
-                                          'connectivity': 'sequential',
-                                          'non_linearity': 'relu',
-                                          'dropout': None}
+    agent_args['inference_optimizer_args'] = inf_opt_args
 
-    if agent_args['agent_type'] == 'discriminative':
-        # state
-        n_state_variables = 64
-        agent_args['state_variable_args'] = {'type': 'fully_connected',
-                                             'prior_dist': 'Normal',
-                                             'approx_post_dist': 'Normal',
-                                             'n_variables': n_state_variables,
-                                             'inference_type': 'direct'}
-
-        agent_args['state_prior_args'] = {'type': 'fully_connected',
-                                          'n_layers': 1,
-                                          'inputs': ['observation'],
-                                          'n_units': 128,
-                                          'connectivity': 'highway',
-                                          'non_linearity': 'elu',
-                                          'dropout': None}
-
-        agent_args['state_inference_args'] = {'type': 'fully_connected',
-                                              'n_layers': 1,
-                                              'inputs': ['observation'],
-                                              'n_units': 128,
-                                              'connectivity': 'highway',
-                                              'non_linearity': 'elu',
-                                              'dropout': None}
-
-        # action
-        agent_args['action_variable_args'] = {'type': 'fully_connected',
-                                              'prior_dist': action_prior_dist,
-                                              'approx_post_dist': action_approx_post_dist,
-                                              'n_variables': n_action_variables,
-                                              'constant_prior': False,
-                                              'inference_type': 'direct'}
-
-        agent_args['action_prior_args'] = {'type': 'fully_connected',
-                                           'n_layers': 2,
-                                           'inputs': ['state'],
-                                           'n_units': 64,
-                                           'connectivity': 'highway',
-                                           'batch_norm': False,
-                                           'non_linearity': 'elu',
-                                           'dropout': None}
-
-        # agent_args['action_prior_args'] = None
-
-        agent_args['action_inference_args'] = {'type': 'fully_connected',
-                                               'n_layers': 2,
-                                               'inputs': ['state'],
-                                               'n_units': 64,
-                                               'connectivity': 'highway',
-                                               'batch_norm': False,
-                                               'non_linearity': 'elu',
-                                               'dropout': None}
-
-        agent_args['value_model_args'] = {'type': 'fully_connected',
-                                          'n_layers': 2,
-                                          'inputs': ['state'],
-                                          'n_units': 64,
-                                          'connectivity': 'highway',
-                                          'non_linearity': 'tanh',
-                                          'dropout': None}
-
-        agent_args['q_value_model_args'] = {'type': 'fully_connected',
-                                            'n_layers': 2,
-                                            'inputs': ['state', 'action'],
-                                            'n_units': 64,
-                                            'connectivity': 'highway',
-                                            'non_linearity': 'relu',
-                                            'dropout': None}
-
-    if agent_args['agent_type'] == 'generative':
-        # state
-        n_state_variables = 128
-        agent_args['state_variable_args'] = {'type': 'fully_connected',
-                                             'prior_dist': 'Normal',
-                                             'approx_post_dist': 'Normal',
-                                             'n_variables': n_state_variables,
-                                             'norm_samples': True,
-                                             'inference_type': agent_args['misc_args']['inference_type']['state']}
-
-        agent_args['state_prior_args'] = {'type': 'recurrent',
-                                          'n_layers': 1,
-                                          'inputs': ['state', 'action'],
-                                          'n_units': 128,
-                                          'connectivity': 'highway',
-                                          'dropout': None}
-
-        # hidden_state_size = agent_args['state_prior_args']['n_layers'] * agent_args['state_prior_args']['n_units']
-
-        agent_args['state_inference_args'] = {'type': 'fully_connected',
-                                              'n_layers': 1,
-                                              'inputs': ['params', 'grads'],
-                                              'n_units': 256,
-                                              'connectivity': 'highway',
-                                              'batch_norm': False,
-                                              'non_linearity': 'elu',
-                                              'dropout': None}
-
-        # action
-        agent_args['action_variable_args'] = {'type': 'fully_connected',
-                                              'prior_dist': action_prior_dist,
-                                              'approx_post_dist': action_approx_post_dist,
-                                              'n_variables': n_action_variables,
-                                              'constant_prior': False,
-                                              'inference_type': agent_args['misc_args']['inference_type']['action']}
-
-        if agent_args['action_variable_args']['inference_type'] == 'iterative':
-            # model-based action inference
-            # agent_args['action_prior_args'] = None
-            agent_args['action_prior_args'] = {'type': 'fully_connected',
-                                               'n_layers': 2,
-                                               'inputs': ['state', 'action'],
-                                               'n_units': 64,
-                                               'connectivity': 'highway',
-                                               'batch_norm': False,
-                                               'non_linearity': 'elu',
-                                               'dropout': None}
-
-            agent_args['action_inference_args'] = {'type': 'fully_connected',
-                                                   'n_layers': 1,
-                                                   'inputs': ['params', 'grads'],
-                                                   'n_units': 256,
-                                                   'connectivity': 'highway',
-                                                   'batch_norm': False,
-                                                   'non_linearity': 'elu',
-                                                   'dropout': None}
-        else:
-            # model-free action inference
-            agent_args['action_prior_args'] = {'type': 'fully_connected',
-                                               'n_layers': 2,
-                                               'inputs': ['state', 'action'],
-                                               'n_units': 64,
-                                               'connectivity': 'highway',
-                                               'batch_norm': False,
-                                               'non_linearity': 'elu',
-                                               'dropout': None}
-
-            agent_args['action_inference_args'] = {'type': 'fully_connected',
-                                                   'n_layers': 2,
-                                                   'inputs': ['state', 'action'],
-                                                   'n_units': 64,
-                                                   'connectivity': 'highway',
-                                                   'batch_norm': False,
-                                                   'non_linearity': 'elu',
-                                                   'dropout': None}
-
-        # observation
-        agent_args['observation_variable_args'] = {'type': 'fully_connected',
-                                                   'likelihood_dist': 'Normal',
-                                                   'n_variables': observation_size,
-                                                   'constant_scale': True,
-                                                   'sigmoid_loc': False}
-
-        agent_args['obs_likelihood_args'] = {'type': 'fully_connected',
-                                             'n_layers': 1,
-                                             'inputs': ['state'],
-                                             'n_units': 128,
-                                             'connectivity': 'highway',
-                                             'batch_norm': True,
-                                             'non_linearity': 'elu'}
-
-        # reward
-        agent_args['reward_variable_args'] = {'type': 'fully_connected',
-                                              'likelihood_dist': 'Normal',
-                                              'n_variables': 1,
-                                              'constant_scale': True,
-                                              'sigmoid_loc': False}
-
-        agent_args['reward_likelihood_args'] = {'type': 'fully_connected',
-                                                'n_layers': 1,
+    if use_direct_inference_optimizer:
+        agent_args['direct_approx_post_args'] = {'dist_type': action_approx_post_dist,
+                                                 'n_variables': n_action_variables,
+                                                 'update': 'direct'}
+        inf_opt_args = {'opt_type': 'direct'}
+        inf_opt_args['network_args'] = {'type': 'fully_connected',
+                                                'n_layers': 2,
                                                 'inputs': ['state'],
-                                                'n_units': 64,
-                                                'connectivity': 'highway',
-                                                'batch_norm': True,
-                                                'non_linearity': 'elu',
-                                                'dropout': None}
+                                                'n_units': 256,
+                                                'connectivity': 'sequential',
+                                                'batch_norm': False,
+                                                'non_linearity': 'relu',
+                                                'dropout': None,
+                                                'separate_networks': False}
+        agent_args['direct_inference_optimizer_args'] = inf_opt_args
+    else:
+        agent_args['direct_approx_post_args'] = None
+        agent_args['direct_inference_optimizer_args'] = None
 
-        # done
-        agent_args['done_variable_args'] = {'type': 'fully_connected',
-                                            'likelihood_dist': 'Bernoulli',
-                                            'n_variables': 1}
+    ## Q-VALUE ESTIMATOR
+    # estimator type can be 'direct' or 'model_based'
+    estimator_type = 'model_based'
 
-        agent_args['done_likelihood_args'] = {'type': 'fully_connected',
-                                              'n_layers': 1,
-                                              'inputs': ['state'],
-                                              'n_units': 64,
-                                              'connectivity': 'sequential',
-                                              'batch_norm': True,
-                                              'non_linearity': 'tanh',
-                                              'dropout': None}
+    estimator_args = {'estimator_type': estimator_type}
+    estimator_args['network_args'] = {'type': 'fully_connected',
+                                      'n_layers': 2,
+                                      'inputs': ['state', 'action'],
+                                      'n_units': 256,
+                                      'connectivity': 'sequential',
+                                      'non_linearity': 'relu',
+                                      'layer_norm': False,
+                                      'dropout': None}
+    if estimator_type == 'model_based':
+        learn_reward = True
+        value_estimate = 'retrace'
+        stochastic_state = False
+        stochastic_reward = False
+        model_args = {}
+        model_args['state_likelihood_args'] = {'type': 'fully_connected',
+                                                       'n_layers': 2,
+                                                       'inputs': ['state', 'action'],
+                                                       'n_units': 256,
+                                                       'connectivity': 'sequential',
+                                                       'batch_norm': False,
+                                                       'non_linearity': 'relu'}
+        model_args['state_variable_args'] = {'type': 'fully_connected',
+                                                     'likelihood_dist': 'Normal',
+                                                     'n_variables': state_size,
+                                                     'stochastic': stochastic_state,
+                                                     'constant_scale': False,
+                                                     'residual_loc': True}
+        if learn_reward:
+            model_args['reward_likelihood_args'] = {'type': 'fully_connected',
+                                                            'n_layers': 2,
+                                                            'inputs': ['state', 'action'],
+                                                            'n_units': 256,
+                                                            'connectivity': 'sequential',
+                                                            'batch_norm': False,
+                                                            'non_linearity': 'relu'}
+            model_args['reward_variable_args'] = {'type': 'fully_connected',
+                                                          'likelihood_dist': 'Normal',
+                                                          'n_variables': 1,
+                                                          'stochastic': stochastic_reward,
+                                                          'constant_scale': False,
+                                                          'residual_loc': False}
+        estimator_args['model_args'] = model_args
+        estimator_args['learn_reward'] = learn_reward
+        estimator_args['value_estimate'] = value_estimate
+        estimator_args['horizon'] = 5
 
-        # value
-        agent_args['value_model_args'] = {'type': 'fully_connected',
-                                          'n_layers': 2,
-                                          'inputs': ['state'],
-                                          'n_units': 64,
-                                          'connectivity': 'highway',
-                                          'non_linearity': 'tanh',
-                                          'dropout': None}
-
-        agent_args['q_value_model_args'] = {'type': 'fully_connected',
-                                            'n_layers': 2,
-                                            'inputs': ['state', 'action'],
-                                            'n_units': 64,
-                                            'connectivity': 'highway',
-                                            'non_linearity': 'relu',
-                                            'dropout': None}
+    agent_args['q_value_estimator_args'] = estimator_args
 
     # calculate the input sizes for all models
-    agent_args = get_n_input(agent_args, discrete_actions=discrete_actions)
+    agent_args = get_n_input(agent_args)
     return agent_args

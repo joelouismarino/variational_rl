@@ -28,6 +28,24 @@ def flatten_arg_dict(arg_dict):
             flat_dict[k] = v
     return flat_dict
 
+def load_checkpoint(agent, checkpoint_exp_key):
+    """
+    Loads a checkpoint from Comet.
+    """
+    assert checkpoint_exp_key is not None, 'Checkpoint experiment key must be set.'
+    print('Loading checkpoint from ' + checkpoint_exp_key + '...')
+    comet_api = comet_ml.API(rest_api_key='jHxSNRKAIOSSBP4TyRvGHfanF')
+    experiment = comet_api.get_experiment(project_name='variational_rl', workspace='joelouismarino', experiment=checkpoint_exp_key)
+    asset_list = experiment.get_asset_list()
+    # get most recent checkpoint
+    asset_times = [asset['createdAt'] for asset in asset_list if 'ckpt' in asset['fileName']]
+    asset = asset_list[asset_times.index(max(asset_times))]
+    print('Checkpoint Name:', asset['fileName'])
+    ckpt = experiment.get_asset(asset['assetId'])
+    state_dict = torch.load(io.BytesIO(ckpt))
+    agent.load_state_dict(state_dict)
+    print('Done.')
+
 class Plotter:
     """
     Handles plotting and logging to comet.
@@ -75,15 +93,15 @@ class Plotter:
                     mean = mean.squeeze()
                     std = std.squeeze()
                     x, plus, minus = mean, mean + std, mean - std
-                    if key == 'action' and label == 'approx_post' and self.agent_args['action_variable_args']['approx_post_dist'] == 'TanhNormal':
+                    if key == 'action' and label == 'approx_post' and self.agent_args['approx_post_args']['dist_type'] == 'TanhNormal':
                         # Tanh Normal distribution
                         x, plus, minus = np.tanh(x), np.tanh(plus), np.tanh(minus)
-                    if key == 'action' and label == 'prior' and self.agent_args['action_variable_args']['prior_dist'] == 'TanhNormal':
+                    if key == 'action' and label == 'prior' and self.agent_args['prior_args']['dist_type'] == 'TanhNormal':
                         # Tanh Normal distribution
                         x, plus, minus = np.tanh(x), np.tanh(plus), np.tanh(minus)
                     if key == 'action' and self.agent.postprocess_action:
                         x, plus, minus = np.tanh(x), np.tanh(plus), np.tanh(minus)
-                    if key == 'action' and label == 'prior' and self.agent_args['action_variable_args']['prior_dist'] == 'NormalUniform':
+                    if key == 'action' and label == 'prior' and self.agent_args['prior_args']['dist_type'] == 'NormalUniform':
                         # Normal + Uniform distribution
                         x, plus, minus = x, np.minimum(plus, 1.), np.maximum(minus, -1)
                 elif 'low' in statistics:
@@ -155,26 +173,10 @@ class Plotter:
         Checkpoint the model by getting the state dictionary for each component.
         """
         print('Checkpointing the agent...')
-        state_dict = {}
-        variable_names = ['state_variable', 'action_variable',
-                          'observation_variable', 'reward_variable',
-                          'done_variable', 'q_value_variables',
-                          'target_q_value_variables', 'log_alphas', 'target_action_variable']
-        model_names = ['state_prior_model', 'action_prior_model',
-                       'obs_likelihood_model', 'reward_likelihood_model',
-                       'done_likelihood_model', 'q_value_models',
-                       'state_inference_model', 'action_inference_model',
-                       'target_q_value_models', 'target_action_prior_model']
-
-        for attr in variable_names + model_names:
-            if hasattr(self.agent, attr):
-                if hasattr(getattr(self.agent, attr), 'state_dict'):
-                     sd = getattr(self.agent, attr).state_dict()
-                     state_dict[attr] = {k: v.cpu() for k, v in sd.items()}
-
-        # save the state dictionaries
+        state_dict = self.agent.state_dict()
+        cpu_state_dict = {k: v.cpu() for k, v in state_dict.items()}
         ckpt_path = os.path.join('./ckpt_step_'+ str(step) + '.ckpt')
-        torch.save(state_dict, ckpt_path)
+        torch.save(cpu_state_dict, ckpt_path)
         self.experiment.log_asset(ckpt_path)
         os.remove(ckpt_path)
         print('Done.')
@@ -183,15 +185,4 @@ class Plotter:
         """
         Loads a checkpoint from Comet.
         """
-        assert self.exp_args.checkpoint_exp_key is not None, 'Checkpoint experiment key must be set.'
-        print('Loading checkpoint from ' + self.exp_args.checkpoint_exp_key + '...')
-        comet_api = comet_ml.API(rest_api_key='jHxSNRKAIOSSBP4TyRvGHfanF')
-        asset_list = comet_api.get_experiment_asset_list(self.exp_args.checkpoint_exp_key)
-        # get most recent checkpoint
-        asset_times = [asset['createdAt'] for asset in asset_list]
-        asset = asset_list[asset_times.index(max(asset_times))]
-        print('Checkpoint Name:', asset['fileName'])
-        ckpt = comet_api.get_experiment_asset(self.exp_args.checkpoint_exp_key, asset['assetId'])
-        state_dict = torch.load(io.BytesIO(ckpt))
-        self.agent.load(state_dict)
-        print('Done.')
+        load_checkpoint(self.agent, self.exp_args.checkpoint_exp_key)

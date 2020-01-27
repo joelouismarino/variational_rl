@@ -1,44 +1,50 @@
 
-def get_n_input(config_dict, discrete_actions):
+def calculate_n_inputs(inputs, config_dict):
+    """
+    Calculate the number of inputs for a particular model.
+    """
+    input_size = 0
+    for input_name in inputs:
+        if input_name == 'action':
+            input_size += config_dict['prior_args']['n_variables']
+        elif input_name == 'state':
+            input_size += config_dict['misc_args']['state_size']
+        elif input_name == 'reward':
+            input_size += 1
+        elif input_name in ['params', 'grads']:
+            input_size += 2 * config_dict['prior_args']['n_variables']
+    return input_size
+
+def get_n_input(config_dict):
     """
     Calculate the number of inputs for each model using the inputs list.
     """
+    model_dicts = []
 
-    model_names = ['action_prior', 'action_inference', 'q_value_model']
+    # Q-network
+    model_dicts.append(config_dict['q_value_estimator_args']['network_args'])
 
-    if config_dict['agent_type'] == 'model_based':
-        model_names += ['obs_likelihood', 'reward_likelihood']
-    if config_dict['agent_type'] in ['discriminative', 'generative']:
-        model_names += ['state_prior', 'state_inference']
-    if config_dict['agent_type'] == 'generative':
-        model_names += ['obs_likelihood', 'reward_likelihood',
-                        'done_likelihood']
+    # prior network
+    if config_dict['prior_model_args'] is not None:
+        model_dicts.append(config_dict['prior_model_args'])
 
-    for model_name in model_names:
-        input_size = 0
-        if config_dict[model_name + '_args'] is not None:
-            inputs = config_dict[model_name + '_args']['inputs']
+    # inference optimizer network
+    if config_dict['inference_optimizer_args']['opt_type'] in ['direct', 'iterative']:
+        model_dicts.append(config_dict['inference_optimizer_args']['network_args'])
 
-            for input_name in inputs:
-                if input_name == 'state':
-                    input_size += config_dict['state_variable_args']['n_variables']
-                elif input_name == 'action':
-                    input_size += config_dict['action_variable_args']['n_variables']
-                elif input_name == 'observation':
-                    input_size += config_dict['misc_args']['observation_size']
-                elif input_name == 'reward':
-                    input_size += 1
-                elif input_name in ['params', 'grads']:
-                    if 'state' in model_name:
-                        input_size += 2 * config_dict['state_variable_args']['n_variables']
-                    elif 'action' in model_name:
-                        input_size += 2 * config_dict['action_variable_args']['n_variables']
-                    else:
-                        if discrete_actions:
-                            input_size += config_dict['state_variable_args']['n_variables']
-                        else:
-                            input_size += 2 * config_dict['state_variable_args']['n_variables']
+    # direct inference optimizer network
+    if config_dict['direct_inference_optimizer_args'] is not None:
+        model_dicts.append(config_dict['direct_inference_optimizer_args']['network_args'])
 
-            config_dict[model_name + '_args']['n_input'] = input_size
+    # model network(s)
+    if config_dict['q_value_estimator_args']['estimator_type'] == 'model_based':
+        model_dicts.append(config_dict['q_value_estimator_args']['model_args']['state_likelihood_args'])
+        if config_dict['q_value_estimator_args']['learn_reward']:
+            model_dicts.append(config_dict['q_value_estimator_args']['model_args']['reward_likelihood_args'])
+
+    for model_dict in model_dicts:
+        inputs = model_dict['inputs']
+        input_size = calculate_n_inputs(inputs, config_dict)
+        model_dict['n_input'] = input_size
 
     return config_dict
