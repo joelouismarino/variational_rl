@@ -34,14 +34,15 @@ def test_model(agent, env, horizon=None):
     agent.eval()
     agent.n_action_samples = 1
     # go through each of the episode steps
-    for step in range(n_steps):
-        print('Step: ' + str(step) + ' of ' + str(n_steps))
+    for step in range(n_steps-1):
+        if step % 100 == 0:
+            print('Step: ' + str(step) + ' of ' + str(n_steps))
         agent.reset(1, episode['action'][step], episode['state'][step])
-        ep_actions = episode['action'][step:min(step + horizon, n_steps)]
-        ep_states = episode['state'][step:min(step + horizon, n_steps)]
-        ep_rewards = episode['reward'][step:min(step + horizon, n_steps)]
+        ep_actions = episode['action'][step:min(step + horizon, n_steps - 1)].to(agent.device)
+        ep_states = episode['state'][step+1:min(step + horizon + 1, n_steps)].to(agent.device)
+        ep_rewards = episode['reward'][step+1:min(step + horizon + 1, n_steps)].to(agent.device)
         # perform a model rollout
-        state = episode['state'][step:step+1]
+        state = episode['state'][step:step+1].to(agent.device)
         agent.q_value_estimator.planning_mode(agent)
         agent.q_value_estimator.state_variable.cond_likelihood.set_prev_x(state)
         state_predictions = {'loc': [], 'scale': []}
@@ -57,17 +58,17 @@ def test_model(agent, env, horizon=None):
             # collect the distribution parameters
             state_loc = agent.q_value_estimator.state_variable.cond_likelihood.planning_dist.loc
             state_scale = agent.q_value_estimator.state_variable.cond_likelihood.planning_dist.scale
-            state_predictions['loc'].append(state_loc.detach())
-            state_predictions['scale'].append(state_scale.detach())
+            state_predictions['loc'].append(state_loc.detach().cpu())
+            state_predictions['scale'].append(state_scale.detach().cpu())
             reward_loc = agent.q_value_estimator.reward_variable.cond_likelihood.planning_dist.loc
             reward_scale = agent.q_value_estimator.reward_variable.cond_likelihood.planning_dist.scale
-            reward_predictions['loc'].append(reward_loc.detach())
-            reward_predictions['scale'].append(reward_scale.detach())
+            reward_predictions['loc'].append(reward_loc.detach().cpu())
+            reward_predictions['scale'].append(reward_scale.detach().cpu())
             # evaluate log-probability of true state and reward
             state_ll = agent.q_value_estimator.state_variable.cond_log_likelihood(ep_states[rollout_step:rollout_step+1])
             reward_ll = agent.q_value_estimator.reward_variable.cond_log_likelihood(ep_rewards[rollout_step:rollout_step+1])
-            state_lls.append(state_ll.detach())
-            reward_lls.append(reward_ll.detach())
+            state_lls.append(state_ll.detach().cpu())
+            reward_lls.append(reward_ll.detach().cpu())
             # sample the predicted state
             state = agent.q_value_estimator.state_variable.sample()
 
@@ -87,17 +88,18 @@ def plot_predictions(pred, x):
     Plot the predictions and actual quantities.
 
     Args:
-        pred (dict): the predictions, containing loc and scale parameters
+        pred (dict): the predictions, containing loc and scale parameters [horizon, n_dims]
         x (torch.tensor): the actual quantities [horizon, n_dims]
     """
     plt.figure()
-    # TODO: make subplots
-    plt.plot(pred['loc'].view(-1).numpy())
-    lower = (pred['loc'] - pred['scale']).view(-1)
-    upper = (pred['loc'] + pred['scale']).view(-1)
-    plt.fill_between(np.arange(pred['loc'].shape[0]), lower.numpy(), upper.numpy(), alpha=0.5)
-    plt.plot(x.view(-1).numpy(), '.')
-    # plt.show()
+    horizon, n_dims = pred['loc'].shape
+    for plot_num in range(n_dims):
+        plt.subplot(n_dims, 1, plot_num + 1)
+        plt.plot(pred['loc'][:, plot_num].numpy())
+        lower = pred['loc'][:, plot_num] - pred['scale'][:, plot_num]
+        upper = pred['loc'][:, plot_num] + pred['scale'][:, plot_num]
+        plt.fill_between(np.arange(horizon), lower.numpy(), upper.numpy(), alpha=0.5)
+        plt.plot(x[:, plot_num].numpy(), '.')
 
 def plot_log_likelihoods(log_likelihoods):
     """
@@ -113,7 +115,6 @@ def plot_log_likelihoods(log_likelihoods):
     lower = mean - std
     upper = mean + std
     plt.fill_between(np.arange(log_likelihoods.shape[1]), lower.numpy(), upper.numpy(), alpha=0.5)
-    # plt.show()
 
 if __name__ == '__main__':
     import argparse
@@ -133,8 +134,11 @@ if __name__ == '__main__':
     if args.checkpoint_exp_key is not None:
         load_checkpoint(agent, args.checkpoint_exp_key)
 
-    episode, predictions, log_likelihoods = test_model(agent, env, horizon=15)
+    pred_horizon = 15
+    episode, predictions, log_likelihoods = test_model(agent, env, horizon=pred_horizon)
     # plot_log_likelihoods(torch.stack(log_likelihoods['state'][:975]).view(975,-1))
     # plot_log_likelihoods(torch.stack(log_likelihoods['reward'][:975]).view(975,-1))
-    # plot_predictions(predictions['state'][15], episode['state'][15:30])
+
+    time_step = 15
+    # plot_predictions(predictions['state'][time_step], episode['state'][time_step+1:time_step+1+pred_horizon])
     import ipdb; ipdb.set_trace()
