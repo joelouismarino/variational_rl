@@ -30,6 +30,8 @@ def kl_divergence(dist1, dist2, n_samples=1, sample=None):
         return kl.mean(dim=0)
 
     try:
-        return torch.distributions.kl_divergence(dist1.dist, dist2.dist)
+        d1 = dist1.planning_dist if dist1.planning else dist1.dist
+        d2 = dist2.planning_dist if dist2.planning else dist2.dist
+        return torch.distributions.kl_divergence(d1, d2)
     except NotImplementedError:
         return numerical_approx(dist1, dist2, n_samples)

@@ -96,8 +96,7 @@ class ModelBasedEstimator(nn.Module):
             if agent.prior_model is not None:
                 # sample from the learned prior
                 action = agent.prior.sample()
-                # TODO: change this to a tensor, will break currently
-                kl_list.append(0.)
+                kl_list.append(torch.zeros(action.shape[0], 1, device=action.device))
             else:
                 # estimate approximate posterior
                 agent.inference(state, detach_params, direct=True)

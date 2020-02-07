@@ -12,8 +12,8 @@ def get_mujoco_config(env):
                                'n_q_action_samples': 1,
                                'reward_discount': 0.99,
                                'retrace_lambda': 0.9,
-                               'postprocess_action': False,
-                               'epsilons': dict(pi=None, loc=5e-4, scale=1e-5)}
+                               'postprocess_action': True,
+                               'epsilons': dict(pi=0.1, loc=5e-4, scale=1e-5)}
                                # RERPI epsilons: pi=0.1, loc=5e-4, scale=1e-5
                                # use pi=None for SAC heuristic
 
@@ -26,7 +26,7 @@ def get_mujoco_config(env):
     action_approx_post_dist = 'TanhNormal'
 
     ## PRIOR
-    constant_prior = False
+    constant_prior = True
     agent_args['prior_args'] = {'dist_type': action_prior_dist,
                                 'n_variables': n_action_variables,
                                 'constant': constant_prior}
@@ -52,9 +52,9 @@ def get_mujoco_config(env):
 
     ## INFERENCE OPTIMIZER
     # optimizer type can be 'direct', 'iterative', 'gradient', 'non_parametric', 'cem'
-    optimizer_type = 'direct'
+    optimizer_type = 'iterative'
     optimizer_type = 'non_parametric' if action_approx_post_dist == 'Boltzmann' else optimizer_type
-    use_direct_inference_optimizer = False
+    use_direct_inference_optimizer = True
 
     inf_opt_args = {'opt_type': optimizer_type}
     if optimizer_type == 'direct':
@@ -69,7 +69,7 @@ def get_mujoco_config(env):
                                                 'dropout': None,
                                                 'separate_networks': False}
     elif optimizer_type == 'iterative':
-        inf_opt_args['n_inf_iters'] = 2
+        inf_opt_args['n_inf_iters'] = 5
         agent_args['approx_post_args']['update'] = 'iterative'
         inf_opt_args['network_args'] = {'type': 'fully_connected',
                                                 'n_layers': 2,
