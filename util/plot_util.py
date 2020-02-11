@@ -7,6 +7,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import pandas as pd
+import json
 
 
 def flatten(dictionary):
@@ -69,6 +70,8 @@ class Plotter:
             self.load_checkpoint()
         self.ckpt_iter = 1
         self.result_dict = None
+        # keep a hard-coded list of returns in case Comet fails
+        self.returns = []
 
     def _plot_ts(self, key, observations, statistics, label, color):
         dim_obs = min(observations.shape[1], 9)
@@ -119,6 +122,9 @@ class Plotter:
             k += 1
 
     def plot_episode(self, episode, step):
+        """
+        Plots a newly collected episode.
+        """
         self.experiment.log_metric('cumulative_reward', episode['reward'].sum(), step)
 
         # checkpointing
@@ -146,6 +152,16 @@ class Plotter:
             merge_legends()
             self.experiment.log_figure(figure=plt, figure_name=k + '_ts_'+str(step))
             plt.close()
+
+    def plot_eval(self, episode, step):
+        """
+        Plots an evaluation episode performance.
+        """
+        eval_return = episode['reward'].sum()
+        self.experiment.log_metric('eval_cumulative_reward', eval_return, step)
+        self.returns.append(eval_return.item())
+        json_str = json.dumps(self.returns)
+        self.experiment.log_asset_data(json_str, file_name='eval_returns', overwrite=True)
 
     def log_results(self, results):
         """

@@ -1,7 +1,13 @@
 
-def collect_episode(env, agent, random=False):
+def collect_episode(env, agent, random=False, eval=False):
     """
     Collects an episode of experience using the model and environment.
+
+    Args:
+        env (gym.env): the environment
+        agent (Agent): the agent
+        random (bool): whether to use random actions
+        eval (bool): whether to evaluate the agent
     """
     agent.reset(); agent.eval()
     state = env.reset()
@@ -13,7 +19,7 @@ def collect_episode(env, agent, random=False):
         if n_steps > 1000:
             break
         action = env.action_space.sample() if random else None
-        action = agent.act(state, reward, done, action)
+        action = agent.act(state, reward, done, action, eval=eval)
         state, reward, done, _ = env.step(action)
         n_steps += 1
     agent.act(state, reward, done)

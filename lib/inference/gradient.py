@@ -17,7 +17,7 @@ class GradientBasedInference(object):
         # keep track of estimated objectives for reporting
         self.estimated_objectives = []
 
-    def forward(self, agent, state,**kwargs):
+    def __call__(self, agent, state,**kwargs):
         dist_params = agent.approx_post.get_dist_params()
         params = [param for _, param in dist_params.items()]
         act_opt = self.optimizer(params, lr=self.lr)

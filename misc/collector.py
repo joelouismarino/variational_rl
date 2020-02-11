@@ -168,9 +168,16 @@ class Collector:
 
         if self.agent.direct_approx_post is not None:
             # train the direct inference model using on policy actions
-            log_prob = self.agent.direct_approx_post.log_prob(on_policy_action).sum(dim=2)
-            log_prob = log_prob.view(self.agent.n_action_samples, -1, 1).mean(dim=0)
-            self.objectives['direct_inf_opt_obj'].append(-log_prob * valid * (1 - done))
+            # log_prob = self.agent.direct_approx_post.log_prob(on_policy_action).sum(dim=2)
+            # log_prob = log_prob.view(self.agent.n_action_samples, -1, 1).mean(dim=0)
+            # self.objectives['direct_inf_opt_obj'].append(-log_prob * valid * (1 - done))
+            batch_size = self.agent.approx_post._batch_size
+            loc = self.agent.approx_post.dist.loc
+            scale = self.agent.approx_post.dist.scale
+            self.agent.approx_post.reset(batch_size, dist_params={'loc': loc.detach(), 'scale': scale.detach()})
+            kl = kl_divergence(self.agent.approx_post, self.agent.direct_approx_post, n_samples=self.agent.n_action_samples, sample=on_policy_action).sum(dim=1, keepdim=True)
+            self.objectives['direct_inf_opt_obj'].append(kl * valid * (1 - done))
+            self.agent.approx_post.reset(batch_size, dist_params={'loc': loc, 'scale': scale})
 
     def _collect_alpha_objectives(self, valid, done):
         """

@@ -185,7 +185,7 @@ class Distribution(nn.Module):
         for param_name in self.models:
             getattr(self.dist, param_name).retain_grad()
 
-    def sample(self, n_samples=1, detach=True):
+    def sample(self, n_samples=1, argmax=False):
         """
         Sample the distribution.
 
@@ -198,10 +198,12 @@ class Distribution(nn.Module):
             # perform the sampling
             # sample is of size [n_samples, batch_size, n_variables]
             if self.stochastic:
-                if d.has_rsample:
-                    sample = d.rsample([n_samples])
+                if argmax and 'loc' in self.param_names:
+                    sample = torch.cat(n_samples * [d.loc], dim=0)
+                    if type(d) == TanhNormal:
+                        sample = sample.tanh()
                 else:
-                    sample = d.sample([n_samples])
+                    sample = d.rsample([n_samples]) if d.has_rsample else d.sample([n_samples])
             else:
                 sample = torch.cat(n_samples * [d.loc], dim=0)
             sample = sample.view(-1, self.n_variables)
@@ -215,9 +217,6 @@ class Distribution(nn.Module):
             self._n_samples = n_samples
 
         sample = self._planning_sample if self.planning else self._sample
-
-        # if self._detach and not self.planning and detach:
-        #     sample = sample.detach()
 
         return sample
 
@@ -276,11 +275,11 @@ class Distribution(nn.Module):
         """
         if dist_params is None:
             # initialize distribution parameters from initial parameters
-            dist_params = {k: v.repeat(batch_size, 1) for k, v in self.initial_params.items()}
+            dist_params = {k: v.repeat(batch_size, 1).data.requires_grad_() for k, v in self.initial_params.items()}
             if self.const_scale:
-                dist_params['scale'] = self.log_scale.repeat(batch_size, 1).exp()
-            for _, v in dist_params.items():
-                v.retain_grad()
+                dist_params['scale'] = self.log_scale.repeat(batch_size, 1).exp().data.requires_grad_()
+            # for _, v in dist_params.items():
+            #     v.retain_grad()
         # initialize the distribution
         d = self.dist_type(**dist_params) if len(dist_params.keys()) > 0 else None
         if self.planning:

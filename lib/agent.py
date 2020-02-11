@@ -50,7 +50,7 @@ class Agent(nn.Module):
         self.direct_inference_optimizer = self.direct_approx_post = None
         if direct_inference_optimizer_args is not None:
             self.direct_inference_optimizer = get_inference_optimizer(direct_inference_optimizer_args)
-            direct_approx_post_args['n_input'] = self.inference_optimizer.inference_model.n_out
+            direct_approx_post_args['n_input'] = self.direct_inference_optimizer.inference_model.n_out
             self.direct_approx_post = Distribution(**direct_approx_post_args)
 
         # Q-value estimator
@@ -79,13 +79,13 @@ class Agent(nn.Module):
         self.batch_size = 1
         self._prev_action = self._prev_state = None
 
-    def act(self, state, reward=None, done=False, action=None, valid=None, log_prob=None):
+    def act(self, state, reward=None, done=False, action=None, valid=None, log_prob=None, eval=False):
         state, reward, action, done, valid, log_prob = self._change_device(state, reward, action, done, valid, log_prob)
         self.generate_prior(state)
         self.inference(state)
         if self.mode == 'eval':
             if state is not None and action is None:
-                action = self.approx_post.sample().detach()
+                action = self.approx_post.sample(argmax=eval).detach()
         self.collector.collect(state, action, reward, done, valid, log_prob)
         self.step(state, action)
         action = action.tanh() if self.postprocess_action and self.mode == 'eval' else action
@@ -107,7 +107,7 @@ class Agent(nn.Module):
         # infers the action approximate posterior
         if self.direct_inference_optimizer is not None:
             self.direct_approx_post.init(self.prior)
-            self.direct_inference_optimizer(self, state, detach_params=detach_params, direct=direct)
+            self.direct_inference_optimizer(self, state, detach_params=detach_params, direct=True)
         if self.inference_optimizer.n_inf_iters == 1 or not direct:
             # run the inference model if it is already direct
             self.approx_post.init(self.prior)

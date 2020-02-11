@@ -13,6 +13,7 @@ def train(agent, env, buffer, optimizer, plotter, args):
     update_factor = args.update_factor
     model_trained = False
     n_pretrain_updates = args.n_pretrain_updates
+    eval_interval = args.eval_interval
 
     while timestep < args.n_total_steps:
         # collect an episode
@@ -23,7 +24,7 @@ def train(agent, env, buffer, optimizer, plotter, args):
         plotter.plot_episode(episode, timestep)
         t_end = time.time()
         print('Duration: ' + '{:.2f}'.format(t_end - t_start) + ' s.')
-        timestep += episode_length
+        # timestep += episode_length
         n_episodes += 1
         buffer.append(episode)
         n_updates = update_factor * episode_length
@@ -39,8 +40,6 @@ def train(agent, env, buffer, optimizer, plotter, args):
                     t_start = time.time()
                     batch = buffer.sample()
                     results = train_batch(agent, batch, optimizer, model_only=True)
-                    # if update % 1000 == 0:
-                    #     plotter.log_results(results, update)
                     t_end = time.time()
                     print('Duration: ' + '{:.2f}'.format(t_end - t_start) + ' s.')
                 agent.train_model_only = False
@@ -50,6 +49,11 @@ def train(agent, env, buffer, optimizer, plotter, args):
             print('Training...')
             # train the agent
             for update in range(n_updates):
+                if timestep % eval_interval == 0:
+                    # evaluation
+                    print('Evaluating at Step: ' + str(timestep))
+                    episode, _ = collect_episode(env, agent, eval=True)
+                    plotter.plot_eval(episode, timestep)
                 print(' Batch: ' + str(update + 1) + ' of ' + str(n_updates) + '.')
                 t_start = time.time()
                 batch = buffer.sample()
@@ -57,6 +61,7 @@ def train(agent, env, buffer, optimizer, plotter, args):
                 t_end = time.time()
                 print('Duration: ' + '{:.2f}'.format(t_end - t_start) + ' s.')
                 plotter.log_results(results)
+                timestep += 1
             plotter.plot_results(timestep)
             # if on_policy:
             #     buffer.empty()

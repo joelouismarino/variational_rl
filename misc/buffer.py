@@ -2,30 +2,31 @@ import random
 import torch
 
 # used so that we sample the ends of sequences more often
-DELTA = 0 # somehow setting this to 10 breaks Mujoco
+DELTA = 0
 
 class Buffer(object):
     """
     A buffer to store episodes. Each episode is a dictionary of tensors.
 
     Args:
-        batch_size (int): number of episodes to sample for each batch
+        batch_size (int): number of trajectories to sample for each batch
         sequence_length (int): length of sequences to sample, use 0 for entire episodes
-        capacity (int): the number of episodes to store in the buffer
+        capacity (int): the number of time steps to store in the buffer
     """
-    def __init__(self, batch_size, seq_len=0, capacity=5e3):
+    def __init__(self, batch_size, seq_len=0, capacity=1e6):
         self.batch_size = batch_size
         self.capacity = int(capacity)
         self.sequence_length = int(seq_len)
         self.buffer = []
         self.total_steps = 0
+        self.current_steps = 0
 
     def sample(self):
         """
         Samples a batch of episodes from the buffer.
         """
         # randomly sample episodes
-        indices = [random.randint(0, len(self)-1) for _ in range(self.batch_size)]
+        indices = [random.randint(0, len(self.buffer)-1) for _ in range(self.batch_size)]
         episodes = [self.buffer[i] for i in indices]
         # for each variable, create a single tensor for all episodes
         seq_len = self.sequence_length
@@ -72,10 +73,14 @@ class Buffer(object):
             del episode['advantage']
         if 'return' in episode:
             del episode['return']
-        if len(self.buffer) >= self.capacity:
-            self.buffer = self.buffer[-self.capacity+1:-1]
-        self.buffer.append(episode)
         self.total_steps += episode['state'].shape[0]
+        self.current_steps += episode['state'].shape[0]
+        # pop any old episodes from the buffer
+        while self.current_steps > self.capacity:
+            popped_episode = self.buffer[0]
+            self.buffer = self.buffer[-self.capacity+1:-1]
+            self.current_steps -= popped_episode['state'].shape[0]
+        self.buffer.append(episode)
 
     def empty(self):
         """
@@ -83,6 +88,10 @@ class Buffer(object):
         """
         self.buffer = []
         self.total_steps = 0
+        self.current_steps = 0
 
     def __len__(self):
-        return len(self.buffer)
+        """
+        Number of episodes.
+        """
+        return self.current_steps
