@@ -32,9 +32,8 @@ def train(agent, env, buffer, optimizer, plotter, args):
         # train on samples from buffer
         if buffer.total_steps >= n_initial_batches * buffer.batch_size * buffer.sequence_length:
             # pre-train the model for a pre-specified number of steps
-            if model_trained == False and agent.type == 'model_based' and agent.rollout_length > 0:
+            if 'horizon' in dir(agent.q_value_estimator) and model_trained == False:
                 print('Pre-Training the model...')
-                agent.train_model_only = True
                 for update in range(n_pretrain_updates):
                     print(' Batch: ' + str(update + 1) + ' of ' + str(n_pretrain_updates) + '.')
                     t_start = time.time()
@@ -42,7 +41,6 @@ def train(agent, env, buffer, optimizer, plotter, args):
                     results = train_batch(agent, batch, optimizer, model_only=True)
                     t_end = time.time()
                     print('Duration: ' + '{:.2f}'.format(t_end - t_start) + ' s.')
-                agent.train_model_only = False
                 model_trained = True
                 plotter.save_checkpoint(timestep)
 
