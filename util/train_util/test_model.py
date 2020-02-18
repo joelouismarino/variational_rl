@@ -5,24 +5,23 @@ import matplotlib.pyplot as plt
 from util.train_util import collect_episode
 
 
-def test_model(agent, env, horizon=None):
+def test_model(episode, agent, horizon=None):
     """
     Test the agent's model by predicting future states and rewards and comparing
     with those from the environment.
 
     Args:
+        episode (dict): a collected episode
         agent (Agent): the (model-based) agent to be evaluated
-        env (gym.env): the environment
         horizon (int): the horizon over which to test the model's predictions
+                       if None, will default to agent's horizon
     """
-    # collect an episode
-    print('Collecting Episode...')
-    t_start = time.time()
-    episode, n_steps = collect_episode(env, agent)
-    print('Duration: ' + '{:.2f}'.format(time.time() - t_start) + ' s.')
+    assert 'horizon' in dir(agent.q_value_estimator)
 
     if horizon is None:
         horizon = agent.q_value_estimator.horizon
+
+    n_steps = episode['state'].shape[0] - 1
     predictions = {'state': [None for _ in range(n_steps)],
                    'reward': [None for _ in range(n_steps)]}
     log_likelihoods = {'state': [None for _ in range(n_steps)],
@@ -32,6 +31,8 @@ def test_model(agent, env, horizon=None):
     print('Evaluating agent predictions...')
     t_start = time.time()
     agent.eval()
+    # modify n_action_samples for testing single predictions
+    n_action_samples = agent.n_action_samples
     agent.n_action_samples = 1
     # go through each of the episode steps
     for step in range(n_steps-1):
@@ -79,9 +80,21 @@ def test_model(agent, env, horizon=None):
         log_likelihoods['state'][step] = torch.stack(state_lls)
         log_likelihoods['reward'][step] = torch.stack(reward_lls)
 
+    # just get the valid predictions, convert to tensors
+    preds = {}
+    for variable in ['state', 'reward']:
+        locs = [predictions[variable][i]['loc'] for i in range(len(predictions[variable])-1)]
+        stds = [predictions[variable][i]['scale'] for i in range(len(predictions[variable])-1)]
+        preds[variable] = {'loc': torch.stack(locs[:-horizon]),
+                           'scale': torch.stack(stds[:-horizon])}
+        log_likelihoods[variable] = torch.stack(log_likelihoods[variable][:-horizon])
+
+    # set this back to the original value
+    agent.n_action_samples = n_action_samples
+
     print('Duration: ' + '{:.2f}'.format(time.time() - t_start) + ' s.')
 
-    return episode, predictions, log_likelihoods
+    return preds, log_likelihoods
 
 def plot_predictions(pred, x):
     """

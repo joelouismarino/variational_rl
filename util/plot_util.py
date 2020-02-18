@@ -184,6 +184,53 @@ class Plotter:
             self.experiment.log_metric(k, avg_value, timestep)
         self.result_dict = None
 
+    def plot_model_eval(self, episode, predictions, log_likelihoods, step):
+        """
+        Plot/log the results from model evaluation.
+
+        Args:
+            episode (dict): a collected episode
+            predictions (dict): predictions from each state, containing [n_steps, horizon, n_dims]
+            log_likelihoods (dict): log-likelihood evaluations of predictions, containing [n_steps, horizon, 1]
+        """
+        for variable, lls in log_likelihoods.items():
+            # average the log-likelihood estimates and plot the result at the horizon length
+            mean_ll = lls[:, -1].mean().item()
+            self.experiment.log_metric(variable + '_pred_log_likelihood', mean_ll, step)
+            # plot log-likelihoods as a function of rollout step
+            plt.figure()
+            mean = lls.mean(dim=0).view(-1)
+            std = lls.std(dim=0).view(-1)
+            plt.plot(mean.numpy())
+            lower = mean - std
+            upper = mean + std
+            plt.fill_between(np.arange(lls.shape[1]), lower.numpy(), upper.numpy(), alpha=0.2)
+            plt.xlabel('Rollout Step')
+            plt.ylabel('Prediction Log-Likelihood')
+            plt.xticks(np.arange(lls.shape[1]))
+            self.experiment.log_figure(figure=plt, figure_name=variable + '_pred_ll_' + str(step))
+            plt.close()
+
+        # plot predictions vs. actual values for an arbitrary time step
+        time_step = np.random.randint(predictions['state']['loc'].shape[0])
+        for variable, preds in predictions.items():
+            pred_loc = preds['loc'][time_step]
+            pred_scale = preds['scale'][time_step]
+            x = episode[variable][time_step+1:time_step+1+pred_loc.shape[0]]
+            plt.figure()
+            horizon, n_dims = pred_loc.shape
+            for plot_num in range(n_dims):
+                plt.subplot(n_dims, 1, plot_num + 1)
+                plt.plot(pred_loc[:, plot_num].numpy())
+                lower = pred_loc[:, plot_num] - pred_scale[:, plot_num]
+                upper = pred_loc[:, plot_num] + pred_scale[:, plot_num]
+                plt.fill_between(np.arange(horizon), lower.numpy(), upper.numpy(), alpha=0.2)
+                plt.plot(x[:, plot_num].numpy(), '.')
+            plt.xlabel('Rollout Step')
+            plt.xticks(np.arange(horizon))
+            self.experiment.log_figure(figure=plt, figure_name=variable + '_pred_' + str(step))
+            plt.close()
+
     def save_checkpoint(self, step):
         """
         Checkpoint the model by getting the state dictionary for each component.

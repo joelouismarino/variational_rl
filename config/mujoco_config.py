@@ -113,7 +113,7 @@ def get_mujoco_config(env):
 
     ## Q-VALUE ESTIMATOR
     # estimator type can be 'direct' or 'model_based'
-    estimator_type = 'direct'
+    estimator_type = 'model_based'
 
     estimator_args = {'estimator_type': estimator_type}
     estimator_args['network_args'] = {'type': 'fully_connected',

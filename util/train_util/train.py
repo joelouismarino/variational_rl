@@ -1,6 +1,7 @@
 import time
 from .collect_episode import collect_episode
 from .train_batch import train_batch
+from .test_model import test_model
 
 
 def train(agent, env, buffer, optimizer, plotter, args):
@@ -31,18 +32,24 @@ def train(agent, env, buffer, optimizer, plotter, args):
 
         # train on samples from buffer
         if buffer.total_steps >= n_initial_batches * buffer.batch_size * buffer.sequence_length:
-            # pre-train the model for a pre-specified number of steps
-            if 'horizon' in dir(agent.q_value_estimator) and model_trained == False:
-                print('Pre-Training the model...')
-                for update in range(n_pretrain_updates):
-                    print(' Batch: ' + str(update + 1) + ' of ' + str(n_pretrain_updates) + '.')
-                    t_start = time.time()
-                    batch = buffer.sample()
-                    results = train_batch(agent, batch, optimizer, model_only=True)
-                    t_end = time.time()
-                    print('Duration: ' + '{:.2f}'.format(t_end - t_start) + ' s.')
-                model_trained = True
-                plotter.save_checkpoint(timestep)
+            # model pre-training and evaluation
+            if 'horizon' in dir(agent.q_value_estimator):
+                # pre-train the model (and value function)
+                if model_trained == False:
+                    print('Pre-Training the model...')
+                    for update in range(n_pretrain_updates):
+                        print(' Batch: ' + str(update + 1) + ' of ' + str(n_pretrain_updates) + '.')
+                        t_start = time.time()
+                        batch = buffer.sample()
+                        results = train_batch(agent, batch, optimizer, model_only=True)
+                        t_end = time.time()
+                        print('Duration: ' + '{:.2f}'.format(t_end - t_start) + ' s.')
+                    model_trained = True
+                    plotter.save_checkpoint(timestep)
+
+                # evaluate the model
+                predictions, log_likelihoods = test_model(episode, agent)
+                plotter.plot_model_eval(episode, predictions, log_likelihoods, timestep)
 
             print('Training...')
             # train the agent
@@ -52,6 +59,7 @@ def train(agent, env, buffer, optimizer, plotter, args):
                     print('Evaluating at Step: ' + str(timestep))
                     episode, _ = collect_episode(env, agent, eval=True)
                     plotter.plot_eval(episode, timestep)
+                    print('Done.')
                 print(' Batch: ' + str(update + 1) + ' of ' + str(n_updates) + '.')
                 t_start = time.time()
                 batch = buffer.sample()
