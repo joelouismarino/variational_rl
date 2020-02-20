@@ -32,6 +32,8 @@ class FullyConnectedLayer(Layer):
             self.init_gain = nn.init.calculate_gain('tanh')
         elif non_linearity == 'sigmoid':
             self.non_linearity = nn.Sigmoid()
+        elif non_linearity == 'leaky_relu':
+            self.non_linearity = nn.LeakyReLU()
         else:
             raise Exception('Non-linearity ' + str(non_linearity) + ' not found.')
 
