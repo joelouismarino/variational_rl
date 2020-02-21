@@ -29,13 +29,9 @@ def create_env(env_name, seed=None):
     env.seed(seed)
 
     # wrap the environment
-    if env_type == 'atari':
+    if env_type == 'classic_control':
         raise NotImplementedError
-    elif env_type == 'box2d':
-        raise NotImplementedError
-    elif env_type == 'classic_control':
-        raise NotImplementedError
-    elif env_type == 'mujoco':
+    elif env_type in ['mujoco', 'ant', 'humanoid']:
         env = observation_wrappers.AddBatchDim(env)
         env = observation_wrappers.ToTensor(env)
         env = reward_wrappers.AddBatchDim(env)
@@ -43,12 +39,7 @@ def create_env(env_name, seed=None):
         env = action_wrappers.NormalizeAction(env)
     elif env_type == 'robotics':
         raise NotImplementedError
-    elif env_type == 'vizdoom':
-        env = observation_wrappers.WarpFrame(env, width=45, height=30, grayscale=False)
-        env = observation_wrappers.Transpose(env)
-        env = observation_wrappers.AddBatchDim(env)
-        env = observation_wrappers.ScaledFloatFrame(env)
-        env = observation_wrappers.ToTensor(env)
-        env = reward_wrappers.ToTensor(env)
+    else:
+        raise NotImplementedError
 
     return env

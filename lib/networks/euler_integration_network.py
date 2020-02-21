@@ -9,10 +9,10 @@ class EulerIntegrationNetwork(Network):
     """
     A network with Euler integration as an inductive bias.
     """
-    def __init__(self, n_layers, n_input, n_units,
-                 num_state_dims, num_velocity_dims, num_action_dims, angle_indices, dt,
-                 batch_norm=False, layer_norm=True,
-                 non_linearity='leaky_relu', dropout=None):
+    def __init__(self, n_layers, n_input, n_units, num_state_dims,
+                 num_velocity_dims, num_action_dims, angle_indices, dt,
+                 batch_norm=False, layer_norm=True, non_linearity='leaky_relu',
+                 dropout=None):
         super().__init__(n_layers, None)
 
         self.num_state_dims = num_state_dims
@@ -20,7 +20,7 @@ class EulerIntegrationNetwork(Network):
         self.num_action_dims = num_action_dims
         self.angle_indices = angle_indices
         self.dt = dt
-        assert (self.num_state_dims + num_action_dims) == n_input
+        assert (self.num_state_dims + self.num_action_dims) == n_input
 
         if type(n_units) == int:
             n_units = [n_units for _ in range(n_layers)]

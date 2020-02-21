@@ -1,6 +1,6 @@
 import numpy as np
 from .get_n_input import get_n_input
-
+from .get_euler_args import get_euler_args
 
 def get_mujoco_config(env):
     """
@@ -54,7 +54,7 @@ def get_mujoco_config(env):
     # optimizer type can be 'direct', 'iterative', 'gradient', 'non_parametric', 'cem'
     optimizer_type = 'direct'
     optimizer_type = 'non_parametric' if action_approx_post_dist == 'Boltzmann' else optimizer_type
-    use_direct_inference_optimizer = True
+    use_direct_inference_optimizer = False
 
     inf_opt_args = {'opt_type': optimizer_type}
     if optimizer_type == 'direct':
@@ -127,6 +127,7 @@ def get_mujoco_config(env):
     if estimator_type == 'model_based':
         learn_reward = True
         value_estimate = 'retrace'
+        use_euler = False
         stochastic_state = False
         stochastic_reward = False
         model_args = {}
@@ -142,7 +143,10 @@ def get_mujoco_config(env):
                                                      'n_variables': state_size,
                                                      'stochastic': stochastic_state,
                                                      'constant_scale': False,
-                                                     'residual_loc': True}
+                                                     'residual_loc': True,
+                                                     'euler_loc': use_euler}
+        if use_euler:
+            model_args['state_variable_args']['euler_args'] = get_euler_args(env)
         if learn_reward:
             model_args['reward_likelihood_args'] = {'type': 'fully_connected',
                                                             'n_layers': 2,
@@ -160,7 +164,7 @@ def get_mujoco_config(env):
         estimator_args['model_args'] = model_args
         estimator_args['learn_reward'] = learn_reward
         estimator_args['value_estimate'] = value_estimate
-        estimator_args['horizon'] = 5
+        estimator_args['horizon'] = 2
 
     agent_args['q_value_estimator_args'] = estimator_args
 

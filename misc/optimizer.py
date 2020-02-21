@@ -63,6 +63,7 @@ class Optimizer(object):
                 # do not update the target models with gradients
                 continue
             elif model_name not in ['state_likelihood_model', 'reward_likelihood_model', 'q_value_models'] and model_only:
+            # elif model_name not in ['state_likelihood_model', 'reward_likelihood_model'] and model_only:
                 # if we only want to train the model, then skip the others
                 continue
             opt.step()

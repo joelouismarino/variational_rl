@@ -7,7 +7,8 @@ class FullyConnectedObservedVariable(ObservedVariable):
 
     def __init__(self, likelihood_dist, n_variables, n_input, stochastic=True,
                  constant_scale=False, sigmoid_loc=False, residual_loc=False,
-                 manual_loc=False, manual_loc_alpha=0.):
+                 manual_loc=False, manual_loc_alpha=0., euler_loc=False,
+                 euler_args=None):
         super(FullyConnectedObservedVariable, self).__init__(likelihood_dist,
                                                              n_variables,
                                                              n_input,
@@ -15,7 +16,9 @@ class FullyConnectedObservedVariable(ObservedVariable):
                                                              constant_scale,
                                                              residual_loc,
                                                              manual_loc,
-                                                             manual_loc_alpha)
+                                                             manual_loc_alpha,
+                                                             euler_loc,
+                                                             euler_args)
         for model_name in self.cond_likelihood.models:
             non_linearity = None
             if model_name == 'loc' and sigmoid_loc:

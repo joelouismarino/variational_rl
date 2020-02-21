@@ -1,11 +1,12 @@
 from gym.envs.registration import register
 
-def register_env(env_name, cfg=None):
+def register_env(env_name):
     '''Register additional environments for OpenAI gym.'''
 
-    if env_name.lower() == 'vizdoom-v0':
-        assert cfg is not None, 'Environment config name must be defined for vizdoom.'
-        register(id='VizDoom-v0',
-                 entry_point='envs.vizdoom.vizdoom_env:VizDoomEnv',
-                 kwargs={'cfg_name': str(cfg)})
-        return 'vizdoom'
+    if env_name == 'AntTruncatedObs-v2':
+        register(id='AntTruncatedObs-v2',
+                 entry_point='util.env_util.mujoco.ant:AntTruncatedObsEnv')
+
+    elif env_name == 'HumanoidTruncatedObs-v2':
+        register(id='HumanoidTruncatedObs-v2',
+                 entry_point='util.env_util.mujoco.humanoid:HumanoidTruncatedObsEnv')

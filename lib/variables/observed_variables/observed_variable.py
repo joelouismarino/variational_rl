@@ -15,16 +15,23 @@ class ObservedVariable(nn.Module):
         n_input (int): input size to the output models
         constant_scale (bool): whether to use a constant scale
         residual_loc (bool): whether to use a residual mapping for loc parameter
+        manual_loc (bool): manually specify the location
+        manual_loc_alpha (float): alpha for manual location specification (MuJoCo)
+        euler_loc (bool): whether to use euler integration for the location
+        euler_args (dict): dictionary of euler integration arguments
     """
     def __init__(self, likelihood_dist, n_variables, n_input, stochastic,
-                 constant_scale, residual_loc, manual_loc, manual_loc_alpha):
+                 constant_scale, residual_loc, manual_loc, manual_loc_alpha,
+                 euler_loc, euler_args):
         super(ObservedVariable, self).__init__()
         self.cond_likelihood = Distribution(likelihood_dist, n_variables, n_input,
                                             stochastic=stochastic,
                                             constant_scale=constant_scale,
                                             residual_loc=residual_loc,
                                             manual_loc=manual_loc,
-                                            manual_loc_alpha=manual_loc_alpha)
+                                            manual_loc_alpha=manual_loc_alpha,
+                                            euler_loc=euler_loc,
+                                            euler_args=euler_args)
         self.n_variables = n_variables
         self.planning = False
         self._n_planning_samples = 1

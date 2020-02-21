@@ -35,15 +35,39 @@ def train(agent, env, buffer, optimizer, plotter, args):
             # model pre-training and evaluation
             if 'horizon' in dir(agent.q_value_estimator):
                 # pre-train the model (and value function)
+                # if True:
                 if model_trained == False:
                     print('Pre-Training the model...')
+                    # state_clls = []
+                    # reward_clls = []
+                    # q_losses = []
+                    # update = 0
+                    # min_state_cll = -100000
+                    # patience_steps = 0
+                    # still_training = True
+                    # while still_training:
                     for update in range(n_pretrain_updates):
+                        # print(' Batch: ' + str(update + 1) + '.')
                         print(' Batch: ' + str(update + 1) + ' of ' + str(n_pretrain_updates) + '.')
                         t_start = time.time()
                         batch = buffer.sample()
                         results = train_batch(agent, batch, optimizer, model_only=True)
+                        # state_clls.append(results['state_cll'])
+                        # reward_clls.append(results['reward_cll'])
+                        # q_losses.append(results['q_loss1'])
                         t_end = time.time()
                         print('Duration: ' + '{:.2f}'.format(t_end - t_start) + ' s.')
+                        # print('State CLL: ' + str(results['state_cll']))
+                        # print('Patience: ' + str(patience_steps))
+                        # if results['state_cll'] > min_state_cll:
+                        #     min_state_cll = results['state_cll']
+                        #     patience_steps = 0
+                        # else:
+                        #     patience_steps += 1
+                        #     if patience_steps > 50:
+                        #         still_training = False
+                        # update += 1
+                    # import ipdb; ipdb.set_trace()
                     model_trained = True
                     plotter.save_checkpoint(timestep)
 

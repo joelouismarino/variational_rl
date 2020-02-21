@@ -25,10 +25,13 @@ class Distribution(nn.Module):
         manual_loc (bool): manually include action norm in reward mean estimate (MuJoCo)
         manual_loc_alpha (float): the alpha parameter for manual specification
         update (str): the type of updating (direct or iterative)
+        euler_loc (bool): whether to use euler integration for the location
+        euler_args (dict): dictionary of euler integration arguments
     """
     def __init__(self, dist_type, n_variables, n_input, stochastic=True,
                  constant=False, constant_scale=False, residual_loc=False,
-                 manual_loc=False, manual_loc_alpha=0., update='direct'):
+                 manual_loc=False, manual_loc_alpha=0., update='direct',
+                 euler_loc=False, euler_args=None):
         super(Distribution, self).__init__()
         self.n_variables = n_variables
         self.stochastic = stochastic
@@ -37,6 +40,9 @@ class Distribution(nn.Module):
         self.manual_loc = manual_loc
         self.manual_loc_alpha = manual_loc_alpha
         self.update = update
+        self.euler_loc = euler_loc
+        self.euler_args = euler_args
+
         self.dist = None
         self.planning_dist = None
         self.planning = False
@@ -141,15 +147,24 @@ class Distribution(nn.Module):
                     gate = gates[param_name](param_input)
                     param = gate * param + (1. - gate) * param_update
 
-                if param_name == 'loc' and self.manual_loc:
-                    # manually include action norm in reward mean estimate (MuJoCo)
-                    action_norm = kwargs['action'].norm(dim=1, keepdim=True)
-                    param = param - self.manual_loc_alpha * action_norm
+                if param_name == 'loc':
 
-                if param_name == 'loc' and self.residual_loc:
-                    # residual estimation of location parameter
-                    prev_x = self._planning_prev_x if self.planning else self._prev_x
-                    param = param + prev_x
+                    if self.manual_loc:
+                        # manually include action norm in reward mean estimate (MuJoCo)
+                        action_norm = kwargs['action'].norm(dim=1, keepdim=True)
+                        param = param - self.manual_loc_alpha * action_norm
+
+                    if self.residual_loc:
+                        # residual estimation of location parameter
+                        prev_x = self._planning_prev_x if self.planning else self._prev_x
+                        param = param + prev_x
+
+                    if self.euler_loc:
+                        # euler integration of location parameter
+                        param[:, :-self.euler_args['n_vel']] += self.euler_args['dt'] * param[:, -self.euler_args['n_vel']:].detach()
+                        angle_pred = param[:, :-self.euler_args['n_vel']].clone()
+                        param[:, :-self.euler_args['n_vel']] = torch.atan2(torch.sin(angle_pred),
+                                                                           torch.cos(angle_pred))
 
                 # satisfy any constraints on the parameter value
                 if type(constraint) == constraints.greater_than and constraint.lower_bound == 0:
