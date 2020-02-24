@@ -127,7 +127,7 @@ def get_mujoco_config(env):
     if estimator_type == 'model_based':
         learn_reward = True
         value_estimate = 'retrace'
-        use_euler = False
+        use_euler = True
         stochastic_state = False
         stochastic_reward = False
         model_args = {}
@@ -137,7 +137,7 @@ def get_mujoco_config(env):
                                                        'n_units': 256,
                                                        'connectivity': 'sequential',
                                                        'batch_norm': False,
-                                                       'non_linearity': 'relu'}
+                                                       'non_linearity': 'leaky_relu'}
         model_args['state_variable_args'] = {'type': 'fully_connected',
                                                      'likelihood_dist': 'Normal',
                                                      'n_variables': state_size,
@@ -154,7 +154,7 @@ def get_mujoco_config(env):
                                                             'n_units': 256,
                                                             'connectivity': 'sequential',
                                                             'batch_norm': False,
-                                                            'non_linearity': 'relu'}
+                                                            'non_linearity': 'leaky_relu'}
             model_args['reward_variable_args'] = {'type': 'fully_connected',
                                                           'likelihood_dist': 'Normal',
                                                           'n_variables': 1,

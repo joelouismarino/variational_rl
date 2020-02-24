@@ -161,10 +161,10 @@ class Distribution(nn.Module):
 
                     if self.euler_loc:
                         # euler integration of location parameter
-                        param[:, :-self.euler_args['n_vel']] += self.euler_args['dt'] * param[:, -self.euler_args['n_vel']:].detach()
-                        angle_pred = param[:, :-self.euler_args['n_vel']].clone()
-                        param[:, :-self.euler_args['n_vel']] = torch.atan2(torch.sin(angle_pred),
-                                                                           torch.cos(angle_pred))
+                        param[:, :self.euler_args['n_pos']] += self.euler_args['dt'] * param[:, -self.euler_args['n_pos']:].detach()
+                        angle_pred = param[:, self.euler_args['angle_inds']].clone()
+                        param[:, self.euler_args['angle_inds']] = torch.atan2(torch.sin(angle_pred),
+                                                                              torch.cos(angle_pred))
 
                 # satisfy any constraints on the parameter value
                 if type(constraint) == constraints.greater_than and constraint.lower_bound == 0:
