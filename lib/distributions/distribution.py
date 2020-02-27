@@ -73,8 +73,8 @@ class Distribution(nn.Module):
         self.param_names = param_names
         if 'scale' in param_names:
             # self._log_scale_lim = [-15, 15]
-            self.min_log_scale = nn.Parameter(-torch.ones(1, self.n_variables))
-            self.max_log_scale = nn.Parameter(torch.ones(1, self.n_variables))
+            self.min_log_scale = nn.Parameter(-10 * torch.ones(1, self.n_variables))
+            self.max_log_scale = nn.Parameter(0.5 * torch.ones(1, self.n_variables))
             if self.const_scale:
                 self.log_scale = nn.Parameter(torch.zeros(1, self.n_variables))
                 param_names = ['loc']
@@ -376,6 +376,9 @@ class Distribution(nn.Module):
         #     params.append(self.initial_params[param_name])
         if self.const_scale:
             params.append(self.log_scale)
+        if 'scale' in self.param_names:
+            params.append(self.min_log_scale)
+            params.append(self.max_log_scale)
         return params
 
     def get_dist_params(self):
