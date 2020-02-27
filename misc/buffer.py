@@ -78,7 +78,7 @@ class Buffer(object):
         # pop any old episodes from the buffer
         while self.current_steps > self.capacity:
             popped_episode = self.buffer[0]
-            self.buffer = self.buffer[-self.capacity+1:-1]
+            self.buffer = self.buffer[1:]
             self.current_steps -= popped_episode['state'].shape[0]
         self.buffer.append(episode)
 

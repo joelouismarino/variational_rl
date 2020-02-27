@@ -127,7 +127,7 @@ def get_mujoco_config(env):
     if estimator_type == 'model_based':
         learn_reward = True
         value_estimate = 'retrace'
-        use_euler = True
+        use_euler = False
         stochastic_state = False
         stochastic_reward = False
         model_args = {}

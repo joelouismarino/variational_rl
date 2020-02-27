@@ -11,25 +11,20 @@ def get_euler_args(env):
     assert 'sim' in dir(env.unwrapped)
 
     n_pos = env.unwrapped.sim.data.qpos.shape[0]
-    angle_mask = env.unwrapped.sim.model.jnt_type == 3
     # MuJoCo envs typically exclude current position from state definition
     # note: this is only true for position, not velocity
     if env.spec.id in ['Hopper-v2', 'Walker2d-v2', 'HalfCheetah-v2']:
         n_pos -= 1
-        pos_angle_mask = angle_mask[1:]
+        angle_inds = [2]
     elif env.spec.id in ['AntTruncatedObs-v2', 'HumanoidTruncatedObs-v2',
                          'Swimmer-v2']:
         n_pos -= 2
-        pos_angle_mask = angle_mask[2:]
+        raise NotImplementedError
     # # TODO: the following isn't correct
     # elif env.spec.id in ['InvertedPendulum-v2', 'InvertedDoublePendulum-v2',
     #                      'Reacher-v2']:
-    #     pos_angle_mask = angle_mask
     else:
         raise NotImplementedError
-
-    total_angle_mask = np.concatenate([pos_angle_mask, angle_mask], axis=0)
-    angle_inds = np.where(total_angle_mask)[0]
 
     arg_dict = {'n_pos': n_pos,
                 'dt': env.unwrapped.dt,

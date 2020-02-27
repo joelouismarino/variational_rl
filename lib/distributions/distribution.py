@@ -72,7 +72,9 @@ class Distribution(nn.Module):
             param_names = []
         self.param_names = param_names
         if 'scale' in param_names:
-            self._log_scale_lim = [-15, 15]
+            # self._log_scale_lim = [-15, 15]
+            self.min_log_scale = nn.Parameter(-torch.ones(1, self.n_variables))
+            self.max_log_scale = nn.Parameter(torch.ones(1, self.n_variables))
             if self.const_scale:
                 self.log_scale = nn.Parameter(torch.zeros(1, self.n_variables))
                 param_names = ['loc']
@@ -166,17 +168,23 @@ class Distribution(nn.Module):
                         param[:, self.euler_args['angle_inds']] = torch.atan2(torch.sin(angle_pred),
                                                                               torch.cos(angle_pred))
 
-                # satisfy any constraints on the parameter value
+                # satisfy any constraints on the parameter value (scale parameter)
                 if type(constraint) == constraints.greater_than and constraint.lower_bound == 0:
                     # positive value
-                    param = torch.exp(torch.clamp(param, self._log_scale_lim[0], self._log_scale_lim[1]))
+                    # param = torch.exp(torch.clamp(param, self._log_scale_lim[0], self._log_scale_lim[1]))
+                    param = self.max_log_scale - nn.Softplus()(self.max_log_scale - param)
+                    param = self.min_log_scale + nn.Softplus()(param - self.min_log_scale)
+                    param = torch.exp(param)
 
                 # set the parameter
                 parameters[param_name] = param
 
             if self.const_scale:
                 log_scale = const_log_scale.repeat(input.shape[0], 1)
-                scale = torch.exp(torch.clamp(log_scale, self._log_scale_lim[0], self._log_scale_lim[1]))
+                log_scale = self.max_log_scale - nn.softplus(self.max_log_scale - log_scale)
+                log_scale = self.min_log_scale + nn.softplus(log_scale - self.min_log_scale)
+                log_scale = torch.exp(log_scale)
+                # scale = torch.exp(torch.clamp(log_scale, self._log_scale_lim[0], self._log_scale_lim[1]))
                 parameters['scale'] = scale
         elif kwargs is not None:
             # Boltzmann approximate posterior

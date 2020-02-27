@@ -20,12 +20,14 @@ class Collector:
                         'action': [], 'log_prob': []}
 
         # stores the objectives during training
-        self.objectives = {'optimality': [], 'alpha_loss': [], 'q_loss': []}
+        self.objectives = {'optimality': [], 'alpha_loss': [], 'q_loss': [],
+                           'log_scale': []}
         # stores the metrics
         self.metrics = {'optimality': {'cll': []},
                         'action': {'kl': []},
-                        'alpha_loss':[],
-                        'alpha': []}
+                        'alpha_losses': {},
+                        'alphas': {},
+                        'log_scale_loss': {}}
         # stores the distributions
         self.distributions = {'action': {'prior': {}, 'approx_post': {}}}
         # stores inference improvement during training
@@ -76,6 +78,8 @@ class Collector:
         self._get_q_value_est_objectives(state, off_policy_action, on_policy_action.detach(), reward, valid, done)
         # collect log probabilities
         self._collect_log_probs(off_policy_action, log_prob, valid)
+        # collect log-scale limit objectives
+        self._collect_log_scale_lim_objectives()
 
     def _collect_eval(self, state, action, reward, done):
         """
@@ -205,6 +209,38 @@ class Collector:
             self.objectives['alpha_loss_scale'].append(alpha_loss_scale)
             self.metrics['alpha_losses']['scale'].append(alpha_loss_scale.detach())
             self.metrics['alphas']['scale'].append(self.agent.alphas['scale'])
+
+    def _collect_log_scale_lim_objectives(self):
+        """
+        Collects the objectives for the log-scale limit parameters.
+        """
+        objective = 0.
+        # policy
+        if 'scale' in self.agent.approx_post.param_names:
+            min_log_scale = self.agent.approx_post.min_log_scale
+            max_log_scale = self.agent.approx_post.max_log_scale
+            objective = objective - 0.01 * min_log_scale.sum()
+            objective = objective + 0.01 * max_log_scale.sum()
+        if 'scale' in self.agent.prior.param_names:
+            min_log_scale = self.agent.prior.min_log_scale
+            max_log_scale = self.agent.prior.max_log_scale
+            objective = objective - 0.01 * min_log_scale.sum()
+            objective = objective + 0.01 * max_log_scale.sum()
+        # model
+        if 'state_likelihood_model' in dir(self.agent.q_value_estimator):
+            min_log_scale = self.agent.q_value_estimator.state_variable.cond_likelihood.min_log_scale
+            max_log_scale = self.agent.q_value_estimator.state_variable.cond_likelihood.max_log_scale
+            objective = objective - 0.01 * min_log_scale.sum()
+            objective = objective + 0.01 * max_log_scale.sum()
+
+            if self.agent.q_value_estimator.reward_likelihood_model is not None:
+                min_log_scale = self.agent.q_value_estimator.reward_variable.cond_likelihood.min_log_scale
+                max_log_scale = self.agent.q_value_estimator.reward_variable.cond_likelihood.max_log_scale
+                objective = objective - 0.01 * min_log_scale.sum()
+                objective = objective + 0.01 * max_log_scale.sum()
+
+        self.objectives['log_scale'].append(objective)
+        self.metrics['log_scale_loss']['loss'].append(objective.detach())
 
     def _get_q_value_est_objectives(self, state, off_policy_action, on_policy_action,
                                     reward, valid, done):
@@ -455,11 +491,13 @@ class Collector:
         self.episode = {'state': [], 'reward': [], 'done': [],
                         'action': [], 'log_prob': []}
 
-        self.objectives = {'optimality': [], 'alpha_loss_pi': [], 'q_loss': []}
+        self.objectives = {'optimality': [], 'alpha_loss_pi': [], 'q_loss': [],
+                           'log_scale': []}
         self.metrics = {'optimality': {'cll': []},
                         'action': {'kl': []},
                         'alpha_losses':{'pi': []},
-                        'alphas': {'pi': []}}
+                        'alphas': {'pi': []},
+                        'log_scale_loss':{'loss': []}}
 
         if 'parameters' in dir(self.agent.inference_optimizer):
             # amortized inference optimizer
