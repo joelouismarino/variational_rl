@@ -17,20 +17,28 @@ class AutoregressiveTransform(TransformModule):
     bijective = True
     domain = constraints.real
     codomain = constraints.real
-
+    event_dim = 0
     def __init__(self, network_config):
         super(AutoregressiveTransform, self).__init__()
-        self.m = get_network(network_config)
-        self.s = get_network(network_config)
-        
+        self.shift = get_network(network_config)
+        self.log_scale = get_network(network_config)
+        # TODO: initialize to the identity transform
 
     def _call(self, x):
         """
         y = shift + scale * x
         """
-        shift, scale = self.m(x), self.s(x).exp()
+        reshaped = False
+        if len(x.shape) == 3:
+            b, s, n = x.shape
+            x = x.view(-1, x.shape[-1])
+            reshaped = True
+        shift, scale = self.shift(x), self.log_scale(x).exp()
         y = shift + scale * x
         self._cached_scale = scale
+        if reshaped:
+            y = y.view(b, s, n)
+            self._cached_scale = self._cached_scale.view(b, s, n)
         return y
 
     def _inverse(self, y):
@@ -39,9 +47,7 @@ class AutoregressiveTransform(TransformModule):
         """
         x = y.new_zeros(y.shape)
         for _ in range(x.shape[-1]):
-            shift = self.m(x)
-            scale = self.s(x).exp()
-            x = (y - shift) / scale
+            x = (y - self.shift(x)) / self.log_scale(x).exp()
         self._cached_scale = scale
         return x
 
