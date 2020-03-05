@@ -16,7 +16,7 @@ def get_env_types():
     return env_types
 
 
-def create_env(env_name, seed=None):
+def create_env(env_name, seed=None, unwrap_time_limit=True):
     """
     Create an OpenAI gym environment.
     """
@@ -32,6 +32,8 @@ def create_env(env_name, seed=None):
     if env_type == 'classic_control':
         raise NotImplementedError
     elif env_type in ['mujoco', 'ant', 'humanoid']:
+        if isinstance(env, gym.wrappers.TimeLimit) and unwrap_time_limit:
+            env = env.env
         env = observation_wrappers.AddBatchDim(env)
         env = observation_wrappers.ToTensor(env)
         env = reward_wrappers.AddBatchDim(env)

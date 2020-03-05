@@ -8,7 +8,7 @@ def get_mujoco_config(env):
     """
     agent_args = {}
 
-    agent_args['misc_args'] = {'n_action_samples': 50,
+    agent_args['misc_args'] = {'n_action_samples': 10,
                                'n_q_action_samples': 1,
                                'reward_discount': 0.99,
                                'retrace_lambda': 0.9,
@@ -31,6 +31,14 @@ def get_mujoco_config(env):
                                 'n_variables': n_action_variables,
                                 'constant': constant_prior}
 
+    if action_prior_dist in ['ARNormal', 'TanhARNormal']:
+        agent_args['prior_args']['transform_config'] = {'n_transforms': 1,
+                                                        'type': 'ar_fully_connected',
+                                                        'n_layers': 2,
+                                                        'n_input': n_action_variables,
+                                                        'n_units': n_action_variables,
+                                                        'non_linearity': 'elu'}
+
     if action_prior_dist == 'Uniform' or constant_prior:
         agent_args['prior_model_args'] = None
         agent_args['prior_args']['constant'] = True
@@ -49,6 +57,14 @@ def get_mujoco_config(env):
     ## APPROXIMATE POSTERIOR
     agent_args['approx_post_args'] = {'dist_type': action_approx_post_dist,
                                       'n_variables': n_action_variables}
+
+    if action_approx_post_dist in ['ARNormal', 'TanhARNormal']:
+        agent_args['approx_post_args']['transform_config'] = {'n_transforms': 1,
+                                                              'type': 'ar_fully_connected',
+                                                              'n_layers': 2,
+                                                              'n_input': n_action_variables,
+                                                              'n_units': n_action_variables,
+                                                              'non_linearity': 'elu'}
 
     ## INFERENCE OPTIMIZER
     # optimizer type can be 'direct', 'iterative', 'gradient', 'non_parametric', 'cem'
@@ -113,7 +129,7 @@ def get_mujoco_config(env):
 
     ## Q-VALUE ESTIMATOR
     # estimator type can be 'direct' or 'model_based'
-    estimator_type = 'model_based'
+    estimator_type = 'direct'
 
     estimator_args = {'estimator_type': estimator_type}
     estimator_args['network_args'] = {'type': 'fully_connected',
@@ -127,7 +143,7 @@ def get_mujoco_config(env):
     if estimator_type == 'model_based':
         learn_reward = True
         value_estimate = 'retrace'
-        use_euler = False
+        use_euler = True
         stochastic_state = False
         stochastic_reward = False
         model_args = {}
@@ -137,6 +153,7 @@ def get_mujoco_config(env):
                                                        'n_units': 256,
                                                        'connectivity': 'sequential',
                                                        'batch_norm': False,
+                                                       'layer_norm': True,
                                                        'non_linearity': 'leaky_relu'}
         model_args['state_variable_args'] = {'type': 'fully_connected',
                                                      'likelihood_dist': 'Normal',
@@ -154,6 +171,7 @@ def get_mujoco_config(env):
                                                             'n_units': 256,
                                                             'connectivity': 'sequential',
                                                             'batch_norm': False,
+                                                            'layer_norm': True,
                                                             'non_linearity': 'leaky_relu'}
             model_args['reward_variable_args'] = {'type': 'fully_connected',
                                                           'likelihood_dist': 'Normal',

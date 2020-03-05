@@ -4,8 +4,11 @@ import torch.nn as nn
 import torch.distributions.constraints as constraints
 from lib.layers import FullyConnectedLayer
 from .tanh_normal import TanhNormal
+from .ar_normal import ARNormal
+from .tanh_ar_normal import TanhARNormal
 from .normal_uniform import NormalUniform
 from .boltzmann import Boltzmann
+from .transforms import AutoregressiveTransform
 
 # range for weight initialization
 INIT_W = 1e-3
@@ -27,11 +30,12 @@ class Distribution(nn.Module):
         update (str): the type of updating (direct or iterative)
         euler_loc (bool): whether to use euler integration for the location
         euler_args (dict): dictionary of euler integration arguments
+        transform_config (dict): dictionary of transform parameters (for AR dists)
     """
     def __init__(self, dist_type, n_variables, n_input, stochastic=True,
                  constant=False, constant_scale=False, residual_loc=False,
                  manual_loc=False, manual_loc_alpha=0., update='direct',
-                 euler_loc=False, euler_args=None):
+                 euler_loc=False, euler_args=None, transform_config=None):
         super(Distribution, self).__init__()
         self.n_variables = n_variables
         self.stochastic = stochastic
@@ -54,10 +58,15 @@ class Distribution(nn.Module):
         self._batch_size = 1
         self._prev_x = None
         self._planning_prev_x = None
+        self.transforms = None
 
         # distribution type
         if dist_type == 'TanhNormal':
             self.dist_type = TanhNormal
+        elif dist_type == 'ARNormal':
+            self.dist_type = ARNormal
+        elif dist_type == 'TanhARNormal':
+            self.dist_type = TanhARNormal
         elif dist_type == 'NormalUniform':
             self.dist_type = NormalUniform
         elif dist_type == 'Boltzmann':
@@ -72,7 +81,6 @@ class Distribution(nn.Module):
             param_names = []
         self.param_names = param_names
         if 'scale' in param_names:
-            # self._log_scale_lim = [-15, 15]
             self.min_log_scale = nn.Parameter(-10 * torch.ones(1, self.n_variables))
             self.max_log_scale = nn.Parameter(0.5 * torch.ones(1, self.n_variables))
             if self.const_scale:
@@ -108,6 +116,12 @@ class Distribution(nn.Module):
             else:
                 self.initial_params[param] = nn.Parameter(torch.zeros(1, n_variables))
             self.initial_params[param].requires_grad_(req_grad)
+
+        # create the transforms for the auto-regressive distributions
+        if dist_type in ['ARNormal', 'TanhARNormal']:
+            assert transform_config is not None
+            n_transforms = transform_config.pop('n_transforms')
+            self.transforms = [AutoregressiveTransform(transform_config) for _ in range(n_transforms)]
 
     def step(self, input=None, detach_params=False, **kwargs):
         """
@@ -181,9 +195,9 @@ class Distribution(nn.Module):
 
             if self.const_scale:
                 log_scale = const_log_scale.repeat(input.shape[0], 1)
-                log_scale = self.max_log_scale - nn.softplus(self.max_log_scale - log_scale)
-                log_scale = self.min_log_scale + nn.softplus(log_scale - self.min_log_scale)
-                log_scale = torch.exp(log_scale)
+                log_scale = self.max_log_scale - nn.Softplus()(self.max_log_scale - log_scale)
+                log_scale = self.min_log_scale + nn.Softplus()(log_scale - self.min_log_scale)
+                scale = torch.exp(log_scale)
                 # scale = torch.exp(torch.clamp(log_scale, self._log_scale_lim[0], self._log_scale_lim[1]))
                 parameters['scale'] = scale
         elif kwargs is not None:
@@ -192,6 +206,9 @@ class Distribution(nn.Module):
         else:
             # use the initial parameters
             parameters = initial_params
+
+        if self.transforms:
+            parameters['transforms'] = self.transforms
 
         # create a new distribution with the parameters
         if not self.planning:
@@ -303,6 +320,8 @@ class Distribution(nn.Module):
                 dist_params['scale'] = self.log_scale.repeat(batch_size, 1).exp().data.requires_grad_()
             # for _, v in dist_params.items():
             #     v.retain_grad()
+            if self.transforms is not None:
+                dist_params['transforms'] = self.transforms
         # initialize the distribution
         d = self.dist_type(**dist_params) if len(dist_params.keys()) > 0 else None
         if self.planning:
@@ -352,6 +371,8 @@ class Distribution(nn.Module):
                 dist_params = {k: v.repeat(self._batch_size * n_samples, 1) for k, v in self.initial_params.items()}
                 if self.const_scale:
                     dist_params['scale'] = self.log_scale.repeat(self._batch_size * n_samples, 1).exp()
+                if self.transforms is not None:
+                    dist_params['transforms'] = self.transforms
                 self.planning_dist = self.dist_type(**dist_params)
 
     def acting_mode(self):
@@ -379,6 +400,10 @@ class Distribution(nn.Module):
         if 'scale' in self.param_names:
             params.append(self.min_log_scale)
             params.append(self.max_log_scale)
+        if self.transforms is not None:
+            for t in self.transforms:
+                if 'parameters' in dir(t):
+                    params.extend(list(t.parameters()))
         return params
 
     def get_dist_params(self):

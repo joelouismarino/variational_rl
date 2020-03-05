@@ -10,17 +10,18 @@ def train(agent, env, buffer, optimizer, plotter, args):
     """
     timestep = 0
     n_episodes = 0
-    n_initial_batches = args.n_initial_batches
+    n_initial_steps = args.n_initial_steps
     update_factor = args.update_factor
     model_trained = False
     n_pretrain_updates = args.n_pretrain_updates
     eval_interval = args.eval_interval
+    assert args.n_initial_steps >= buffer.batch_size * buffer.sequence_length
 
     while timestep < args.n_total_steps:
         # collect an episode
         print(' -- Collecting Episode: ' + str(n_episodes + 1))
         t_start = time.time()
-        r = buffer.total_steps < n_initial_batches * buffer.batch_size * buffer.sequence_length
+        r = buffer.total_steps < n_initial_steps
         episode, episode_length = collect_episode(env, agent, random=r)
         plotter.plot_episode(episode, timestep)
         t_end = time.time()
@@ -31,7 +32,7 @@ def train(agent, env, buffer, optimizer, plotter, args):
         n_updates = update_factor * episode_length
 
         # train on samples from buffer
-        if buffer.total_steps >= n_initial_batches * buffer.batch_size * buffer.sequence_length:
+        if buffer.total_steps >= n_initial_steps:
             # model pre-training and evaluation
             if 'horizon' in dir(agent.q_value_estimator):
                 # pre-train the model (and value function)

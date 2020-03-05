@@ -19,6 +19,9 @@ def get_network(network_args):
     elif network_type == 'recurrent':
         from .recurrent import RecurrentNetwork
         network = RecurrentNetwork(**network_args)
+    elif network_type == 'ar_fully_connected':
+        from .ar_fully_connected import ARFullyConnectedNetwork
+        network = ARFullyConnectedNetwork(**network_args)
     else:
         raise NotImplementedError
 
