@@ -1,9 +1,10 @@
 import torch
 from torch.distributions import constraints
-from torch.distributions import Transform
+# from torch.distributions import Transform
+from .transform_module import TransformModule
 
 
-class TanhTransform(Transform):
+class TanhTransform(TransformModule):
     """
     Transform via tanh().
     """

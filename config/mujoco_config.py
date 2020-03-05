@@ -23,7 +23,7 @@ def get_mujoco_config(env):
 
     # distribution types: 'Uniform', 'Normal', 'TanhNormal', 'Boltzmann', 'NormalUniform'
     action_prior_dist = 'Uniform'
-    action_approx_post_dist = 'TanhNormal'
+    action_approx_post_dist = 'TanhARNormal'
 
     ## PRIOR
     constant_prior = True

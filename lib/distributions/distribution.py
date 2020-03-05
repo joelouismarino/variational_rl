@@ -121,7 +121,7 @@ class Distribution(nn.Module):
         if dist_type in ['ARNormal', 'TanhARNormal']:
             assert transform_config is not None
             n_transforms = transform_config.pop('n_transforms')
-            self.transforms = [AutoregressiveTransform(transform_config) for _ in range(n_transforms)]
+            self.transforms = nn.ModuleList([AutoregressiveTransform(transform_config) for _ in range(n_transforms)])
 
     def step(self, input=None, detach_params=False, **kwargs):
         """
@@ -208,7 +208,7 @@ class Distribution(nn.Module):
             parameters = initial_params
 
         if self.transforms:
-            parameters['transforms'] = self.transforms
+            parameters['transforms'] = [t for t in self.transforms]
 
         # create a new distribution with the parameters
         if not self.planning:
@@ -321,7 +321,7 @@ class Distribution(nn.Module):
             # for _, v in dist_params.items():
             #     v.retain_grad()
             if self.transforms is not None:
-                dist_params['transforms'] = self.transforms
+                dist_params['transforms'] = [t for t in self.transforms]
         # initialize the distribution
         d = self.dist_type(**dist_params) if len(dist_params.keys()) > 0 else None
         if self.planning:
@@ -372,7 +372,7 @@ class Distribution(nn.Module):
                 if self.const_scale:
                     dist_params['scale'] = self.log_scale.repeat(self._batch_size * n_samples, 1).exp()
                 if self.transforms is not None:
-                    dist_params['transforms'] = self.transforms
+                    dist_params['transforms'] = [t for t in self.transforms]
                 self.planning_dist = self.dist_type(**dist_params)
 
     def acting_mode(self):
