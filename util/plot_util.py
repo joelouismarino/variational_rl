@@ -96,10 +96,10 @@ class Plotter:
                     mean = mean.squeeze()
                     std = std.squeeze()
                     x, plus, minus = mean, mean + std, mean - std
-                    if key == 'action' and label == 'approx_post' and self.agent_args['approx_post_args']['dist_type'] == 'TanhNormal':
+                    if key == 'action' and label == 'approx_post' and self.agent_args['approx_post_args']['dist_type'] in ['TanhNormal', 'TanhARNormal']:
                         # Tanh Normal distribution
                         x, plus, minus = np.tanh(x), np.tanh(plus), np.tanh(minus)
-                    if key == 'action' and label == 'prior' and self.agent_args['prior_args']['dist_type'] == 'TanhNormal':
+                    if key == 'action' and label == 'prior' and self.agent_args['prior_args']['dist_type'] in ['TanhNormal', 'TanhARNormal']:
                         # Tanh Normal distribution
                         x, plus, minus = np.tanh(x), np.tanh(plus), np.tanh(minus)
                     if key == 'action' and self.agent.postprocess_action:

@@ -47,7 +47,9 @@ class AutoregressiveTransform(TransformModule):
         """
         x = y.new_zeros(y.shape)
         for _ in range(x.shape[-1]):
-            x = (y - self.shift(x)) / self.log_scale(x).exp()
+            shift = self.shift(x)
+            scale = self.log_scale(x).exp()
+            x = (y - shift) / scale
         self._cached_scale = scale
         return x
 
