@@ -22,8 +22,8 @@ def get_mujoco_config(env):
     n_action_variables = env.action_space.shape[0]
 
     # distribution types: 'Uniform', 'Normal', 'TanhNormal', 'Boltzmann', 'NormalUniform'
-    action_prior_dist = 'Normal'
-    action_approx_post_dist = 'Normal'
+    action_prior_dist = 'Uniform'
+    action_approx_post_dist = 'TanhNormal'
 
     ## PRIOR
     constant_prior = True

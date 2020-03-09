@@ -30,27 +30,35 @@ class AutoregressiveTransform(TransformModule):
         """
         reshaped = False
         if len(x.shape) == 3:
-            b, s, n = x.shape
+            s, b, n = x.shape
             x = x.view(-1, x.shape[-1])
             reshaped = True
         shift, scale = self.shift(x), self.log_scale(x).exp()
         y = shift + scale * x
         self._cached_scale = scale
         if reshaped:
-            y = y.view(b, s, n)
-            self._cached_scale = self._cached_scale.view(b, s, n)
+            y = y.view(s, b, n)
+            self._cached_scale = self._cached_scale.view(s, b, n)
         return y
 
     def _inverse(self, y):
         """
         x = (y - shift) / scale
         """
+        reshaped = False
+        if len(y.shape) == 3:
+            s, b, n = y.shape
+            y = y.view(-1, y.shape[-1])
+            reshaped = True
         x = y.new_zeros(y.shape)
         for _ in range(x.shape[-1]):
             shift = self.shift(x)
             scale = self.log_scale(x).exp()
             x = (y - shift) / scale
         self._cached_scale = scale
+        if reshaped:
+            x = x.view(s, b, n)
+            self._cached_scale = self._cached_scale.view(s, b, n)
         return x
 
     @property

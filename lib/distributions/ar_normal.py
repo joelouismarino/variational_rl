@@ -1,7 +1,6 @@
 import torch
-from torch.distributions import constraints
+from torch.distributions import constraints, Normal, TransformedDistribution
 from .transforms import AutoregressiveTransform
-from torch.distributions import Normal, TransformedDistribution
 
 
 class ARNormal(TransformedDistribution):
@@ -13,17 +12,12 @@ class ARNormal(TransformedDistribution):
     support = constraints.real
     has_rsample = True
     def __init__(self, loc, scale, transforms, validate_args=None):
+        self.base_dist = Normal(loc, scale)
+        self.loc = self.base_dist.loc
+        self.scale = self.base_dist.scale
         self.trans = transforms
-        super(ARNormal, self).__init__(Normal(loc, scale), transforms,
+        super(ARNormal, self).__init__(self.base_dist, transforms,
                                        validate_args=validate_args)
-
-    @property
-    def loc(self):
-        return self.base_dist.loc
-
-    @property
-    def scale(self):
-        return self.base_dist.scale
 
     def expand(self, batch_shape, _instance=None):
         new = self._get_checked_instance(ARNormal, _instance)
