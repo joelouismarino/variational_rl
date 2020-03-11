@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 import torch.distributions.constraints as constraints
 from lib.layers import FullyConnectedLayer
+from misc.euler import euler_integration, euler_loss
 from .tanh_normal import TanhNormal
 from .ar_normal import ARNormal
 from .tanh_ar_normal import TanhARNormal
@@ -93,12 +94,17 @@ class Distribution(nn.Module):
 
         if not constant and n_input is not None:
             for model_name in self.models:
-                self.models[model_name] = FullyConnectedLayer(n_input, n_variables)
+                # euler outputs one less dimension from the network
+                n_var = n_variables
+                if model_name == 'loc' and euler_loc:
+                    if euler_args['is_3d']:
+                        n_var -= 1
+                self.models[model_name] = FullyConnectedLayer(n_input, n_var)
                 nn.init.uniform_(self.models[model_name].linear.weight, -INIT_W, INIT_W)
                 nn.init.uniform_(self.models[model_name].linear.bias, -INIT_W, INIT_W)
 
                 if self.update != 'direct':
-                    self.gates[model_name] = FullyConnectedLayer(n_input, n_variables,
+                    self.gates[model_name] = FullyConnectedLayer(n_input, n_var,
                                                                  non_linearity='sigmoid')
                     nn.init.uniform_(self.gates[model_name].linear.weight, -INIT_W, INIT_W)
                     nn.init.uniform_(self.gates[model_name].linear.bias, -INIT_W, INIT_W)
@@ -177,10 +183,9 @@ class Distribution(nn.Module):
 
                     if self.euler_loc:
                         # euler integration of location parameter
-                        param[:, :self.euler_args['n_pos']] += self.euler_args['dt'] * param[:, -self.euler_args['n_pos']:].detach()
-                        angle_pred = param[:, self.euler_args['angle_inds']].clone()
-                        param[:, self.euler_args['angle_inds']] = torch.atan2(torch.sin(angle_pred),
-                                                                              torch.cos(angle_pred))
+                        prev_x = self._planning_prev_x if self.planning else self._prev_x
+                        detach = not self.planning
+                        param = euler_integration(prev_x, param, detach=detach, **self.euler_args)
 
                 # satisfy any constraints on the parameter value (scale parameter)
                 if type(constraint) == constraints.greater_than and constraint.lower_bound == 0:
@@ -267,20 +272,33 @@ class Distribution(nn.Module):
         Args:
             x (torch.Tensor): the point of evaluation [batch_size * n_x_samples, n_variables]
         """
-        # get the appropriate distribution
-        d = self.planning_dist if self.planning else self.dist
-        batch_size = self.planning_dist.batch_shape[0] if self.planning else self._batch_size
-        n_x_samples = int(x.shape[0] / batch_size)
-        n_d_samples = int(d.batch_shape[0] / batch_size)
-        if n_x_samples == 1:
-            # expand x
-            x = torch.cat(n_d_samples * [x], dim=0)
+        if self.euler_loc:
+            return self.euler_loss(x)
         else:
-            # expand the distribution
-            x = x.view(-1, self._batch_size, self.n_variables)
-            d = d.expand(torch.Size([n_x_samples]) + d.batch_shape)
-        # evaluate
-        return d.log_prob(x)
+            # get the appropriate distribution
+            d = self.planning_dist if self.planning else self.dist
+            batch_size = self.planning_dist.batch_shape[0] if self.planning else self._batch_size
+            n_x_samples = int(x.shape[0] / batch_size)
+            n_d_samples = int(d.batch_shape[0] / batch_size)
+            if n_x_samples == 1:
+                # expand x
+                x = torch.cat(n_d_samples * [x], dim=0)
+            else:
+                # expand the distribution
+                x = x.view(-1, self._batch_size, self.n_variables)
+                d = d.expand(torch.Size([n_x_samples]) + d.batch_shape)
+            # evaluate
+            return d.log_prob(x)
+
+    def euler_loss(self, x):
+        """
+        Evaluate the quaternion loss for a state prediction.
+
+        Args:
+            x (torch.Tensor): the state [batch_size * n_x_samples, n_variables]
+        """
+        return euler_loss(self.dist.loc, x, self.euler_args['orientation_inds'],
+                         self.euler_args['is_3d'])
 
     def entropy(self):
         """
@@ -333,7 +351,7 @@ class Distribution(nn.Module):
 
         # reset other quantities
         self._batch_size = batch_size
-        if self.residual_loc:
+        if self.residual_loc or self.euler_loc:
             if prev_x is not None:
                 device = self.initial_params[list(self.initial_params.keys())[0]].device
                 self._prev_x = prev_x.to(device)
@@ -346,7 +364,7 @@ class Distribution(nn.Module):
         """
         Sets the previous observation (for residual loc).
         """
-        if self.residual_loc:
+        if self.residual_loc or self.euler_loc:
             if not self.planning:
                 self._prev_x = prev_x
             else:

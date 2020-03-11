@@ -1,133 +1,92 @@
 import numpy as np
 import torch
 
-# HalfCheetah-v3
-# STATE_DIMS = 18
-# INTEGRAL_DIMS = STATE_DIMS // 2
-# ACTIONS_DIMS = 6
-# ORIENTATION_INDICES = [2]
-# IS_3D_ENV = False
-# DT = 0.05
 
-# Hopper-v3
-# STATE_DIMS = 12
-# INTEGRAL_DIMS = STATE_DIMS // 2
-# ACTIONS_DIMS = 3
-# ORIENTATION_INDICES = [2]
-# IS_3D_ENV = False
-# DT = 0.008
+def euler_integration(prev_state, input, integral_dims, orientation_inds, dt,
+                      is_3d, detach):
+    """
+    Performs euler integration for MuJoCo environments. Used in state estimation
+    models for model-based value estimation.
 
-# Humanoid-v3
-STATE_DIMS = 24 + 23
-INTEGRAL_DIMS = 24
-ACTIONS_DIMS = 17
-ORIENTATION_INDICES = [3, 4, 5, 6]
-IS_3D_ENV = True
-DT = 0.015
+    Args:
+        prev_state (torch.Tensor): the previous state variable or estimate
+        input (torch.Tensor): the output of the state prediction network
+        integral_dims (int): the number of dimensions to integrate
+        orientation_inds (list): list of angle indices
+        dt (float): the temporal step size
+        is_3d (bool): whether the environment is three dimensional
+        detach (bool): whether to detach the velocity estimate
+    """
+    stop_gradient = lambda x: x
+    if detach:
+        stop_gradient = lambda x: x.detach()
 
-
-def custom_prediction(models, inputs, euler_integration=True, stop_gradients=True, dt=DT, is_3D_env=IS_3D_ENV):
-    stop_gradient = lambda x: x.detach() if stop_gradients else lambda x: x
-
-    if is_3D_env:
-        # An option is to only give knowledge of the "up"-vector but not absolute orientation.
-        # Not a good idea for environments where reward is only given for movement along a specific axis.
-        # The next three lines would be the way to do it:
-        # world_z_axis = quat_to_rmat(normalize_quaternion(inputs[..., ORIENTATION_INDICES]))
-        # world_z_axis = world_z_axis[..., -1, :]
-        # partial_inputs = torch.cat([inputs[..., [2]], world_z_axis, inputs[..., 7:]], -1)
-
-        partial_inputs = inputs[..., 2:]
-    else:
-        partial_inputs = inputs[..., 1:]
-
-    if isinstance(models, list):
-        raw_preds = [m(partial_inputs) for m in models]
-        raw_preds = torch.cat(raw_preds, -1)
-    else:
-        raw_preds = models(partial_inputs)
-
-    if is_3D_env:
-        num_joints = INTEGRAL_DIMS - 3 - 4
+    if is_3d:
+        num_joints = integral_dims - 5
+        # get the previous values
         position, orientation, joints_pos, root_vel, root_gyro, joints_vel = \
-            torch.split(inputs[..., :STATE_DIMS],
-                        [3, 4, num_joints, 3, 3, num_joints], dim=-1)
+            torch.split(prev_state, [1, 4, num_joints, 3, 3, num_joints], dim=-1)
+        # get the predicted changes
         delta_position, delta_orientation, delta_joints_pos, delta_root_vel, delta_root_gyro, delta_joints_vel = \
-            torch.split(raw_preds,
-                        [3, 3, num_joints, 3, 3, num_joints], dim=-1)
+            torch.split(input, [1, 3, num_joints, 3, 3, num_joints], dim=-1)
 
+        # add the changes to the previous values
         pred_root_vel = root_vel + delta_root_vel
         pred_root_gyro = root_gyro + delta_root_gyro
         pred_joints_vel = joints_vel + delta_joints_vel
-
         pred_position = position + delta_position
         adjusted_gyro = delta_orientation
         pred_joints_pos = joints_pos + delta_joints_pos
 
-        if euler_integration:
-            adjusted_gyro += stop_gradient(pred_root_gyro)
-            pred_joints_pos += dt * stop_gradient(pred_joints_vel)
+        # euler integration
+        adjusted_gyro += stop_gradient(pred_root_gyro)
+        pred_joints_pos += dt * stop_gradient(pred_joints_vel)
 
-        quat_zero_leading_dim = torch.zeros(pred_root_gyro.shape[:-1])[..., None]
+        quat_zero_leading_dim = torch.zeros(pred_root_gyro.shape[:-1], device=input.device)[..., None]
         quat_gyro = torch.cat([quat_zero_leading_dim, adjusted_gyro], -1)
         orientation = normalize_quaternion(orientation)
         pred_orientation = orientation + dt * 0.5 * quat_mul(orientation, quat_gyro)
         pred_orientation = normalize_quaternion(pred_orientation)
 
-        if euler_integration:
-            pred_ori_rmat = quat_to_rmat(pred_orientation)
-            pos_vel_delta = torch.sum(
-                pred_ori_rmat * pred_root_vel[..., None, :], -1)
-            pred_position += dt * stop_gradient(pos_vel_delta)
+        pred_ori_rmat = quat_to_rmat(pred_orientation)
+        pos_vel_delta = torch.sum(pred_ori_rmat * pred_root_vel[..., None, :], -1)
+        pred_position += dt * stop_gradient(pos_vel_delta[:, 2:])
 
         preds = torch.cat([pred_position, pred_orientation, pred_joints_pos,
                            pred_root_vel, pred_root_gyro, pred_joints_vel], -1)
-
     else:
-        preds = inputs[..., :-ACTIONS_DIMS] + raw_preds
-
-        if euler_integration:
-            preds[..., :INTEGRAL_DIMS] += dt * stop_gradient(preds[..., INTEGRAL_DIMS:])
-
-        angle_pred_clone = preds[:, ORIENTATION_INDICES].clone()
-        preds[:, ORIENTATION_INDICES] = torch.atan2(torch.sin(angle_pred_clone),
-                                                    torch.cos(angle_pred_clone))
+        # add changes to previous state
+        preds = prev_state + input
+        # euler integration
+        preds[..., :integral_dims] += dt * stop_gradient(preds[..., -integral_dims:])
+        # angle consistency
+        angle_pred_clone = preds[:, orientation_inds].clone()
+        preds[:, orientation_inds] = torch.atan2(torch.sin(angle_pred_clone),
+                                                 torch.cos(angle_pred_clone))
     return preds
 
 
-def multi_step_prediction(pred_fn, models, inputs, actions, dt=DT):
-    T, N = actions.size()[:2]
-    preds = torch.zeros(T, N, STATE_DIMS)
-    for t in range(-1, T - 1):
-        inputs_t = torch.cat([preds[t] if t > -1 else inputs,
-                              actions[t + 1]], -1)
-        preds[t + 1] = pred_fn(models, inputs_t, dt)
-    return preds
+def euler_loss(predictions, targets, orientation_inds, is_3d):
+    """
+    Calculates squared error loss for non-orientation dimensions and a custom
+    quaternion loss for orientation dimensions.
 
-
-def custom_loss_no_aggregation(predictions, targets, is_3D_env=IS_3D_ENV):
-    mask = set(range(STATE_DIMS)) - set(ORIENTATION_INDICES)
+    Args:
+        predictions (torch.Tensor): predicted state [batch_size, n_dims]
+        targets (torch.Tensor): target state [batch_size, n_dims]
+        orientation_inds (list): list of angle indices
+        is_3d (bool): whether the environment is three dimensional
+    """
+    mask = set(range(predictions.shape[-1])) - set(orientation_inds)
     mask = np.sort(list(mask))
     se_loss = (targets[..., mask] - predictions[..., mask]) ** 2
-    if is_3D_env:
-        orientation_loss = quat_distance(targets[..., ORIENTATION_INDICES],
-                                         predictions[..., ORIENTATION_INDICES]
-                                         ) ** 2.
+    target_orientations = targets[..., orientation_inds]
+    pred_orientations = predictions[..., orientation_inds]
+    if is_3d:
+        orientation_loss = quat_distance(target_orientations, pred_orientations) ** 2.
     else:
-        orientation_loss = 1. - torch.cos(
-            targets[..., ORIENTATION_INDICES] - predictions[..., ORIENTATION_INDICES])
+        orientation_loss = 1. - torch.cos(target_orientations - pred_orientations)
     return torch.cat([se_loss, orientation_loss], -1)
-
-
-def custom_loss_per_dimension(predictions, targets):
-    return torch.mean(
-        custom_loss_no_aggregation(predictions, targets), -2)
-
-
-def custom_loss(predictions, targets):
-    return torch.sum(
-        custom_loss_per_dimension(predictions, targets), -1)
-
 
 def quat_distance(target_quats, pred_quats, eps=1e-6, sign_invariant=True):
     """Angle of the "difference rotation" between target_quats and pred_quats.

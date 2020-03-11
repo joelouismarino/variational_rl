@@ -94,5 +94,3 @@ def train(agent, env, buffer, optimizer, plotter, args):
                 plotter.log_results(results)
                 timestep += 1
             plotter.plot_results(timestep)
-            # if on_policy:
-            #     buffer.empty()

@@ -8,7 +8,7 @@ def get_mujoco_config(env):
     """
     agent_args = {}
 
-    agent_args['misc_args'] = {'n_action_samples': 10,
+    agent_args['misc_args'] = {'n_action_samples': 50,
                                'n_q_action_samples': 1,
                                'reward_discount': 0.99,
                                'retrace_lambda': 0.9,
@@ -22,8 +22,8 @@ def get_mujoco_config(env):
     n_action_variables = env.action_space.shape[0]
 
     # distribution types: 'Uniform', 'Normal', 'TanhNormal', 'Boltzmann', 'NormalUniform'
-    action_prior_dist = 'Uniform'
-    action_approx_post_dist = 'TanhNormal'
+    action_prior_dist = 'Normal'
+    action_approx_post_dist = 'Normal'
 
     ## PRIOR
     constant_prior = True
@@ -129,7 +129,7 @@ def get_mujoco_config(env):
 
     ## Q-VALUE ESTIMATOR
     # estimator type can be 'direct' or 'model_based'
-    estimator_type = 'direct'
+    estimator_type = 'model_based'
 
     estimator_args = {'estimator_type': estimator_type}
     estimator_args['network_args'] = {'type': 'fully_connected',
@@ -143,7 +143,7 @@ def get_mujoco_config(env):
     if estimator_type == 'model_based':
         learn_reward = True
         value_estimate = 'retrace'
-        use_euler = True
+        use_euler = False
         stochastic_state = False
         stochastic_reward = False
         model_args = {}
@@ -159,8 +159,8 @@ def get_mujoco_config(env):
                                                      'likelihood_dist': 'Normal',
                                                      'n_variables': state_size,
                                                      'stochastic': stochastic_state,
-                                                     'constant_scale': False,
-                                                     'residual_loc': True,
+                                                     'constant_scale': True,
+                                                     'residual_loc': False,
                                                      'euler_loc': use_euler}
         if use_euler:
             model_args['state_variable_args']['euler_args'] = get_euler_args(env)
@@ -177,12 +177,12 @@ def get_mujoco_config(env):
                                                           'likelihood_dist': 'Normal',
                                                           'n_variables': 1,
                                                           'stochastic': stochastic_reward,
-                                                          'constant_scale': False,
+                                                          'constant_scale': True,
                                                           'residual_loc': False}
         estimator_args['model_args'] = model_args
         estimator_args['learn_reward'] = learn_reward
         estimator_args['value_estimate'] = value_estimate
-        estimator_args['horizon'] = 2
+        estimator_args['horizon'] = 1
 
     agent_args['q_value_estimator_args'] = estimator_args
 
