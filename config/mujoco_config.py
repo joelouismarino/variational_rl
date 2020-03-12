@@ -8,7 +8,7 @@ def get_mujoco_config(env):
     """
     agent_args = {}
 
-    agent_args['misc_args'] = {'n_action_samples': 50,
+    agent_args['misc_args'] = {'n_action_samples': 10,
                                'n_q_action_samples': 1,
                                'reward_discount': 0.99,
                                'retrace_lambda': 0.9,
@@ -68,7 +68,7 @@ def get_mujoco_config(env):
 
     ## INFERENCE OPTIMIZER
     # optimizer type can be 'direct', 'iterative', 'gradient', 'non_parametric', 'cem'
-    optimizer_type = 'direct'
+    optimizer_type = 'gradient'
     optimizer_type = 'non_parametric' if action_approx_post_dist == 'Boltzmann' else optimizer_type
     use_direct_inference_optimizer = False
 
@@ -85,7 +85,7 @@ def get_mujoco_config(env):
                                                 'dropout': None,
                                                 'separate_networks': False}
     elif optimizer_type == 'iterative':
-        inf_opt_args['n_inf_iters'] = 2
+        inf_opt_args['n_inf_iters'] = 5
         agent_args['approx_post_args']['update'] = 'iterative'
         inf_opt_args['network_args'] = {'type': 'fully_connected',
                                                 'n_layers': 2,
@@ -129,16 +129,16 @@ def get_mujoco_config(env):
 
     ## Q-VALUE ESTIMATOR
     # estimator type can be 'direct' or 'model_based'
-    estimator_type = 'model_based'
+    estimator_type = 'direct'
 
     estimator_args = {'estimator_type': estimator_type}
     estimator_args['network_args'] = {'type': 'fully_connected',
                                       'n_layers': 2,
                                       'inputs': ['state', 'action'],
-                                      'n_units': 256,
-                                      'connectivity': 'sequential',
-                                      'non_linearity': 'relu',
-                                      'layer_norm': False,
+                                      'n_units': 512,
+                                      'connectivity': 'highway',
+                                      'non_linearity': 'elu',
+                                      'layer_norm': True,
                                       'dropout': None}
     if estimator_type == 'model_based':
         learn_reward = True

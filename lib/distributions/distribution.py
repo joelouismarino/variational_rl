@@ -236,6 +236,7 @@ class Distribution(nn.Module):
 
         Args:
             n_samples (int): number of samples to draw from the distribution
+            argmax (bool): whether to return the argmax sample (loc)
         """
         if (self._sample is None and not self.planning) or (n_samples != self._n_samples and not self.planning) or (self._planning_sample is None and self.planning):
             # get the appropriate distribution
