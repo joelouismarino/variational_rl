@@ -196,7 +196,7 @@ def quat_to_rmat(quaternion: torch.Tensor) -> torch.Tensor:
     tyy: torch.Tensor = ty * y
     tyz: torch.Tensor = tz * y
     tzz: torch.Tensor = tz * z
-    one: torch.Tensor = torch.tensor(1.)
+    one: torch.Tensor = torch.tensor(1., device=quaternion.device)
 
     matrix: torch.Tensor = torch.stack([
         one - (tyy + tzz), txy - twz, txz + twy,

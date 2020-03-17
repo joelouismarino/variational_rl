@@ -22,8 +22,8 @@ def get_mujoco_config(env):
     n_action_variables = env.action_space.shape[0]
 
     # distribution types: 'Uniform', 'Normal', 'TanhNormal', 'Boltzmann', 'NormalUniform'
-    action_prior_dist = 'Normal'
-    action_approx_post_dist = 'Normal'
+    action_prior_dist = 'Uniform'
+    action_approx_post_dist = 'TanhNormal'
 
     ## PRIOR
     constant_prior = True
@@ -68,7 +68,7 @@ def get_mujoco_config(env):
 
     ## INFERENCE OPTIMIZER
     # optimizer type can be 'direct', 'iterative', 'gradient', 'non_parametric', 'cem'
-    optimizer_type = 'gradient'
+    optimizer_type = 'direct'
     optimizer_type = 'non_parametric' if action_approx_post_dist == 'Boltzmann' else optimizer_type
     use_direct_inference_optimizer = False
 
@@ -129,21 +129,21 @@ def get_mujoco_config(env):
 
     ## Q-VALUE ESTIMATOR
     # estimator type can be 'direct' or 'model_based'
-    estimator_type = 'direct'
+    estimator_type = 'model_based'
 
     estimator_args = {'estimator_type': estimator_type}
     estimator_args['network_args'] = {'type': 'fully_connected',
                                       'n_layers': 2,
                                       'inputs': ['state', 'action'],
-                                      'n_units': 512,
-                                      'connectivity': 'highway',
-                                      'non_linearity': 'elu',
-                                      'layer_norm': True,
+                                      'n_units': 256,
+                                      'connectivity': 'sequential',
+                                      'non_linearity': 'relu',
+                                      'layer_norm': False,
                                       'dropout': None}
     if estimator_type == 'model_based':
         learn_reward = True
         value_estimate = 'retrace'
-        use_euler = False
+        use_euler = True
         stochastic_state = False
         stochastic_reward = False
         model_args = {}
@@ -182,7 +182,7 @@ def get_mujoco_config(env):
         estimator_args['model_args'] = model_args
         estimator_args['learn_reward'] = learn_reward
         estimator_args['value_estimate'] = value_estimate
-        estimator_args['horizon'] = 1
+        estimator_args['horizon'] = 2
 
     agent_args['q_value_estimator_args'] = estimator_args
 

@@ -10,7 +10,6 @@ class IterativeInferenceModel(nn.Module):
     Args:
         network_args (dict): network arguments for inference model
         n_inf_iters (int): number of inference iterations
-        n_inf_samples (int): number of action samples drawn during inference
     """
     def __init__(self, network_args, n_inf_iters):
         super(IterativeInferenceModel, self).__init__()

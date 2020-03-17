@@ -456,7 +456,7 @@ class Distribution(nn.Module):
         grad_dict = self.get_dist_param_grads()
         # use log-scale as input instead of scale itself
         grad_dict['scale'] = grad_dict['scale'] * param_dict['scale']
-        param_dict['scale'] = param_dict['scale'].log()
+        param_dict['scale'] = (param_dict['scale'] + 1e-6).log()
         # convert to lists
         params = [param.detach() for _, param in param_dict.items()]
         grads = [grad.detach() for _, grad in grad_dict.items()]
