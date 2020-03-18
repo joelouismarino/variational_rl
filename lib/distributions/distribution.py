@@ -274,7 +274,7 @@ class Distribution(nn.Module):
             x (torch.Tensor): the point of evaluation [batch_size * n_x_samples, n_variables]
         """
         if self.euler_loc:
-            return self.euler_loss(x)
+            return -self.euler_loss(x)
         else:
             # get the appropriate distribution
             d = self.planning_dist if self.planning else self.dist
@@ -414,8 +414,8 @@ class Distribution(nn.Module):
                 params.extend(list(self.gates[model_name].parameters()))
         # for param_name in self.initial_params:
         #     params.append(self.initial_params[param_name])
-        if self.const_scale:
-            params.append(self.log_scale)
+        # if self.const_scale:
+        #     params.append(self.log_scale)
         if 'scale' in self.param_names:
             params.append(self.min_log_scale)
             params.append(self.max_log_scale)
