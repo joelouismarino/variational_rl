@@ -256,7 +256,7 @@ class Distribution(nn.Module):
             # update the internal sample
             if self.planning:
                 self._planning_sample = sample
-                if self.residual_loc:
+                if self.residual_loc or self.euler_loc:
                     self._planning_prev_x = sample
             else:
                 self._sample = sample
