@@ -200,10 +200,9 @@ class Distribution(nn.Module):
 
             if self.const_scale:
                 log_scale = const_log_scale.repeat(input.shape[0], 1)
-                log_scale = self.max_log_scale - nn.Softplus()(self.max_log_scale - log_scale)
-                log_scale = self.min_log_scale + nn.Softplus()(log_scale - self.min_log_scale)
+                # log_scale = self.max_log_scale - nn.Softplus()(self.max_log_scale - log_scale)
+                # log_scale = self.min_log_scale + nn.Softplus()(log_scale - self.min_log_scale)
                 scale = torch.exp(log_scale)
-                # scale = torch.exp(torch.clamp(log_scale, self._log_scale_lim[0], self._log_scale_lim[1]))
                 parameters['scale'] = scale
         elif kwargs is not None:
             # Boltzmann approximate posterior
