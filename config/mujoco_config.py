@@ -133,9 +133,9 @@ def get_mujoco_config(env):
 
     # whether to use the model for value network targets
     if estimator_type == 'model_based':
-        misc_args['model_value_targets'] = True
+        agent_args['misc_args']['model_value_targets'] = True
     else:
-        misc_args['model_value_targets'] = False
+        agent_args['misc_args']['model_value_targets'] = False
 
     estimator_args = {'estimator_type': estimator_type}
     estimator_args['network_args'] = {'type': 'fully_connected',
