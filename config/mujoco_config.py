@@ -131,6 +131,12 @@ def get_mujoco_config(env):
     # estimator type can be 'direct' or 'model_based'
     estimator_type = 'model_based'
 
+    # whether to use the model for value network targets
+    if estimator_type == 'model_based':
+        misc_args['model_value_targets'] = True
+    else:
+        misc_args['model_value_targets'] = False
+
     estimator_args = {'estimator_type': estimator_type}
     estimator_args['network_args'] = {'type': 'fully_connected',
                                       'n_layers': 2,

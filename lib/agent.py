@@ -68,6 +68,7 @@ class Agent(nn.Module):
         self.postprocess_action = misc_args['postprocess_action']
         self.reward_discount = misc_args['reward_discount']
         self.retrace_lambda = misc_args['retrace_lambda']
+        self.model_value_targets = misc_args['model_value_targets']
 
         # mode (either 'train' or 'eval')
         self.mode = 'train'
