@@ -153,15 +153,23 @@ class Plotter:
             self.experiment.log_figure(figure=plt, figure_name=k + '_ts_'+str(step))
             plt.close()
 
-    def plot_eval(self, episode, step):
+    def log_eval(self, episode, step):
         """
-        Plots an evaluation episode performance.
+        Plots an evaluation episode performance. Logs the episode.
         """
+        # plot and log eval returns
         eval_return = episode['reward'].sum()
         self.experiment.log_metric('eval_cumulative_reward', eval_return, step)
         self.returns.append(eval_return.item())
         json_str = json.dumps(self.returns)
-        self.experiment.log_asset_data(json_str, file_name='eval_returns', overwrite=True)
+        self.experiment.log_asset_data(json_str, name='eval_returns', overwrite=True)
+
+        # log the episode itself
+        for ep_item_str in ['state', 'action', 'reward']:
+            ep_item = episode[ep_item_str].tolist()
+            json_str = json.dumps(ep_item)
+            item_name = 'episode_step_' + str(step) + '_' + ep_item_str
+            self.experiment.log_asset_data(json_str, name=item_name)
 
     def log_results(self, results):
         """

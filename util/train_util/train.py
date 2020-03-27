@@ -83,7 +83,7 @@ def train(agent, env, buffer, optimizer, plotter, args):
                     # evaluation
                     print('Evaluating at Step: ' + str(timestep))
                     episode, _ = collect_episode(env, agent, eval=True)
-                    plotter.plot_eval(episode, timestep)
+                    plotter.log_eval(episode, timestep)
                     print('Done.')
                 print(' Batch: ' + str(update + 1) + ' of ' + str(n_updates) + '.')
                 t_start = time.time()
