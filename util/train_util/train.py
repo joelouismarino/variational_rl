@@ -22,7 +22,7 @@ def train(agent, env, buffer, optimizer, plotter, args):
         print(' -- Collecting Episode: ' + str(n_episodes + 1))
         t_start = time.time()
         r = buffer.total_steps < n_initial_steps
-        episode, episode_length = collect_episode(env, agent, random=r)
+        episode, episode_length, _ = collect_episode(env, agent, random=r)
         plotter.plot_episode(episode, timestep)
         t_end = time.time()
         print('Duration: ' + '{:.2f}'.format(t_end - t_start) + ' s.')
@@ -82,8 +82,8 @@ def train(agent, env, buffer, optimizer, plotter, args):
                 if timestep % eval_interval == 0:
                     # evaluation
                     print('Evaluating at Step: ' + str(timestep))
-                    episode, _ = collect_episode(env, agent, eval=True)
-                    plotter.log_eval(episode, timestep)
+                    episode, _, eval_states = collect_episode(env, agent, eval=True)
+                    plotter.log_eval(episode, eval_states, timestep)
                     print('Done.')
                 print(' Batch: ' + str(update + 1) + ' of ' + str(n_updates) + '.')
                 t_start = time.time()

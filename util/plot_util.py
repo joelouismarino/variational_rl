@@ -153,9 +153,14 @@ class Plotter:
             self.experiment.log_figure(figure=plt, figure_name=k + '_ts_'+str(step))
             plt.close()
 
-    def log_eval(self, episode, step):
+    def log_eval(self, episode, eval_states, step):
         """
         Plots an evaluation episode performance. Logs the episode.
+
+        Args:
+            episode (dict): dictionary containing agent's collected episode
+            eval_states (dict): dictionary of MuJoCo simulator states
+            step (int): the current step number in training
         """
         # plot and log eval returns
         eval_return = episode['reward'].sum()
@@ -169,6 +174,13 @@ class Plotter:
             ep_item = episode[ep_item_str].tolist()
             json_str = json.dumps(ep_item)
             item_name = 'episode_step_' + str(step) + '_' + ep_item_str
+            self.experiment.log_asset_data(json_str, name=item_name)
+
+        # log the MuJoCo simulator states
+        for sim_item_str in ['qpos', 'qvel']:
+            sim_item = eval_states[sim_item_str].tolist()
+            json_str = json.dumps(sim_item)
+            item_name = 'episode_step_' + str(step) + '_' + sim_item_str
             self.experiment.log_asset_data(json_str, name=item_name)
 
     def log_results(self, results):
