@@ -69,6 +69,7 @@ class Agent(nn.Module):
         self.reward_discount = misc_args['reward_discount']
         self.retrace_lambda = misc_args['retrace_lambda']
         self.model_value_targets = misc_args['model_value_targets']
+        self.optimize_targets = misc_args['optimize_targets']
 
         # mode (either 'train' or 'eval')
         self.mode = 'train'
@@ -118,7 +119,7 @@ class Agent(nn.Module):
         # estimates the objective (value)
         kl = kl_divergence(self.approx_post, self.prior, n_samples=self.n_action_samples, sample=action).sum(dim=1, keepdim=True)
         expanded_state = state.repeat(self.n_action_samples, 1)
-        cond_log_like = self.q_value_estimator(self, expanded_state, action, detach_params=True)
+        cond_log_like = self.q_value_estimator(self, expanded_state, action, detach_params=True, target=self.optimize_targets)
         return cond_log_like - self.alphas['pi'] * kl.repeat(self.n_action_samples, 1)
 
     def step(self, state, action):

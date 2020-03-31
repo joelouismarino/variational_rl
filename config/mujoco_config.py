@@ -8,7 +8,7 @@ def get_mujoco_config(env):
     """
     agent_args = {}
 
-    agent_args['misc_args'] = {'n_action_samples': 1,
+    agent_args['misc_args'] = {'n_action_samples': 10,
                                'n_q_action_samples': 1,
                                'reward_discount': 0.99,
                                'retrace_lambda': 0.9,
@@ -130,6 +130,9 @@ def get_mujoco_config(env):
     ## Q-VALUE ESTIMATOR
     # estimator type can be 'direct' or 'model_based'
     estimator_type = 'model_based'
+
+    # whether to use target networks for policy optimization
+    agent_args['misc_args']['optimize_targets'] = True
 
     # whether to use the model for value network targets
     if estimator_type == 'model_based':
