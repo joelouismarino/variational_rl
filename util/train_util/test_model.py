@@ -91,6 +91,7 @@ def test_model(episode, agent, horizon=None):
 
     # set this back to the original value
     agent.n_action_samples = n_action_samples
+    agent.q_value_estimator.acting_mode(agent)
 
     print('Duration: ' + '{:.2f}'.format(time.time() - t_start) + ' s.')
 
