@@ -29,7 +29,7 @@ parser.add_argument('--n_initial_steps', default=5000, type=int, help='number of
 parser.add_argument('--n_pretrain_updates', default=1000, type=int, help='number of pre-training iterations for the model')
 parser.add_argument('--update_factor', default=1, type=int, help='number of updates to perform per training step')
 parser.add_argument('--checkpoint_exp_key', default=None, type=str, help='experiment key for the checkpoint to load')
-parser.add_argument('--checkpoint_interval', default=1e5, type=int, help='frequency of model checkpointing in environment steps')
+parser.add_argument('--checkpoint_interval', default=5e3, type=int, help='frequency of model checkpointing in environment steps')
 parser.add_argument('--eval_interval', default=1e3, type=int, help='frequency for evaluation in environment steps')
 # other arguments here
 args = parser.parse_args()

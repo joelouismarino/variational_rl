@@ -22,7 +22,7 @@ def n_step(q_values, rewards, kls, discount=0.99):
     """
     q_estimates = n_step_returns(q_values, rewards, kls, discount=discount)
     # get the final n-step return
-    return q_estimates[-1:]
+    return q_estimates[-1]
 
 def average_n_step(q_values, rewards, kls, discount=0.99):
     """
@@ -30,8 +30,9 @@ def average_n_step(q_values, rewards, kls, discount=0.99):
     """
     q_estimates = n_step_returns(q_values, rewards, kls, discount=discount)
     # simple average over all n-step returns
-    return q_estimates.mean(dim=0, keepdim=True)
+    return q_estimates.mean(dim=0)
 
+# TODO: output dimension is incorrect for this one
 def exp_average_n_step(q_values, rewards, kls, discount=0.99, factor=1.):
     """
     Exponential average of n-step returns.
@@ -57,7 +58,7 @@ def retrace_n_step(q_values, rewards, kls, discount=0.99, factor=0.9):
     weights = torch.cat([torch.ones_like(q_values[:1]), weights], 0)
     discounts = torch.cat([(discount*torch.ones_like(q_values[:1]))**i for i in range(q_values.shape[0])], 0)
     q_estimates = q_values[:1] + torch.sum(discounts[:-1] * torch.cumprod(weights, 0) * deltas, 0, keepdim=True)
-    return q_estimates
+    return q_estimates[0]
 
 def retrace(q_values, rewards, importance_weights=None, discount=0.99, l=0.75):
     """

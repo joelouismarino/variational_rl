@@ -1,5 +1,6 @@
 import comet_ml
 from comet_ml import Experiment
+from local_vars import PROJECT_NAME, WORKSPACE, LOGGING_API_KEY, LOADING_API_KEY
 import os, io
 import torch
 import numpy as np
@@ -29,18 +30,31 @@ def flatten_arg_dict(arg_dict):
             flat_dict[k] = v
     return flat_dict
 
-def load_checkpoint(agent, checkpoint_exp_key):
+def load_checkpoint(agent, checkpoint_exp_key, timestep=None):
     """
     Loads a checkpoint from Comet.
+
+    Args:
+        agent (Agent): the agent to be loaded
     """
     assert checkpoint_exp_key is not None, 'Checkpoint experiment key must be set.'
     print('Loading checkpoint from ' + checkpoint_exp_key + '...')
-    comet_api = comet_ml.API(rest_api_key='jHxSNRKAIOSSBP4TyRvGHfanF')
-    experiment = comet_api.get_experiment(project_name='variational_rl', workspace='joelouismarino', experiment=checkpoint_exp_key)
+    comet_api = comet_ml.API(api_key=LOADING_API_KEY)
+    experiment = comet_api.get_experiment(project_name=PROJECT_NAME,
+                                          workspace=WORKSPACE,
+                                          experiment=checkpoint_exp_key)
     asset_list = experiment.get_asset_list()
-    # get most recent checkpoint
-    asset_times = [asset['createdAt'] for asset in asset_list if 'ckpt' in asset['fileName']]
-    asset = asset_list[asset_times.index(max(asset_times))]
+    if timestep is not None:
+        # get the specified checkpoint
+        file_name = 'ckpt_step_' + str(timestep) + '.ckpt'
+        asset = [a for a in asset_list if a['fileName'] == file_name]
+        if len(asset) == 0:
+            raise KeyError('Checkpoint timestep not found.')
+        asset = asset[0]
+    else:
+        # get most recent checkpoint
+        asset_times = [asset['createdAt'] for asset in asset_list if 'ckpt' in asset['fileName']]
+        asset = asset_list[asset_times.index(max(asset_times))]
     print('Checkpoint Name:', asset['fileName'])
     ckpt = experiment.get_asset(asset['assetId'])
     state_dict = torch.load(io.BytesIO(ckpt))
@@ -57,18 +71,19 @@ class Plotter:
         agent (Agent): the agent
     """
     def __init__(self, exp_args, agent_args, agent):
-        self.experiment = Experiment(api_key='prsuXaz6RVyjfIWmbZwVjWMug',
-                                     project_name='variational-rl',
-                                     workspace="joelouismarino")
+        self.experiment = Experiment(api_key=LOGGING_API_KEY,
+                                     project_name=PROJECT_NAME,
+                                     workspace=WORKSPACE)
         self.exp_args = exp_args
         self.agent_args = agent_args
         self.agent = agent
         self.experiment.disable_mp()
         self.experiment.log_parameters(get_arg_dict(exp_args))
         self.experiment.log_parameters(flatten_arg_dict(agent_args))
+        self.experiment.log_asset_data(json.dumps(get_arg_dict(exp_args)), name='exp_args')
+        self.experiment.log_asset_data(json.dumps(agent_args), name='agent_args')
         if self.exp_args.checkpoint_exp_key is not None:
             self.load_checkpoint()
-        self.ckpt_iter = 1
         self.result_dict = None
         # keep a hard-coded list of returns in case Comet fails
         self.returns = []
@@ -126,11 +141,6 @@ class Plotter:
         Plots a newly collected episode.
         """
         self.experiment.log_metric('cumulative_reward', episode['reward'].sum(), step)
-
-        # checkpointing
-        if step >= self.ckpt_iter * self.exp_args.checkpoint_interval:
-            self.save_checkpoint(step)
-            self.ckpt_iter += 1
 
         def merge_legends():
             handles, labels = plt.gca().get_legend_handles_labels()
@@ -264,8 +274,11 @@ class Plotter:
         os.remove(ckpt_path)
         print('Done.')
 
-    def load_checkpoint(self):
+    def load_checkpoint(self, timestep=None):
         """
         Loads a checkpoint from Comet.
+
+        Args:
+            timestep (int, optional): the checkpoint timestep, default is latest
         """
-        load_checkpoint(self.agent, self.exp_args.checkpoint_exp_key)
+        load_checkpoint(self.agent, self.exp_args.checkpoint_exp_key, timestep)

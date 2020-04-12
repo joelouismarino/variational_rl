@@ -2,7 +2,6 @@ import time
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
-from util.train_util import collect_episode
 
 
 def test_model(episode, agent, horizon=None):
@@ -48,11 +47,15 @@ def test_model(episode, agent, horizon=None):
         agent.q_value_estimator.state_variable.cond_likelihood.set_prev_x(state)
         state_predictions = {'loc': [], 'scale': []}
         reward_predictions = {'loc': [], 'scale': []}
+        value_predictions = []
         state_lls = []
         reward_lls = []
         rollout_horizon = min(horizon, ep_actions.shape[0])
         for rollout_step in range(rollout_horizon):
             action = ep_actions[rollout_step:rollout_step+1]
+            # get the direct Q-value estimate
+            direct_estimate = agent.q_value_estimator.direct_estimate(agent, state, action)
+            value_predictions.append(direct_estimate.detach().cpu())
             # generate predictions
             agent.q_value_estimator.generate_state(state, action)
             agent.q_value_estimator.generate_reward(state, action)
@@ -77,6 +80,7 @@ def test_model(episode, agent, horizon=None):
                                        'scale': torch.stack(state_predictions['scale']).view(rollout_horizon, -1)}
         predictions['reward'][step] = {'loc': torch.stack(reward_predictions['loc']).view(rollout_horizon, -1),
                                        'scale': torch.stack(reward_predictions['scale']).view(rollout_horizon, -1)}
+        predictions['value'][step] = value_predictions
         log_likelihoods['state'][step] = torch.stack(state_lls)
         log_likelihoods['reward'][step] = torch.stack(reward_lls)
 

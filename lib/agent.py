@@ -82,6 +82,18 @@ class Agent(nn.Module):
         self._prev_action = self._prev_state = None
 
     def act(self, state, reward=None, done=False, action=None, valid=None, log_prob=None, eval=False):
+        """
+        The main function through which the agent interacts with the environment.
+
+        Args:
+            state (torch.Tensor): state of shape [batch_size, n_state_dims]
+            reward (torch.Tensor): reward of shape [batch_size, 1]
+            done ():
+            action (torch.Tensor): action of shape [batch_size, n_action_dims]
+            valid ():
+            log_prob (torch.Tensor): log probability of action [batch_size, 1]
+            eval (bool): whether to estimate the MAP action
+        """
         state, reward, action, done, valid, log_prob = self._change_device(state, reward, action, done, valid, log_prob)
         self.generate_prior(state)
         self.inference(state)
@@ -94,7 +106,13 @@ class Agent(nn.Module):
         return action.cpu().numpy()
 
     def generate_prior(self, state, detach_params=False):
-        # generates the action prior
+        """
+        Generates the action prior.
+
+        Args:
+            state (torch.Tensor): state of shape [batch_size, n_state_dims]
+            detach_params (bool): whether to detach the prior parameters
+        """
         if self.prior_model is not None:
             if detach_params:
                 prior_model = copy.deepcopy(self.prior_model)
@@ -106,7 +124,14 @@ class Agent(nn.Module):
             self.target_prior.step(target_prior_model(state=state), detach_params=detach_params)
 
     def inference(self, state, detach_params=False, direct=False):
-        # infers the action approximate posterior
+        """
+        Infers the action approximate posterior.
+
+        Args:
+            state (torch.Tensor): state of shape [batch_size, n_state_dims]
+            detach_params (bool): whether to detach the inference optimizer parameters
+            direct (bool): whether to use the direct inference optimizer
+        """
         if self.direct_inference_optimizer is not None:
             self.direct_approx_post.init(self.prior)
             self.direct_inference_optimizer(self, state, detach_params=detach_params, direct=True)
@@ -116,20 +141,36 @@ class Agent(nn.Module):
             self.inference_optimizer(self, state, detach_params=detach_params)
 
     def estimate_objective(self, state, action):
-        # estimates the objective (value)
+        """
+        Estimates the objective (state-value).
+
+        Args:
+            state (torch.Tensor): state of shape [batch_size, n_state_dims]
+            actions (torch.Tensor): action of shape [n_action_samples * batch_size, n_action_dims]
+
+        Returns objective estimate of shape [n_action_samples * batch_size, 1]
+        """
         kl = kl_divergence(self.approx_post, self.prior, n_samples=self.n_action_samples, sample=action).sum(dim=1, keepdim=True)
         expanded_state = state.repeat(self.n_action_samples, 1)
         cond_log_like = self.q_value_estimator(self, expanded_state, action, detach_params=True, target=self.optimize_targets)
         return cond_log_like - self.alphas['pi'] * kl.repeat(self.n_action_samples, 1)
 
     def step(self, state, action):
-        # updates the previous state and action (for state and reward prediction)
+        """
+        Updates the previous state and action (for state and reward prediction).
+
+        Args:
+            state (torch.Tensor): state of shape [batch_size, n_state_dims]
+            action (torch.Tensor): action of shape [batch_size, n_action_dims]
+        """
         action = action.tanh() if self.postprocess_action and self.mode == 'eval' else action
         self._prev_action = action; self._prev_state = state
         self.q_value_estimator.set_prev_state(state)
 
     def evaluate(self):
-        # evaluate the objective, collect various metrics for reporting
+        """
+        Evaluate the objective, collect various metrics for reporting.
+        """
         objective = self.collector.evaluate()
         objective.backward()
         results = {}

@@ -17,7 +17,7 @@ def get_mujoco_config(env):
                                # RERPI epsilons: pi=0.1, loc=5e-4, scale=1e-5
                                # use pi=None for SAC heuristic
 
-    state_size = np.prod(env.observation_space.shape)
+    state_size = int(np.prod(env.observation_space.shape))
     agent_args['misc_args']['state_size'] = state_size
     n_action_variables = env.action_space.shape[0]
 
@@ -129,7 +129,7 @@ def get_mujoco_config(env):
 
     ## Q-VALUE ESTIMATOR
     # estimator type can be 'direct' or 'model_based'
-    estimator_type = 'model_based'
+    estimator_type = 'direct'
 
     # whether to use target networks for policy optimization
     agent_args['misc_args']['optimize_targets'] = True
@@ -142,12 +142,12 @@ def get_mujoco_config(env):
 
     estimator_args = {'estimator_type': estimator_type}
     estimator_args['network_args'] = {'type': 'fully_connected',
-                                      'n_layers': 2,
+                                      'n_layers': 3,
                                       'inputs': ['state', 'action'],
-                                      'n_units': 256,
-                                      'connectivity': 'sequential',
-                                      'non_linearity': 'relu',
-                                      'layer_norm': False,
+                                      'n_units': 512,
+                                      'connectivity': 'highway',
+                                      'non_linearity': 'elu',
+                                      'layer_norm': True,
                                       'dropout': None}
     if estimator_type == 'model_based':
         learn_reward = True

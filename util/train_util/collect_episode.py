@@ -11,28 +11,28 @@ def collect_episode(env, agent, random=False, eval=False):
         agent (Agent): the agent
         random (bool): whether to use random actions
         eval (bool): whether to evaluate the agent
+
+    Returns episode (dict), n_steps (int), and env_states (dict).
     """
     agent.reset(); agent.eval()
     state = env.reset()
     reward = 0.
     done = False
     n_steps = 0
-    eval_states = {'qpos': [], 'qvel': []}
+    env_states = {'qpos': [], 'qvel': []}
 
     while not done:
         if n_steps > 1000:
             break
-        if eval:
-            eval_states['qpos'].append(copy.deepcopy(env.sim.data.qpos))
-            eval_states['qvel'].append(copy.deepcopy(env.sim.data.qvel))
+        env_states['qpos'].append(copy.deepcopy(env.sim.data.qpos))
+        env_states['qvel'].append(copy.deepcopy(env.sim.data.qvel))
         action = env.action_space.sample() if random else None
         action = agent.act(state, reward, done, action, eval=eval)
         state, reward, done, _ = env.step(action)
         n_steps += 1
-    if eval:
-        eval_states['qpos'].append(copy.deepcopy(env.sim.data.qpos))
-        eval_states['qvel'].append(copy.deepcopy(env.sim.data.qvel))
-        eval_states['qpos'] = np.stack(eval_states['qpos'])
-        eval_states['qvel'] = np.stack(eval_states['qvel'])
+    env_states['qpos'].append(copy.deepcopy(env.sim.data.qpos))
+    env_states['qvel'].append(copy.deepcopy(env.sim.data.qvel))
+    env_states['qpos'] = np.stack(env_states['qpos'])
+    env_states['qvel'] = np.stack(env_states['qvel'])
     agent.act(state, reward, done)
-    return agent.collector.get_episode(), n_steps, eval_states
+    return agent.collector.get_episode(), n_steps, env_states

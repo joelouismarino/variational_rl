@@ -57,6 +57,8 @@ class ModelBasedEstimator(nn.Module):
             both (bool): whether to return both values (or the min value)
             detach_params (bool): whether to use detached (copied) parameters
             direct (bool): whether to get the direct (network) estimate
+
+        Returns a Q-value estimate of shape [n_action_samples * batch_size, 1]
         """
         if direct:
             return self.direct_estimate(agent, state, action, target, both, detach_params)
