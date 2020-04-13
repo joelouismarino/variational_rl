@@ -39,7 +39,7 @@ def estimate_monte_carlo_return(env, agent, env_state, state, action, n_samples)
         state, reward, done, _ = env.step(initial_action)
         # rollout the environment, get return
         rewards = [reward.view(-1).numpy()]
-        kls = []
+        kls = [np.zeros(1)]
         while not done:
             action = agent.act(state, reward, done, action)
             state, reward, done, _ = env.step(action)
@@ -48,8 +48,8 @@ def estimate_monte_carlo_return(env, agent, env_state, state, action, n_samples)
             kls.append(kl.view(-1).detach().numpy())
         rewards = np.stack(rewards)
         kls = np.stack(kls)
-        discounts = np.cumprod(agent.reward_discount * np.ones(kls.shape)).reshape(-1, 1)
-        rewards[1:] = discounts * (rewards[1:] - agent.alphas['pi'].numpy() * kls)
+        discounts = np.concatenate([np.ones(1), np.cumprod(agent.reward_discount * np.ones(kls.shape))])[:-1].reshape(-1, 1)
+        rewards = discounts * (rewards - agent.alphas['pi'].numpy() * kls)
         sample_return = np.sum(rewards)
         returns[return_sample] = sample_return
     return returns
