@@ -33,6 +33,7 @@ def estimate_monte_carlo_return(env, agent, env_state, state, action, n_samples)
             print('     Sample ' + str(return_sample+1) + ' of  ' + str(n_samples) + '.')
         agent.reset(); agent.eval()
         # set the environment
+        env.reset()
         qpos, qvel = env_state
         env.set_state(qpos=qpos, qvel=qvel)
         state, reward, done, _ = env.step(initial_action)
