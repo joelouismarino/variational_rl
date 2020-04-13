@@ -4,6 +4,7 @@ import json
 import torch
 import copy
 from lib import create_agent
+from lib.distributions import kl_divergence
 from util.env_util import create_env
 from util.train_util import collect_episode
 from util.plot_util import load_checkpoint
@@ -36,18 +37,19 @@ def estimate_monte_carlo_return(env, agent, env_state, state, action, n_samples)
         env.set_state(qpos=qpos, qvel=qvel)
         state, reward, done, _ = env.step(initial_action)
         # rollout the environment, get return
-        rewards = [reward]
-        log_probs = []
+        rewards = [reward.view(-1).numpy()]
+        kls = []
         while not done:
             action = agent.act(state, reward, done, action)
             state, reward, done, _ = env.step(action)
-            rewards.append(reward)
-        # note: assuming uniform action prior
+            rewards.append(reward.view(-1).numpy())
+            kl = kl_divergence(agent.approx_post, agent.prior, n_samples=agent.n_action_samples).sum(dim=1, keepdim=True)
+            kls.append(kl.view(-1).detach().numpy())
         rewards = np.stack(rewards)
-        kls = np.stack(agent.collector.episode['log_prob']) - np.log(0.5)
-        rewards[1:] = rewards[1:] - agent.alphas['pi'].numpy() * kls
-        discounts = np.cumprod(agent.reward_discount * np.ones(kls.shape))
-        sample_return = np.sum(discounts * rewards)
+        kls = np.stack(kls)
+        discounts = np.cumprod(agent.reward_discount * np.ones(kls.shape)).reshape(-1, 1)
+        rewards[1:] = discounts * (rewards[1:] - agent.alphas['pi'].numpy() * kls)
+        sample_return = np.sum(rewards)
         returns[return_sample] = sample_return
     return returns
 
