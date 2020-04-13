@@ -20,8 +20,8 @@ def estimate_monte_carlo_return(env, agent, env_state, state, action, n_samples)
         env (gym.Env): the environment
         agent (Agent): the agent
         env_state (tuple): the environment state from MuJoCo (qpos, qvel)
-        state (np.array): the environment state from gym
-        action (torch.Tensor): the action
+        state (torch.Tensor): the environment state from gym of size [1, n_state_dims]
+        action (np.array): the action of size [1, n_action_dims]
         n_samples (int): the number of Monte Carlo roll-outs
 
     Returns numpy array of returns of size [n_samples].
@@ -45,11 +45,11 @@ def estimate_monte_carlo_return(env, agent, env_state, state, action, n_samples)
             state, reward, done, _ = env.step(action)
             rewards.append(reward.view(-1).numpy())
             kl = kl_divergence(agent.approx_post, agent.prior, n_samples=agent.n_action_samples).sum(dim=1, keepdim=True)
-            kls.append(kl.view(-1).detach().numpy())
+            kls.append(kl.view(-1).detach().cpu().numpy())
         rewards = np.stack(rewards)
         kls = np.stack(kls)
         discounts = np.concatenate([np.ones(1), np.cumprod(agent.reward_discount * np.ones(kls.shape))])[:-1].reshape(-1, 1)
-        rewards = discounts * (rewards - agent.alphas['pi'].numpy() * kls)
+        rewards = discounts * (rewards - agent.alphas['pi'].cpu().numpy() * kls)
         sample_return = np.sum(rewards)
         returns[return_sample] = sample_return
     return returns
@@ -59,19 +59,20 @@ def get_agent_value_estimate(agent, state, action):
     Obtains the agent's value estimate for a particular state and action.
 
     Args:
-        state (np.array):
-        action ():
+        state (torch.Tensor): state of size [batch_size, n_state_dims]
+        action (torch.Tensor): action of size [batch_size, n_action_dims]
 
     Returns a dictionary of action-value estimates:
-        direct: the estimate using the Q-network
-        estimate: the full estimate (using the model)
+        direct: the estimate using the Q-network, size [batch_size]
+        estimate: the full estimate (using the model), size [batch_size]
     """
     agent.reset(); agent.eval()
-    direct_estimate = agent.q_value_estimator(agent, state, action, direct=True).detach().view(-1).numpy()
-    estimate = agent.q_value_estimator(agent, state, action).detach().view(-1).numpy()
+    state = state.to(agent.device); action = action.to(agent.device)
+    direct_estimate = agent.q_value_estimator(agent, state, action, direct=True).detach().view(-1).cpu().numpy()
+    estimate = agent.q_value_estimator(agent, state, action).detach().view(-1).cpu().numpy()
     return {'direct': direct_estimate, 'estimate': estimate}
 
-def evaluate_estimator(exp_key, n_state_action, n_mc_samples):
+def evaluate_estimator(exp_key, n_state_action, n_mc_samples, device_id=None):
     """
     Evaluates the value estimator of a cached experiment throughout learning.
 
@@ -120,7 +121,7 @@ def evaluate_estimator(exp_key, n_state_action, n_mc_samples):
         # if we've saved the agent config dict, load it
         agent_args = experiment.get_asset(agent_config_asset_list[0]['assetId'])
         agent_args = json.loads(agent_args)
-    agent = create_agent(env, agent_args=agent_args)[0]
+    agent = create_agent(env, agent_args=agent_args, device_id=device_id)[0]
     # get the list of checkpoint timesteps
     ckpt_asset_list = [a for a in asset_list if 'ckpt' in a['fileName']]
     ckpt_asset_names = [a['fileName'] for a in ckpt_asset_list]
