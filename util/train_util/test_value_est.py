@@ -3,6 +3,7 @@ import numpy as np
 import json
 import torch
 import copy
+import time
 from lib import create_agent
 from lib.distributions import kl_divergence
 from util.env_util import create_env
@@ -136,13 +137,15 @@ def evaluate_estimator(exp_key, n_state_action, n_mc_samples, device_id=None):
         load_checkpoint(agent, exp_key, ckpt_timestep)
         # get value estimate and estimate returns for the state-action pairs
         for sa_ind, (env_state, state, act) in enumerate(zip(sa_pairs['env_states'], sa_pairs['states'], sa_pairs['actions'])):
-            if sa_ind % 1 == 0:
-                print('  Evaluating state-action pair ' + str(sa_ind + 1) + ' of ' + str(len(sa_pairs['states'])))
+            t_start = time.time()
             action_value_estimate = get_agent_value_estimate(agent, state, act)
             value_estimates[ckpt_ind, sa_ind, :] = action_value_estimate['estimate']
             direct_value_estimates[ckpt_ind, sa_ind, :] = action_value_estimate['direct']
             returns = estimate_monte_carlo_return(env, agent, env_state, state, act, n_mc_samples)
             mc_estimates[ckpt_ind, sa_ind, :] = returns
+            if sa_ind % 1 == 0:
+                print('  Evaluated ' + str(sa_ind + 1) + ' of ' + str(len(sa_pairs['states'])) + ' state-action pairs.')
+                print('  Duration: ' + '{:.2f}'.format(time.time() - t_start) + ' s / state-action pair.')
 
     # TODO: log the value estimates to comet (need to json-ify the numpy arrays)
     # prev_exp = comet_ml.ExistingExperiment(api_key=LOGGING_API_KEY,
