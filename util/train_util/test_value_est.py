@@ -4,15 +4,17 @@ import json
 import torch
 import copy
 import time
+import math
 from lib import create_agent
 from lib.distributions import kl_divergence
-from util.env_util import create_env
+from util.env_util import create_env, SynchronousEnv
 from util.train_util import collect_episode
 from util.plot_util import load_checkpoint
 from local_vars import PROJECT_NAME, WORKSPACE, LOADING_API_KEY, LOGGING_API_KEY
 
+ROLLOUT_BATCH_SIZE = 100
 
-def estimate_monte_carlo_return(env, agent, env_state, state, action, n_samples):
+def estimate_monte_carlo_return(env, agent, env_state, state, action, n_batches):
     """
     Estimates the discounted Monte Carlo return (including KL) for a policy from
     a state-action pair.
@@ -23,16 +25,20 @@ def estimate_monte_carlo_return(env, agent, env_state, state, action, n_samples)
         env_state (tuple): the environment state from MuJoCo (qpos, qvel)
         state
         action (np.array): the action of size [1, n_action_dims]
-        n_samples (int): the number of Monte Carlo roll-outs
+        n_batches (int): the number of batches of Monte Carlo roll-outs
 
-    Returns numpy array of returns of size [n_samples].
+    Returns numpy array of returns of size [n_batches * ROLLOUT_BATCH_SIZE].
     """
-    returns = np.zeros(n_samples)
-    initial_action = action.numpy()
-    for return_sample in range(n_samples):
-        if return_sample % 100 == 0:
-            print('     Sample ' + str(return_sample+1) + ' of  ' + str(n_samples) + '.')
-        agent.reset(); agent.eval()
+    total_samples = n_batches * ROLLOUT_BATCH_SIZE
+    returns = np.zeros(total_samples)
+    initial_action = action.repeat(ROLLOUT_BATCH_SIZE, 1).numpy()
+    # create a synchronous environment to perform ROLLOUT_BATCH_SIZE roll-outs
+    env = SynchronousEnv(env, ROLLOUT_BATCH_SIZE)
+
+    for return_batch_num in range(n_batches):
+        if return_batch_num % 1 == 0:
+            print('     Batch ' + str(return_batch_num+1) + ' of ' + str(n_batches) + '.')
+        agent.reset(batch_size=ROLLOUT_BATCH_SIZE); agent.eval()
         # set the environment
         env.reset()
         qpos, qvel = env_state
@@ -40,20 +46,21 @@ def estimate_monte_carlo_return(env, agent, env_state, state, action, n_samples)
         state, reward, done, _ = env.step(initial_action)
         # rollout the environment, get return
         rewards = [reward.view(-1).numpy()]
-        kls = [np.zeros(1)]
-        while not done:
+        kls = [np.zeros(ROLLOUT_BATCH_SIZE)]
+        while not done.prod():
             action = agent.act(state, reward, done)
             state, reward, done, _ = env.step(action)
-            rewards.append(reward.view(-1).numpy())
+            rewards.append(((1 - done) * reward).view(-1).numpy())
             kl = kl_divergence(agent.approx_post, agent.prior, n_samples=agent.n_action_samples).sum(dim=1, keepdim=True)
-            kls.append(kl.view(-1).detach().cpu().numpy())
-        import ipdb; ipdb.set_trace()
+            kls.append(((1 - done) * kl).view(-1).detach().cpu().numpy())
         rewards = np.stack(rewards)
         kls = np.stack(kls)
-        discounts = np.concatenate([np.ones(1), np.cumprod(agent.reward_discount * np.ones(kls.shape))])[:-1].reshape(-1, 1)
+        discounts = np.cumprod(agent.reward_discount * np.ones(kls.shape), axis=0)
+        discounts = np.concatenate([np.ones((1, ROLLOUT_BATCH_SIZE)), discounts])[:-1].reshape(-1, ROLLOUT_BATCH_SIZE)
         rewards = discounts * (rewards - agent.alphas['pi'].cpu().numpy() * kls)
-        sample_return = np.sum(rewards)
-        returns[return_sample] = sample_return
+        sample_returns = np.sum(rewards, axis=0)
+        sample_ind = return_batch_num * ROLLOUT_BATCH_SIZE
+        returns[sample_ind:sample_ind + ROLLOUT_BATCH_SIZE] = sample_returns
     return returns
 
 def get_agent_value_estimate(agent, state, action):
@@ -102,7 +109,7 @@ def evaluate_estimator(exp_key, n_state_action, n_mc_samples, device_id=None):
     env = create_env(env_name)
 
     # collect state-action samples using random policy
-    print('Collecting ' + str(n_mc_samples) + ' state-action pairs...')
+    print('Collecting ' + str(n_state_action) + ' state-action pairs...')
     sa_pairs = {'states': [], 'env_states': [], 'actions': []}
     state = env.reset()
     env_state = (copy.deepcopy(env.sim.data.qpos), copy.deepcopy(env.sim.data.qvel))
@@ -129,11 +136,16 @@ def evaluate_estimator(exp_key, n_state_action, n_mc_samples, device_id=None):
     ckpt_asset_list = [a for a in asset_list if 'ckpt' in a['fileName']]
     ckpt_asset_names = [a['fileName'] for a in ckpt_asset_list]
     ckpt_timesteps = [int(s.split('ckpt_step_')[1].split('.ckpt')[0]) for s in ckpt_asset_names]
+
+    # convert n_mc_samples to a round number of batches
+    n_batches = math.ceil(n_mc_samples / ROLLOUT_BATCH_SIZE)
+    n_mc_samples = ROLLOUT_BATCH_SIZE * n_batches
+
     value_estimates = np.zeros((len(ckpt_timesteps), n_state_action, 1))
     direct_value_estimates = np.zeros((len(ckpt_timesteps), n_state_action, 1))
     mc_estimates = np.zeros((len(ckpt_timesteps), n_state_action, n_mc_samples))
     # iterate over checkpoint timesteps, evaluating
-    for ckpt_ind, ckpt_timestep in enumerate(ckpt_timesteps[-1:]):
+    for ckpt_ind, ckpt_timestep in enumerate(ckpt_timesteps):
         # load the checkpoint
         print('Evaluating checkpoint ' + str(ckpt_ind + 1) + ' of ' + str(len(ckpt_timesteps)))
         load_checkpoint(agent, exp_key, ckpt_timestep)
@@ -143,7 +155,7 @@ def evaluate_estimator(exp_key, n_state_action, n_mc_samples, device_id=None):
             action_value_estimate = get_agent_value_estimate(agent, state, act)
             value_estimates[ckpt_ind, sa_ind, :] = action_value_estimate['estimate']
             direct_value_estimates[ckpt_ind, sa_ind, :] = action_value_estimate['direct']
-            returns = estimate_monte_carlo_return(env, agent, env_state, state, act, n_mc_samples)
+            returns = estimate_monte_carlo_return(env, agent, env_state, state, act, n_batches)
             mc_estimates[ckpt_ind, sa_ind, :] = returns
             if sa_ind % 1 == 0:
                 print('  Evaluated ' + str(sa_ind + 1) + ' of ' + str(len(sa_pairs['states'])) + ' state-action pairs.')

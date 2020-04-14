@@ -94,7 +94,7 @@ class Collector:
         """
         Collect the variables for this step of the episode.
         """
-        if not done:
+        if not done.prod():
             # get relevant variables
             self.episode['state'].append(state)
             self.episode['action'].append(action)

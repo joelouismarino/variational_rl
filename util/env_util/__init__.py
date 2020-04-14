@@ -2,6 +2,7 @@ import gym
 from gym import wrappers
 from .registration import register_env
 from .wrappers import action_wrappers, observation_wrappers, reward_wrappers
+from .synchronous_env import SynchronousEnv
 
 
 def get_env_types():
