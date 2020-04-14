@@ -41,7 +41,7 @@ class Optimizer(object):
         self.policy_update = policy_update
         self._n_steps = 0
 
-    def apply(self, model_only=False):
+    def apply(self, model_only=False, critic_only=False, actor_only=False):
 
         # divide optimizer gradients by number of inference iterations and batch size
         if 'inference_optimizer' in self.parameters.keys():
@@ -62,9 +62,11 @@ class Optimizer(object):
             if 'target' in model_name:
                 # do not update the target models with gradients
                 continue
-            elif model_name not in ['state_likelihood_model', 'reward_likelihood_model', 'q_value_models'] and model_only:
-            # elif model_name not in ['state_likelihood_model', 'reward_likelihood_model'] and model_only:
-                # if we only want to train the model, then skip the others
+            elif model_name not in ['state_likelihood_model', 'reward_likelihood_model'] and model_only:
+                continue
+            elif model_name not in ['q_value_models'] and critic_only:
+                continue
+            elif model_name not in ['inference_optimizer', 'prior'] and actor_only:
                 continue
             opt.step()
 
@@ -89,6 +91,7 @@ class Optimizer(object):
                 else:
                     target_param.data.copy_(self.value_tau * current_param.data + (1. - self.value_tau) * target_param.data)
 
+        # TODO: only update this when updating the critic?
         self._n_steps += 1
 
     def zero_grad(self):

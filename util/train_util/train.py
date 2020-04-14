@@ -15,6 +15,7 @@ def train(agent, env, buffer, optimizer, plotter, args):
     model_trained = False
     n_pretrain_updates = args.n_pretrain_updates
     eval_interval = args.eval_interval
+    critic_delay = args.critic_delay
     assert args.n_initial_steps >= buffer.batch_size * buffer.sequence_length
 
     while timestep < args.n_total_steps:
@@ -66,6 +67,11 @@ def train(agent, env, buffer, optimizer, plotter, args):
                     plotter.save_checkpoint(timestep)
                     print('Done.')
                 print(' Batch: ' + str(update + 1) + ' of ' + str(n_updates) + '.')
+                # update the critic
+                for critic_update in range(critic_delay):
+                    batch = buffer.sample()
+                    results = train_batch(agent, batch, optimizer, model_only=True)
+                # actor (and currently, critic) update
                 t_start = time.time()
                 batch = buffer.sample()
                 results = train_batch(agent, batch, optimizer)

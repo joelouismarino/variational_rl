@@ -21,7 +21,7 @@ def estimate_monte_carlo_return(env, agent, env_state, state, action, n_samples)
         env (gym.Env): the environment
         agent (Agent): the agent
         env_state (tuple): the environment state from MuJoCo (qpos, qvel)
-        state (torch.Tensor): the environment state from gym of size [1, n_state_dims]
+        state
         action (np.array): the action of size [1, n_action_dims]
         n_samples (int): the number of Monte Carlo roll-outs
 
@@ -42,11 +42,12 @@ def estimate_monte_carlo_return(env, agent, env_state, state, action, n_samples)
         rewards = [reward.view(-1).numpy()]
         kls = [np.zeros(1)]
         while not done:
-            action = agent.act(state, reward, done, action)
+            action = agent.act(state, reward, done)
             state, reward, done, _ = env.step(action)
             rewards.append(reward.view(-1).numpy())
             kl = kl_divergence(agent.approx_post, agent.prior, n_samples=agent.n_action_samples).sum(dim=1, keepdim=True)
             kls.append(kl.view(-1).detach().cpu().numpy())
+        import ipdb; ipdb.set_trace()
         rewards = np.stack(rewards)
         kls = np.stack(kls)
         discounts = np.concatenate([np.ones(1), np.cumprod(agent.reward_discount * np.ones(kls.shape))])[:-1].reshape(-1, 1)
@@ -84,6 +85,7 @@ def evaluate_estimator(exp_key, n_state_action, n_mc_samples, device_id=None):
                             environment returns
 
     Returns dictionary containing:
+                ckpt_timesteps [n_ckpts]
                 value_estimates [n_ckpts, n_state_action, 1],
                 direct_value_estimates [n_ckpts, n_state_action, 1]
                 mc_estimates [n_ckpts, n_state_action, n_mc_samples]
@@ -131,7 +133,7 @@ def evaluate_estimator(exp_key, n_state_action, n_mc_samples, device_id=None):
     direct_value_estimates = np.zeros((len(ckpt_timesteps), n_state_action, 1))
     mc_estimates = np.zeros((len(ckpt_timesteps), n_state_action, n_mc_samples))
     # iterate over checkpoint timesteps, evaluating
-    for ckpt_ind, ckpt_timestep in enumerate(ckpt_timesteps):
+    for ckpt_ind, ckpt_timestep in enumerate(ckpt_timesteps[-1:]):
         # load the checkpoint
         print('Evaluating checkpoint ' + str(ckpt_ind + 1) + ' of ' + str(len(ckpt_timesteps)))
         load_checkpoint(agent, exp_key, ckpt_timestep)
@@ -154,6 +156,7 @@ def evaluate_estimator(exp_key, n_state_action, n_mc_samples, device_id=None):
     # prev_exp.log_asset_data(direct_value_estimates, name='direct_value_estimates')
     # prev_exp.log_asset_data(mc_estimates, name='mc_estimates')
 
-    return {'value_estimates': value_estimates,
+    return {'ckpt_timesteps': ckpt_timesteps,
+            'value_estimates': value_estimates,
             'direct_value_estimates': direct_value_estimates,
             'mc_estimates': mc_estimates}
