@@ -47,12 +47,16 @@ def estimate_monte_carlo_return(env, agent, env_state, state, action, n_batches)
         # rollout the environment, get return
         rewards = [reward.view(-1).numpy()]
         kls = [np.zeros(ROLLOUT_BATCH_SIZE)]
+        n_steps = 1
         while not done.prod():
+            if n_steps > 1000:
+                break
             action = agent.act(state, reward, done)
             state, reward, done, _ = env.step(action)
             rewards.append(((1 - done) * reward).view(-1).numpy())
             kl = kl_divergence(agent.approx_post, agent.prior, n_samples=agent.n_action_samples).sum(dim=1, keepdim=True)
-            kls.append(((1 - done) * kl).view(-1).detach().cpu().numpy())
+            kls.append(((1 - done) * kl.detach().cpu()).view(-1).numpy())
+            n_steps += 1
         rewards = np.stack(rewards)
         kls = np.stack(kls)
         discounts = np.cumprod(agent.reward_discount * np.ones(kls.shape), axis=0)
