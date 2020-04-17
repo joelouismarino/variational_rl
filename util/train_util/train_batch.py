@@ -1,5 +1,5 @@
 
-def train_batch(agent, data, optimizer, model_only=False):
+def train_batch(agent, data, optimizer, model_only=False, critic_only=False):
     """
     Trains the agent on the data using the optimizer.
     """
@@ -20,5 +20,5 @@ def train_batch(agent, data, optimizer, model_only=False):
         agent.act(state[step], reward[step], done[step], action[step], valid[step], log_prob[step])
     # M-step
     results = agent.evaluate()
-    optimizer.apply(model_only=model_only)
+    optimizer.apply(model_only=model_only, critic_only=critic_only)
     return results

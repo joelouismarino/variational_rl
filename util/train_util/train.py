@@ -67,11 +67,11 @@ def train(agent, env, buffer, optimizer, plotter, args):
                     plotter.save_checkpoint(timestep)
                     print('Done.')
                 print(' Batch: ' + str(update + 1) + ' of ' + str(n_updates) + '.')
-                # update the critic
+                # update the critic (Q-network + model)
                 for critic_update in range(critic_delay):
                     batch = buffer.sample()
-                    results = train_batch(agent, batch, optimizer, model_only=True)
-                # actor (and currently, critic) update
+                    results = train_batch(agent, batch, optimizer, critic_only=True)
+                # actor (and critic) update
                 t_start = time.time()
                 batch = buffer.sample()
                 results = train_batch(agent, batch, optimizer)

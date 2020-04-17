@@ -41,8 +41,14 @@ class Optimizer(object):
         self.policy_update = policy_update
         self._n_steps = 0
 
-    def apply(self, model_only=False, critic_only=False, actor_only=False):
+    def apply(self, model_only=False, critic_only=False):
+        """
+        Applies the gradients to each model in the agent.
 
+        Args:
+            model_only (bool): whether to only update the model (state, reward)
+            critic_only (bool): whether to only update the model and Q-networks
+        """
         # divide optimizer gradients by number of inference iterations and batch size
         if 'inference_optimizer' in self.parameters.keys():
             params = self.parameters['inference_optimizer']
@@ -63,10 +69,10 @@ class Optimizer(object):
                 # do not update the target models with gradients
                 continue
             elif model_name not in ['state_likelihood_model', 'reward_likelihood_model'] and model_only:
+                # we're only updating state and reward likelihood models
                 continue
-            elif model_name not in ['q_value_models'] and critic_only:
-                continue
-            elif model_name not in ['inference_optimizer', 'prior'] and actor_only:
+            elif model_name not in ['state_likelihood_model', 'reward_likelihood_model', 'q_value_models'] and critic_only:
+                # we're only updating components of the critic
                 continue
             opt.step()
 
@@ -91,8 +97,8 @@ class Optimizer(object):
                 else:
                     target_param.data.copy_(self.value_tau * current_param.data + (1. - self.value_tau) * target_param.data)
 
-        # TODO: only update this when updating the critic?
-        self._n_steps += 1
+        if not model_only:
+            self._n_steps += 1
 
     def zero_grad(self):
         for _, opt in self.opt.items():
