@@ -16,6 +16,7 @@ def train(agent, env, buffer, optimizer, plotter, args):
     n_pretrain_updates = args.n_pretrain_updates
     eval_interval = args.eval_interval
     critic_delay = args.critic_delay
+    ckpt_interval = args.checkpoint_interval
     assert args.n_initial_steps >= buffer.batch_size * buffer.sequence_length
 
     while timestep < args.n_total_steps:
