@@ -13,6 +13,7 @@ from util.plot_util import load_checkpoint
 from local_vars import PROJECT_NAME, WORKSPACE, LOADING_API_KEY, LOGGING_API_KEY
 
 ROLLOUT_BATCH_SIZE = 100
+CKPT_SUBSAMPLE = 5
 
 def estimate_monte_carlo_return(env, agent, env_state, state, action, n_batches):
     """
@@ -149,7 +150,8 @@ def evaluate_estimator(exp_key, n_state_action, n_mc_samples, device_id=None):
     value_estimates = np.zeros((len(ckpt_timesteps), n_state_action, 1))
     direct_value_estimates = np.zeros((len(ckpt_timesteps), n_state_action, 1))
     mc_estimates = np.zeros((len(ckpt_timesteps), n_state_action, n_mc_samples))
-    # iterate over checkpoint timesteps, evaluating
+    # iterate over sub-sampled checkpoint timesteps, evaluating
+    ckpt_timesteps = list(np.sort(ckpt_timesteps)[::CKPT_SUBSAMPLE])
     for ckpt_ind, ckpt_timestep in enumerate(ckpt_timesteps):
         # load the checkpoint
         print('Evaluating checkpoint ' + str(ckpt_ind + 1) + ' of ' + str(len(ckpt_timesteps)))
