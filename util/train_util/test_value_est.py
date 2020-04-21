@@ -135,6 +135,7 @@ def evaluate_estimator(exp_key, n_state_action, n_mc_samples, device_id=None):
         # if we've saved the agent config dict, load it
         agent_args = experiment.get_asset(agent_config_asset_list[0]['assetId'])
         agent_args = json.loads(agent_args)
+        agent_args = agent_args if 'opt_type' in agent_args['inference_optimizer_args'] else None
     agent = create_agent(env, agent_args=agent_args, device_id=device_id)[0]
     # get the list of checkpoint timesteps
     ckpt_asset_list = [a for a in asset_list if 'ckpt' in a['fileName']]
