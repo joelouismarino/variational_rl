@@ -1,3 +1,4 @@
+import copy
 from .direct import DirectInferenceModel
 from .iterative import IterativeInferenceModel
 from .gradient import GradientBasedInference
@@ -5,16 +6,17 @@ from .cem import CEMInference
 from .non_parametric import NonParametricInference
 
 def get_inference_optimizer(kwargs):
-    opt_type = kwargs.pop('opt_type')
+    new_kwargs = copy.deepcopy(kwargs)
+    opt_type = new_kwargs.pop('opt_type')
     if opt_type == 'direct':
-        return DirectInferenceModel(**kwargs)
+        return DirectInferenceModel(**new_kwargs)
     elif opt_type == 'iterative':
-        return IterativeInferenceModel(**kwargs)
+        return IterativeInferenceModel(**new_kwargs)
     elif opt_type == 'gradient':
-        return GradientBasedInference(**kwargs)
+        return GradientBasedInference(**new_kwargs)
     elif opt_type == 'cem':
-        return CEMInference(**kwargs)
+        return CEMInference(**new_kwargs)
     elif opt_type == 'non_parametric':
-        return NonParametricInference(**kwargs)
+        return NonParametricInference(**new_kwargs)
     else:
         raise NotImplementedError
