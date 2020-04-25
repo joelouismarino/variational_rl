@@ -74,8 +74,8 @@ class Collector:
         self._collect_kl_objectives(on_policy_action.detach(), valid, done)
         # collect alpha objectives
         self._collect_alpha_objectives(valid, done)
-        # collect q-value estimator objectives
-        self._get_q_value_est_objectives(state, off_policy_action, on_policy_action.detach(), reward, valid, done)
+        # collect value estimator objectives
+        self._get_value_est_objectives(state, off_policy_action, on_policy_action.detach(), reward, valid, done)
         # collect log probabilities
         self._collect_log_probs(off_policy_action, log_prob, valid)
         # collect log-scale limit objectives
@@ -242,19 +242,27 @@ class Collector:
         self.objectives['log_scale'].append(objective)
         self.metrics['log_scale_loss']['loss'].append(objective.detach())
 
-    def _get_q_value_est_objectives(self, state, off_policy_action, on_policy_action,
+    def _get_value_est_objectives(self, state, off_policy_action, on_policy_action,
                                     reward, valid, done):
         """
-        Collects the online objectives for the Q-value estimator.
+        Collects the online objectives for the value estimator(s).
         """
         # collect the q-values for the off-policy action
         off_policy_q_values = self.agent.q_value_estimator(self.agent, state, off_policy_action, both=True, direct=True)
         self.q_values1.append(off_policy_q_values[0])
         self.q_values2.append(off_policy_q_values[1])
+        # collect the target state-values
+        if self.agent.state_value_estimator is not None:
+            state_values = self.agent.state_value_estimator(self.agent, state, both=True)
+            self.state_values1.append(state_values[0])
+            self.state_values2.append(state_values[1])
+            target_state_values = self.agent.state_value_estimator(self.agent, state, target=True)
+            self.target_state_values.append(target_state_values)
         # collect the target q-values for the on-policy actions
         expanded_state = state.repeat(self.agent.n_action_samples, 1)
         direct_targets = not self.agent.model_value_targets
-        target_q_values = self.agent.q_value_estimator(self.agent, expanded_state, on_policy_action, target=True, direct=direct_targets)
+        target = self.agent.state_value_estimator is None
+        target_q_values = self.agent.q_value_estimator(self.agent, expanded_state, on_policy_action, target=target, direct=direct_targets)
         target_q_values = target_q_values.view(self.agent.n_action_samples, -1, 1)[:self.agent.n_q_action_samples].mean(dim=0)
         self.target_q_values.append(target_q_values)
         # other terms for model-based Q-value estimator
@@ -433,16 +441,30 @@ class Collector:
         dones = torch.stack(self.dones)
         valid = torch.stack(self.valid)
         rewards = -torch.stack(self.objectives['optimality'])[1:]
-        action_kl = torch.stack(self.metrics['action']['kl'])
-        future_q = torch.stack(self.target_q_values) - self.agent.alphas['pi'] * action_kl
-        future_q = future_q * valid * (1. - dones)
+        if self.agent.state_value_estimator is not None:
+            state_value = torch.stack(self.target_state_values)
+        else:
+            action_kl = torch.stack(self.metrics['action']['kl'])
+            state_value = torch.stack(self.target_q_values) - self.agent.alphas['pi'] * action_kl
+        state_value = state_value * valid * (1. - dones)
         importance_weights = torch.stack(self.importance_weights['action'])
-        q_targets = retrace(future_q, rewards, importance_weights, discount=self.agent.reward_discount, l=self.agent.retrace_lambda)
+        q_targets = retrace(state_value, rewards, importance_weights, discount=self.agent.reward_discount, l=self.agent.retrace_lambda)
         return q_targets.detach()
 
-    def _train_q_value_estimator(self):
+    def _get_v_targets(self):
         """
-        Get the loss for the Q networks.
+        Get the targets for the state-value estimator.
+        """
+        dones = torch.stack(self.dones)
+        valid = torch.stack(self.valid)
+        action_kl = torch.stack(self.metrics['action']['kl'])
+        state_value = torch.stack(self.target_q_values) - self.agent.alphas['pi'] * action_kl
+        state_value = state_value * valid * (1. - dones)
+        return state_value[:-1].detach()
+
+    def _train_value_estimators(self):
+        """
+        Get the losses for the value networks.
         """
         valid = torch.stack(self.valid)
         q_values1 = torch.stack(self.q_values1)
@@ -457,11 +479,24 @@ class Collector:
         self.metrics['q_values2'] = q_values2[:-1].mean()
         self.metrics['q_value_targets'] = q_targets.mean()
 
+        if self.agent.state_value_estimator is not None:
+            state_values1 = torch.stack(self.state_values1)
+            state_values2 = torch.stack(self.state_values2)
+            v_targets = self._get_v_targets()
+            v_loss1 = 0.5 * (state_values1[:-1] - v_targets).pow(2) * valid[:-1]
+            v_loss2 = 0.5 * (state_values2[:-1] - v_targets).pow(2) * valid[:-1]
+            self.objectives['v_loss'] = v_loss1 + v_loss2
+            self.metrics['v_loss1'] = v_loss1.mean()
+            self.metrics['v_loss2'] = v_loss2.mean()
+            self.metrics['state_values1'] = state_values1[:-1].mean()
+            self.metrics['state_values2'] = state_values2[:-1].mean()
+            self.metrics['state_value_targets'] = v_targets.mean()
+
     def evaluate(self):
         """
         Combines the objectives for training.
         """
-        self._train_q_value_estimator()
+        self._train_value_estimators()
         n_steps = len(self.objectives['optimality'])
         n_valid_steps = torch.stack(self.valid).sum(dim=0) - 1
         total_objective = torch.zeros(n_steps-1, self.agent.batch_size, 1).to(self.agent.device)
@@ -539,6 +574,11 @@ class Collector:
 
         # self.inference_improvement = {'action': []}
         self.log_probs = {'action': []}
+
+        if self.agent.state_value_estimator is not None:
+            self.target_state_values = []
+            self.state_values1 = self.state_values2 = []
+            self.objectives['v_loss'] = []
 
         # model-based Q-value estimator distributions
         if 'state_likelihood_model' in dir(self.agent.q_value_estimator):

@@ -7,10 +7,9 @@ from lib.distributions import kl_divergence
 from misc.estimators import n_step, average_n_step, exp_average_n_step, retrace_n_step
 
 
-class ModelBasedEstimator(nn.Module):
+class ModelBasedQEstimator(nn.Module):
     """
-    Estimate the Q-value using a learned model and Q network. Uses the Retrace
-    estimator.
+    Estimate the Q-value using a learned model and Q network.
 
     Args:
         network_args (dict): arguments for the Q network
@@ -20,7 +19,7 @@ class ModelBasedEstimator(nn.Module):
     """
     def __init__(self, network_args, model_args, horizon, learn_reward=True,
                  value_estimate='retrace'):
-        super(ModelBasedEstimator, self).__init__()
+        super(ModelBasedQEstimator, self).__init__()
         # direct Q-value model
         self.q_value_models = nn.ModuleList([get_model(copy.deepcopy(network_args)) for _ in range(2)])
         self.target_q_value_models = nn.ModuleList([get_model(copy.deepcopy(network_args)) for _ in range(2)])

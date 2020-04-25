@@ -54,7 +54,7 @@ def load_checkpoint(agent, checkpoint_exp_key, timestep=None):
     else:
         # get most recent checkpoint
         asset_times = [asset['createdAt'] for asset in asset_list if 'ckpt' in asset['fileName']]
-        asset = asset_list[asset_times.index(max(asset_times))]
+        asset = [a for a in asset_list if a['createdAt'] == max(asset_times)][0]
     print('Checkpoint Name:', asset['fileName'])
     ckpt = experiment.get_asset(asset['assetId'])
     state_dict = torch.load(io.BytesIO(ckpt))

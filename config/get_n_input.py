@@ -24,6 +24,10 @@ def get_n_input(config_dict):
     # Q-network
     model_dicts.append(config_dict['q_value_estimator_args']['network_args'])
 
+    # state value network
+    if config_dict['state_value_estimator_args'] is not None:
+        model_dicts.append(config_dict['state_value_estimator_args']['network_args'])
+
     # prior network
     if config_dict['prior_model_args'] is not None:
         model_dicts.append(config_dict['prior_model_args'])

@@ -5,7 +5,7 @@ import numpy as np
 from misc.collector import Collector
 from lib.models import get_model
 from lib.distributions import Distribution
-from lib.q_value_estimators import get_q_value_estimator
+from lib.value_estimators import get_value_estimator
 from lib.inference import get_inference_optimizer
 from lib.distributions import kl_divergence
 
@@ -26,7 +26,8 @@ class Agent(nn.Module):
     """
     def __init__(self, prior_args, approx_post_args, prior_model_args,
                  q_value_estimator_args, inference_optimizer_args, misc_args,
-                 direct_inference_optimizer_args, direct_approx_post_args):
+                 direct_inference_optimizer_args, direct_approx_post_args,
+                 state_value_estimator_args):
         super(Agent, self).__init__()
         # prior
         self.prior_model = get_model(prior_model_args)
@@ -54,7 +55,12 @@ class Agent(nn.Module):
             self.direct_approx_post = Distribution(**direct_approx_post_args)
 
         # Q-value estimator
-        self.q_value_estimator = get_q_value_estimator(q_value_estimator_args)
+        self.q_value_estimator = get_value_estimator('action', q_value_estimator_args)
+
+        # state value estimator
+        self.state_value_estimator = None
+        if state_value_estimator_args is not None:
+            self.state_value_estimator = get_value_estimator('state', state_value_estimator_args)
 
         # Lagrange multipliers for KL, location KL, and scale KL
         self.log_alphas = nn.ParameterDict({'pi': nn.Parameter(torch.zeros(1)),
@@ -70,6 +76,7 @@ class Agent(nn.Module):
         self.retrace_lambda = misc_args['retrace_lambda']
         self.model_value_targets = misc_args['model_value_targets']
         self.optimize_targets = misc_args['optimize_targets']
+        # self.direct_targets = misc_args['direct_targets']
 
         # mode (either 'train' or 'eval')
         self.mode = 'train'
@@ -233,6 +240,8 @@ class Agent(nn.Module):
             self.prior_model.reset(batch_size)
             self.target_prior_model.reset(batch_size)
         self.q_value_estimator.reset(batch_size, prev_state)
+        if self.state_value_estimator is not None:
+            self.state_value_estimator.reset(batch_size)
         self.inference_optimizer.reset(batch_size)
         if self.direct_approx_post is not None:
             self.direct_approx_post.reset(batch_size)
@@ -290,6 +299,11 @@ class Agent(nn.Module):
         q_value_param_dict = self.q_value_estimator.parameters()
         for k, v in q_value_param_dict.items():
             param_dict[k] = v
+
+        if self.state_value_estimator is not None:
+            value_param_dict = self.state_value_estimator.parameters()
+            for k, v in value_param_dict.items():
+                param_dict[k] = v
 
         if self.log_alphas is not None:
             param_dict['log_alphas'] = nn.ParameterList()

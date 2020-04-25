@@ -5,15 +5,15 @@ from lib.models import get_model
 from lib.variables import get_variable
 
 
-class DirectEstimator(nn.Module):
+class DirectQEstimator(nn.Module):
     """
-    Estimate the Q-value using a learned model and Q network.
+    Estimate the Q-value using a Q network.
 
     Args:
         network_args (dict): arguments for the Q network
     """
     def __init__(self, network_args):
-        super(DirectEstimator, self).__init__()
+        super(DirectQEstimator, self).__init__()
         self.q_value_models = nn.ModuleList([get_model(copy.deepcopy(network_args)) for _ in range(2)])
         self.target_q_value_models = nn.ModuleList([get_model(copy.deepcopy(network_args)) for _ in range(2)])
         q_model_output = self.q_value_models[0].n_out

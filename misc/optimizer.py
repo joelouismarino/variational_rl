@@ -71,7 +71,7 @@ class Optimizer(object):
             elif model_name not in ['state_likelihood_model', 'reward_likelihood_model'] and model_only:
                 # we're only updating state and reward likelihood models
                 continue
-            elif model_name not in ['state_likelihood_model', 'reward_likelihood_model', 'q_value_models'] and critic_only:
+            elif model_name not in ['state_likelihood_model', 'reward_likelihood_model', 'q_value_models', 'state_value_models'] and critic_only:
                 # we're only updating components of the critic
                 continue
             opt.step()
@@ -96,6 +96,14 @@ class Optimizer(object):
                     target_param.data.copy_(current_param.data)
                 else:
                     target_param.data.copy_(self.value_tau * current_param.data + (1. - self.value_tau) * target_param.data)
+            if self.agent.state_value_estimator is not None:
+                target_params = self.parameters['target_state_value_models']
+                current_params = self.parameters['state_value_models']
+                for target_param, current_param in zip(target_params, current_params):
+                    if self.value_update == 'hard' and self._n_steps % int(1 / self.value_tau) == 0:
+                        target_param.data.copy_(current_param.data)
+                    else:
+                        target_param.data.copy_(self.value_tau * current_param.data + (1. - self.value_tau) * target_param.data)
 
         if not model_only:
             self._n_steps += 1

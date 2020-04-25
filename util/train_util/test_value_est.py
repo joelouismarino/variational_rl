@@ -147,6 +147,7 @@ def evaluate_estimator(exp_key, n_state_action, n_mc_samples, device_id=None):
     n_batches = math.ceil(n_mc_samples / ROLLOUT_BATCH_SIZE)
     n_mc_samples = ROLLOUT_BATCH_SIZE * n_batches
 
+    # TODO: the first dimension should be divided by CKPT_SUBSAMPLE
     value_estimates = np.zeros((len(ckpt_timesteps), n_state_action, 1))
     direct_value_estimates = np.zeros((len(ckpt_timesteps), n_state_action, 1))
     mc_estimates = np.zeros((len(ckpt_timesteps), n_state_action, n_mc_samples))

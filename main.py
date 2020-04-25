@@ -23,7 +23,7 @@ parser.add_argument('--grad_norm', default=None, help='gradient norm constraint'
 parser.add_argument('--weight_decay', default=0., type=float, help='L2 weight decay')
 parser.add_argument('--critic_delay', default=2, type=int, help='delay period of critic updates')
 parser.add_argument('--value_tau', default=5e-3, type=float, help='value update rate')
-parser.add_argument('--value_update', default='soft', type=str, help='value target update type; hard or soft')
+parser.add_argument('--value_update', default='hard', type=str, help='value target update type; hard or soft')
 parser.add_argument('--policy_tau', default=2e-3, type=float, help='policy update rate')
 parser.add_argument('--policy_update', default='hard', type=str, help='policy prior target update type; hard or soft')
 parser.add_argument('--n_initial_steps', default=5000, type=int, help='number of initial batches')

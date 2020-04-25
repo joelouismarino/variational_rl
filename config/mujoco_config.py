@@ -109,6 +109,8 @@ def get_mujoco_config(env):
     agent_args['inference_optimizer_args'] = inf_opt_args
 
     if use_direct_inference_optimizer:
+        # use a direct inference model, for planning and/or estimating value targets
+        agent_args['misc_args']['direct_targets'] = True
         agent_args['direct_approx_post_args'] = {'dist_type': action_approx_post_dist,
                                                  'n_variables': n_action_variables,
                                                  'update': 'direct'}
@@ -126,10 +128,28 @@ def get_mujoco_config(env):
     else:
         agent_args['direct_approx_post_args'] = None
         agent_args['direct_inference_optimizer_args'] = None
+        agent_args['misc_args']['direct_targets'] = False
 
     ## Q-VALUE ESTIMATOR
     # estimator type can be 'direct' or 'model_based'
     estimator_type = 'direct'
+
+    # whether to use a separate state-value network
+    use_state_value_network = True
+
+    if use_state_value_network:
+        state_value_args = {}
+        state_value_args['network_args'] = {'type': 'fully_connected',
+                                            'n_layers': 2,
+                                            'inputs': ['state'],
+                                            'n_units': 512,
+                                            'connectivity': 'sequential',
+                                            'non_linearity': 'relu',
+                                            'layer_norm': False,
+                                            'dropout': None}
+        agent_args['state_value_estimator_args'] = state_value_args
+    else:
+        agent_args['state_value_estimator_args'] = None
 
     # whether to use target networks for policy optimization
     agent_args['misc_args']['optimize_targets'] = True
