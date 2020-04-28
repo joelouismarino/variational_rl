@@ -413,8 +413,8 @@ class Distribution(nn.Module):
                 params.extend(list(self.gates[model_name].parameters()))
         # for param_name in self.initial_params:
         #     params.append(self.initial_params[param_name])
-        # if self.const_scale:
-        #     params.append(self.log_scale)
+        if self.const_scale:
+            params.append(self.log_scale)
         if 'scale' in self.param_names:
             params.append(self.min_log_scale)
             params.append(self.max_log_scale)
@@ -454,8 +454,11 @@ class Distribution(nn.Module):
         param_dict = self.get_dist_params()
         grad_dict = self.get_dist_param_grads()
         # use log-scale as input instead of scale itself
-        grad_dict['scale'] = grad_dict['scale'] * param_dict['scale']
-        param_dict['scale'] = (param_dict['scale'] + 1e-6).log()
+        if not self.const_scale:
+            grad_dict['scale'] = grad_dict['scale'] * param_dict['scale']
+            param_dict['scale'] = (param_dict['scale'] + 1e-6).log()
+        else:
+            param_dict.pop('scale')
         # convert to lists
         params = [param.detach() for _, param in param_dict.items()]
         grads = [grad.detach() for _, grad in grad_dict.items()]

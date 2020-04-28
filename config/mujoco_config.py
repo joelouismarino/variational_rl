@@ -56,7 +56,8 @@ def get_mujoco_config(env):
 
     ## APPROXIMATE POSTERIOR
     agent_args['approx_post_args'] = {'dist_type': action_approx_post_dist,
-                                      'n_variables': n_action_variables}
+                                      'n_variables': n_action_variables,
+                                      'constant_scale': False}
 
     if action_approx_post_dist in ['ARNormal', 'TanhARNormal']:
         agent_args['approx_post_args']['transform_config'] = {'n_transforms': 1,
@@ -68,7 +69,7 @@ def get_mujoco_config(env):
 
     ## INFERENCE OPTIMIZER
     # optimizer type can be 'direct', 'iterative', 'gradient', 'non_parametric', 'cem'
-    optimizer_type = 'direct'
+    optimizer_type = 'iterative'
     optimizer_type = 'non_parametric' if action_approx_post_dist == 'Boltzmann' else optimizer_type
     use_direct_inference_optimizer = False
 

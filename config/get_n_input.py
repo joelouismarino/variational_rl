@@ -12,7 +12,10 @@ def calculate_n_inputs(inputs, config_dict):
         elif input_name == 'reward':
             input_size += 1
         elif input_name in ['params', 'grads']:
-            input_size += 2 * config_dict['prior_args']['n_variables']
+            if config_dict['approx_post_args']['constant_scale']:
+                input_size += config_dict['prior_args']['n_variables']
+            else:
+                input_size += 2 * config_dict['prior_args']['n_variables']
     return input_size
 
 def get_n_input(config_dict):
