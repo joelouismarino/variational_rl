@@ -23,6 +23,7 @@ class Agent(nn.Module):
         misc_args (dict):
         direct_inference_optimizer_args (dict):
         direct_approx_post_args (dict):
+        state_value_estimator_args (dict):
     """
     def __init__(self, prior_args, approx_post_args, prior_model_args,
                  q_value_estimator_args, inference_optimizer_args, misc_args,
@@ -41,11 +42,13 @@ class Agent(nn.Module):
 
         # approximate posterior
         self.inference_optimizer = get_inference_optimizer(inference_optimizer_args)
+        self.target_inference_optimizer = copy.deepcopy(self.inference_optimizer)
         if 'inference_model' in dir(self.inference_optimizer):
             approx_post_args['n_input'] = self.inference_optimizer.inference_model.n_out
         else:
             approx_post_args['n_input'] = None
         self.approx_post = Distribution(**approx_post_args)
+        self.target_approx_post = Distribution(**approx_post_args)
 
         # optional direct inference optimizer for model-based value estimation
         self.direct_inference_optimizer = self.direct_approx_post = None
@@ -146,18 +149,23 @@ class Agent(nn.Module):
             # run the inference model if it is already direct
             self.approx_post.init(self.prior)
             self.inference_optimizer(self, state, detach_params=detach_params)
+            # get the target estimate
+            self.target_approx_post.init(self.prior)
+            self.target_inference_optimizer(self, state, detach_params=detach_params, target=True)
 
-    def estimate_objective(self, state, action):
+    def estimate_objective(self, state, action, target=False):
         """
         Estimates the objective (state-value).
 
         Args:
             state (torch.Tensor): state of shape [batch_size, n_state_dims]
             actions (torch.Tensor): action of shape [n_action_samples * batch_size, n_action_dims]
+            target (bool): whether to use the target approx post
 
         Returns objective estimate of shape [n_action_samples * batch_size, 1]
         """
-        kl = kl_divergence(self.approx_post, self.prior, n_samples=self.n_action_samples, sample=action).sum(dim=1, keepdim=True)
+        approx_post = self.target_approx_post if target else self.approx_post
+        kl = kl_divergence(approx_post, self.prior, n_samples=self.n_action_samples, sample=action).sum(dim=1, keepdim=True)
         expanded_state = state.repeat(self.n_action_samples, 1)
         cond_log_like = self.q_value_estimator(self, expanded_state, action, detach_params=True, target=self.optimize_targets)
         return cond_log_like - self.alphas['pi'] * kl.repeat(self.n_action_samples, 1)
@@ -236,6 +244,7 @@ class Agent(nn.Module):
         self.prior.reset(batch_size)
         self.target_prior.reset(batch_size)
         self.approx_post.reset(batch_size)
+        self.target_approx_post.reset(batch_size)
         if self.prior_model is not None:
             self.prior_model.reset(batch_size)
             self.target_prior_model.reset(batch_size)
@@ -282,6 +291,9 @@ class Agent(nn.Module):
             param_dict['inference_optimizer'] = nn.ParameterList()
             param_dict['inference_optimizer'].extend(list(self.inference_optimizer.parameters()))
             param_dict['inference_optimizer'].extend(list(self.approx_post.parameters()))
+            param_dict['target_inference_optimizer'] = nn.ParameterList()
+            param_dict['target_inference_optimizer'].extend(list(self.target_inference_optimizer.parameters()))
+            param_dict['target_inference_optimizer'].extend(list(self.target_approx_post.parameters()))
 
         if self.prior_model is not None:
             param_dict['prior'] = nn.ParameterList()

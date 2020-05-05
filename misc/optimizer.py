@@ -86,6 +86,16 @@ class Optimizer(object):
                 else:
                     target_param.data.copy_(self.policy_tau * current_param.data + (1. - self.policy_tau) * target_param.data)
 
+        if self.agent.target_inference_optimizer is not None and not model_only:
+            # copy over current action prior parameters to the target model
+            target_params = self.parameters['target_inference_optimizer']
+            current_params = self.parameters['inference_optimizer']
+            for target_param, current_param in zip(target_params, current_params):
+                if self.policy_update == 'hard' and self._n_steps % int(1 / self.policy_tau) == 0:
+                    target_param.data.copy_(current_param.data)
+                else:
+                    target_param.data.copy_(self.policy_tau * current_param.data + (1. - self.policy_tau) * target_param.data)
+
         # if self.agent.q_value_estimator.target_q_value_models is not None and not model_only:
         if self.agent.q_value_estimator.target_q_value_models is not None:
             # copy over current value parameters to the target model

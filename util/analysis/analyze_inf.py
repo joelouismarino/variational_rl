@@ -61,16 +61,26 @@ def analyze_inference(exp_key, n_states, n_inf_seeds, n_action_samples=None,
     load_checkpoint(agent, exp_key, ckpt_timestep)
 
     # collect samples, perform inference
+    if agent_args['approx_post_args']['update'] == 'direct' and n_inf_seeds != 1:
+        print('Direct inference model detected. Using 1 inference seed.')
+        n_inf_seeds = 1
+
     inf_iter_list = [a for a in param_summary if a['name'] == 'inference_optimizer_args_n_inf_iters']
     n_inf_iters = 1
     if len(inf_iter_list) > 0:
         n_inf_iters = int(inf_iter_list[0]['valueCurrent'])
     n_state_dims = env.observation_space.shape[-1]
     n_action_dims = env.action_space.shape[0]
+    if n_action_samples is None:
+        n_action_samples = agent.n_action_samples
 
     states = np.zeros((n_states, n_state_dims))
     # actions = np.array((n_states, n_inf_seeds, n_action_samples, n_action_dims))
-    value_estimates = np.zeros((n_states, n_inf_seeds, n_inf_iters, 1))
+    value_estimates = np.zeros((n_states, n_inf_seeds, n_action_samples, 1))
+    if agent_args['approx_post_args']['update'] == 'iterative':
+        it_value_estimates = np.zeros((n_states, n_inf_seeds, n_inf_iters, 1))
+    if agent.state_value_estimator is not None:
+        value_net_estimates = np.zeros((n_states, 1))
     params = {'loc': np.zeros((n_states, n_inf_seeds, n_action_dims)),
               'scale': np.zeros((n_states, n_inf_seeds, n_action_dims))}
     # grads = {'loc': np.array((n_states, n_inf_seeds, n_action_dims)),
@@ -78,6 +88,8 @@ def analyze_inference(exp_key, n_states, n_inf_seeds, n_action_samples=None,
     print('Collecting ' + str(n_states) + ' states...')
     state = env.reset(); reward = 0; done = False
     for state_ind in range(n_states):
+        if state_ind % 10 == 0:
+            print(' State ' + str(state_ind) + '.')
         states[state_ind] = state[0]
 
         for inf_seed in range(n_inf_seeds):
@@ -85,8 +97,16 @@ def analyze_inference(exp_key, n_states, n_inf_seeds, n_action_samples=None,
             action = agent.act(state, reward, done)
             # save the quantities
             # actions[state_ind, inf_seed, ] = action
-            q_ests = [obj.detach().cpu().numpy() for obj in agent.inference_optimizer.estimated_objectives]
-            value_estimates[state_ind, inf_seed] = np.stack(q_ests).reshape(-1, 1)
+            # get the state-value estimate from Q-net - KL
+            if agent_args['approx_post_args']['update'] == 'iterative':
+                value_ests = [-obj.detach().cpu().numpy() for obj in agent.inference_optimizer.estimated_objectives]
+                it_value_estimates[state_ind, inf_seed] = np.stack(value_ests).reshape(-1, 1)
+            on_policy_action = agent.approx_post.sample(n_action_samples)
+            value_est = agent.estimate_objective(state, on_policy_action).view(n_action_samples, 1)
+            value_estimates[state_ind, inf_seed] = value_est.detach().cpu().numpy()
+            # get the state value estimate from the network
+            if agent.state_value_estimator is not None:
+                value_net_estimates[state_ind] = agent.state_value_estimator(agent, state, target=True).detach().cpu().numpy()
             params['loc'][state_ind, inf_seed] = agent.approx_post.dist.loc.detach().cpu().numpy()[0]
             params['scale'][state_ind, inf_seed] = agent.approx_post.dist.scale.detach().cpu().numpy()[0]
             # grads['loc'][state_ind, inf_seed, ] =
@@ -97,5 +117,14 @@ def analyze_inference(exp_key, n_states, n_inf_seeds, n_action_samples=None,
 
     print('Done.')
 
-    return {'states': states,
-            'params': params}
+    analysis_dict = {'states': states,
+                     'params': params,
+                     'value_estimates': value_estimates}
+
+    if agent_args['approx_post_args']['update'] == 'iterative':
+        analysis_dict['it_value_estimates'] = it_value_estimates
+
+    if agent.state_value_estimator is not None:
+        analysis_dict['value_net_estimates'] = value_net_estimates
+
+    return analysis_dict

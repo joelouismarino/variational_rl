@@ -66,6 +66,7 @@ class Collector:
         Collects objectives and other quantities for training.
         """
         on_policy_action = self.agent.approx_post.sample(self.agent.n_action_samples)
+        target_on_policy_action = self.agent.target_approx_post.sample(self.agent.n_action_samples)
         # collect inference optimizer objective
         self._collect_inf_opt_objective(state, on_policy_action, valid, done)
         # collect the optimality (reward)
@@ -75,7 +76,7 @@ class Collector:
         # collect alpha objectives
         self._collect_alpha_objectives(valid, done)
         # collect value estimator objectives
-        self._get_value_est_objectives(state, off_policy_action, on_policy_action.detach(), reward, valid, done)
+        self._get_value_est_objectives(state, off_policy_action, target_on_policy_action.detach(), reward, valid, done)
         # collect log probabilities
         self._collect_log_probs(off_policy_action, log_prob, valid)
         # collect log-scale limit objectives

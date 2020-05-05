@@ -18,22 +18,24 @@ class IterativeInferenceModel(nn.Module):
         # keep track of estimated objectives for reporting
         self.estimated_objectives = []
 
-    def forward(self, agent, state, **kwargs):
+    def forward(self, agent, state, target=False, **kwargs):
+
+        approx_post = agent.approx_post if not target else agent.target_approx_post
 
         for _ in range(self.n_inf_iters):
             # sample actions, evaluate objective, backprop to get gradients
-            actions = agent.approx_post.sample(agent.n_action_samples)
-            obj = agent.estimate_objective(state, actions)
+            actions = approx_post.sample(agent.n_action_samples)
+            obj = agent.estimate_objective(state, actions, target=target)
             obj = - obj.view(agent.n_action_samples, -1, 1).mean(dim=0)
             self.estimated_objectives.append(obj.detach())
             # TODO: should this be multiplied by valid and done?
             obj.sum().backward(retain_graph=True)
 
             # update the approximate posterior using the iterative inference model
-            params, grads = agent.approx_post.params_and_grads()
+            params, grads = approx_post.params_and_grads()
             inf_input = self.inference_model(params=params, grads=grads, state=state)
-            agent.approx_post.step(inf_input)
-            agent.approx_post.retain_grads()
+            approx_post.step(inf_input)
+            approx_post.retain_grads()
 
         # clear any gradients in the generative parameters
         clear_gradients(agent.generative_parameters())

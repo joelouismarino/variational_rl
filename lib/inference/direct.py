@@ -15,7 +15,7 @@ class DirectInferenceModel(nn.Module):
         self.inference_model = get_model(network_args)
         self.n_inf_iters = 1
 
-    def forward(self, agent, state, detach_params=False, direct=False, **kwargs):
+    def forward(self, agent, state, detach_params=False, direct=False, target=False, **kwargs):
         if detach_params:
             inference_model = copy.deepcopy(self.inference_model)
         else:
@@ -23,6 +23,8 @@ class DirectInferenceModel(nn.Module):
         inf_input = inference_model(state=state)
         if direct and agent.direct_approx_post is not None:
             agent.direct_approx_post.step(inf_input, detach_params)
+        elif target:
+            agent.target_approx_post.step(inf_input, detach_params)
         else:
             agent.approx_post.step(inf_input, detach_params)
 
