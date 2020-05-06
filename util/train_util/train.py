@@ -2,6 +2,7 @@ import time
 from .collect_episode import collect_episode
 from .train_batch import train_batch
 from .test_model import test_model
+from .agent_kl import estimate_agent_kl
 
 
 def train(agent, env, buffer, optimizer, plotter, args):
@@ -20,6 +21,9 @@ def train(agent, env, buffer, optimizer, plotter, args):
     assert args.n_initial_steps >= buffer.batch_size * buffer.sequence_length
 
     while timestep < args.n_total_steps:
+        # estimate agent KL (change in policy distribution)
+        agent_kl = estimate_agent_kl(env, agent, buffer.last_episode)
+        plotter.plot_agent_kl(agent_kl, timestep)
         # collect an episode
         print(' -- Collecting Episode: ' + str(n_episodes + 1))
         t_start = time.time()

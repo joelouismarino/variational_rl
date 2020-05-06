@@ -193,6 +193,9 @@ class Plotter:
             item_name = 'episode_step_' + str(step) + '_' + sim_item_str
             self.experiment.log_asset_data(json_str, name=item_name)
 
+    def plot_agent_kl(self, agent_kl, step):
+        self.experiment.log_metric('agent_kl', agent_kl, step)
+
     def log_results(self, results):
         """
         Log the results dictionary.

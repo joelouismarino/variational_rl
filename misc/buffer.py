@@ -1,5 +1,6 @@
 import random
 import torch
+import copy
 
 # used so that we sample the ends of sequences more often
 DELTA = 0
@@ -20,6 +21,7 @@ class Buffer(object):
         self.buffer = []
         self.total_steps = 0
         self.current_steps = 0
+        self.last_episode = None
 
     def sample(self):
         """
@@ -61,6 +63,7 @@ class Buffer(object):
         Removes excess episodes if capacity has been reached. Appends a new
         episode to the buffer.
         """
+        self.last_episode = copy.deepcopy(episode)
         keys_to_remove = []
         for k, v in episode.items():
             if type(v) == dict:
@@ -89,6 +92,7 @@ class Buffer(object):
         self.buffer = []
         self.total_steps = 0
         self.current_steps = 0
+        self.last_episode = None
 
     def __len__(self):
         """

@@ -42,13 +42,15 @@ class Agent(nn.Module):
 
         # approximate posterior
         self.inference_optimizer = get_inference_optimizer(inference_optimizer_args)
-        self.target_inference_optimizer = copy.deepcopy(self.inference_optimizer)
         if 'inference_model' in dir(self.inference_optimizer):
             approx_post_args['n_input'] = self.inference_optimizer.inference_model.n_out
         else:
             approx_post_args['n_input'] = None
         self.approx_post = Distribution(**approx_post_args)
-        self.target_approx_post = Distribution(**approx_post_args)
+        self.target_inference_optimizer = self.target_approx_post = None
+        if misc_args['use_target_inference_optimizer']:
+            self.target_inference_optimizer = copy.deepcopy(self.inference_optimizer)
+            self.target_approx_post = Distribution(**approx_post_args)
 
         # optional direct inference optimizer for model-based value estimation
         self.direct_inference_optimizer = self.direct_approx_post = None
@@ -149,9 +151,10 @@ class Agent(nn.Module):
             # run the inference model if it is already direct
             self.approx_post.init(self.prior)
             self.inference_optimizer(self, state, detach_params=detach_params)
-            # get the target estimate
-            self.target_approx_post.init(self.prior)
-            self.target_inference_optimizer(self, state, detach_params=detach_params, target=True)
+            if self.target_approx_post is not None and self.mode == 'train':
+                # get the target estimate
+                self.target_approx_post.init(self.prior)
+                self.target_inference_optimizer(self, state, detach_params=detach_params, target=True)
 
     def estimate_objective(self, state, action, target=False):
         """
@@ -204,23 +207,29 @@ class Agent(nn.Module):
             state = torch.from_numpy(state.astype('float32')).view(1, -1) # hack
         if state.device != self.device:
             state = state.to(self.device)
-        if type(reward) in [float, int]:
-            reward = torch.tensor(reward).to(torch.float32).view(1, 1)
-        elif type(reward) == np.ndarray:
-            reward = torch.from_numpy(reward.astype('float32')).view(1, 1) # hack
-        if reward.device != self.device:
-            reward = reward.to(self.device)
+        if reward is not None:
+            if type(reward) in [float, int]:
+                reward = torch.tensor(reward).to(torch.float32).view(1, 1)
+            elif type(reward) == np.ndarray:
+                reward = torch.from_numpy(reward.astype('float32')).view(1, 1) # hack
+            if reward.device != self.device:
+                reward = reward.to(self.device)
+        else:
+            reward = torch.tensor(0.).to(torch.float32).view(1, 1)
         if action is not None:
             if type(action) == np.ndarray:
                 action = torch.from_numpy(action).view(1, -1)
             if action.device != self.device:
                 action = action.to(self.device)
-        if type(done) == bool:
-            done = torch.tensor(done).to(torch.float32).view(1, 1)
-        elif type(done) == np.ndarray:
-            done = torch.from_numpy(done.astype('float32')).view(1, 1) # hack
-        if done.device != self.device:
-            done = done.to(self.device)
+        if done is not None:
+            if type(done) == bool:
+                done = torch.tensor(done).to(torch.float32).view(1, 1)
+            elif type(done) == np.ndarray:
+                done = torch.from_numpy(done.astype('float32')).view(1, 1) # hack
+            if done.device != self.device:
+                done = done.to(self.device)
+        else:
+            done = torch.tensor(False).to(torch.float32).view(1, 1)
         if valid is None:
             valid = torch.ones(done.shape[0], 1)
         if valid.device != self.device:
@@ -244,7 +253,8 @@ class Agent(nn.Module):
         self.prior.reset(batch_size)
         self.target_prior.reset(batch_size)
         self.approx_post.reset(batch_size)
-        self.target_approx_post.reset(batch_size)
+        if self.target_approx_post is not None:
+            self.target_approx_post.reset(batch_size)
         if self.prior_model is not None:
             self.prior_model.reset(batch_size)
             self.target_prior_model.reset(batch_size)
@@ -291,9 +301,10 @@ class Agent(nn.Module):
             param_dict['inference_optimizer'] = nn.ParameterList()
             param_dict['inference_optimizer'].extend(list(self.inference_optimizer.parameters()))
             param_dict['inference_optimizer'].extend(list(self.approx_post.parameters()))
-            param_dict['target_inference_optimizer'] = nn.ParameterList()
-            param_dict['target_inference_optimizer'].extend(list(self.target_inference_optimizer.parameters()))
-            param_dict['target_inference_optimizer'].extend(list(self.target_approx_post.parameters()))
+            if self.target_approx_post is not None:
+                param_dict['target_inference_optimizer'] = nn.ParameterList()
+                param_dict['target_inference_optimizer'].extend(list(self.target_inference_optimizer.parameters()))
+                param_dict['target_inference_optimizer'].extend(list(self.target_approx_post.parameters()))
 
         if self.prior_model is not None:
             param_dict['prior'] = nn.ParameterList()
