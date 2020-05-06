@@ -18,7 +18,7 @@ def estimate_agent_kl(env, agent, prev_episode):
     # create a distribution to hold old approx post params
     agent_args = get_agent_args(env)
     agent_args['approx_post_args']['n_input'] = None
-    old_approx_post = Distribution(**agent_args['approx_post_args'])
+    old_approx_post = Distribution(**agent_args['approx_post_args']).to(agent.device)
 
     agent.reset(); agent.eval()
 
@@ -30,7 +30,7 @@ def estimate_agent_kl(env, agent, prev_episode):
     for timestep in range(prev_episode['state'].shape[0]):
 
         state = states[timestep:timestep+1]
-        params = {k: v[timestep:timestep+1] for k, v in dist_params.items()}
+        params = {k: v[timestep:timestep+1].to(agent.device) for k, v in dist_params.items()}
 
         old_approx_post.reset(dist_params=params)
         agent.act(state)
