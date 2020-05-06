@@ -66,7 +66,9 @@ class Collector:
         Collects objectives and other quantities for training.
         """
         on_policy_action = self.agent.approx_post.sample(self.agent.n_action_samples)
-        if self.agent.target_approx_post is not None:
+        if self.agent.direct_approx_post is not None:
+            target_on_policy_action = self.agent.direct_approx_post.sample(self.agent.n_action_samples)
+        elif self.agent.target_approx_post is not None:
             target_on_policy_action = self.agent.target_approx_post.sample(self.agent.n_action_samples)
         else:
             target_on_policy_action = on_policy_action

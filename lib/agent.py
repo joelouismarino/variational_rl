@@ -81,7 +81,7 @@ class Agent(nn.Module):
         self.retrace_lambda = misc_args['retrace_lambda']
         self.model_value_targets = misc_args['model_value_targets']
         self.optimize_targets = misc_args['optimize_targets']
-        # self.direct_targets = misc_args['direct_targets']
+        self.direct_targets = misc_args['direct_targets']
 
         # mode (either 'train' or 'eval')
         self.mode = 'train'
