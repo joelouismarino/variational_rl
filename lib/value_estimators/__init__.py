@@ -2,6 +2,8 @@ import copy
 from .direct_q import DirectQEstimator
 from .model_based_q import ModelBasedQEstimator
 from .direct_v import DirectVEstimator
+from .simulator_q import SimulatorQEstimator
+
 
 def get_value_estimator(state_action, kwargs):
     """
@@ -19,6 +21,8 @@ def get_value_estimator(state_action, kwargs):
             return DirectQEstimator(**new_kwargs)
         elif estimator_type == 'model_based':
             return ModelBasedQEstimator(**new_kwargs)
+        elif estimator_type == 'simulator':
+            return SimulatorQEstimator(**new_kwargs)
         else:
             raise NotImplementedError
     else:

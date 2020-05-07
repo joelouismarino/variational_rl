@@ -16,7 +16,7 @@ def read_weight(filename):
 class Network(nn.Module):
 
     def __init__(self):
-        super(DroneNetwork, self).__init__()
+        super(Network, self).__init__()
         self.fc1 = nn.Linear(12, 25)
         self.fc2 = nn.Linear(25, 30)
         self.fc3 = nn.Linear(30, 15)
@@ -48,7 +48,7 @@ class DroneModel(object):
         self.CT = 0.08937873              # thrust coeff
 
         # NN model for unknown dynamics
-        self.Fa_model = read_weight('Fa_net_12_3_full_Lip16.pth')
+        self.Fa_model = read_weight('util/env_util/drone/Fa_net_12_3_full_Lip16.pth')
 
         # Real states
         self.z = 0                        # height
@@ -137,7 +137,7 @@ class DroneModel(object):
         """
         Steps the neural network model.
         """
-        Fa = self.Fa_model(self.state[:, 2]
+        Fa = self.Fa_model(self.state[:, 2])
         self.F = 4*self.CT*RHO*self.u**2*self.D**4/3600.0
         self.a = self.F/self.mass - GRAVITY + self.a_noise + Fa/self.mass
 

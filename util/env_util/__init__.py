@@ -32,7 +32,7 @@ def create_env(env_name, seed=None, unwrap_time_limit=True):
     # wrap the environment
     if env_type == 'classic_control':
         raise NotImplementedError
-    elif env_type in ['mujoco', 'ant', 'humanoid']:
+    elif env_type in ['mujoco', 'ant', 'humanoid', 'drone']:
         if isinstance(env, gym.wrappers.TimeLimit) and unwrap_time_limit:
             env = env.env
         env = observation_wrappers.AddBatchDim(env)

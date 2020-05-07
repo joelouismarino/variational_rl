@@ -25,7 +25,8 @@ def get_n_input(config_dict):
     model_dicts = []
 
     # Q-network
-    model_dicts.append(config_dict['q_value_estimator_args']['network_args'])
+    if 'network_args' in config_dict['q_value_estimator_args']:
+        model_dicts.append(config_dict['q_value_estimator_args']['network_args'])
 
     # state value network
     if config_dict['state_value_estimator_args'] is not None:

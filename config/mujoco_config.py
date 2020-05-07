@@ -69,7 +69,7 @@ def get_mujoco_config(env):
 
     ## INFERENCE OPTIMIZER
     # optimizer type can be 'direct', 'iterative', 'gradient', 'non_parametric', 'cem'
-    optimizer_type = 'direct'
+    optimizer_type = 'iterative'
     optimizer_type = 'non_parametric' if action_approx_post_dist == 'Boltzmann' else optimizer_type
     use_direct_inference_optimizer = True
     agent_args['misc_args']['use_target_inference_optimizer'] = False
@@ -137,7 +137,7 @@ def get_mujoco_config(env):
     estimator_type = 'direct'
 
     # whether to use a separate state-value network
-    use_state_value_network = True
+    use_state_value_network = False
 
     if use_state_value_network:
         state_value_args = {}
@@ -163,14 +163,15 @@ def get_mujoco_config(env):
         agent_args['misc_args']['model_value_targets'] = False
 
     estimator_args = {'estimator_type': estimator_type}
-    estimator_args['network_args'] = {'type': 'fully_connected',
-                                      'n_layers': 3,
-                                      'inputs': ['state', 'action'],
-                                      'n_units': 512,
-                                      'connectivity': 'highway',
-                                      'non_linearity': 'elu',
-                                      'layer_norm': True,
-                                      'dropout': None}
+    if estimator_type in ['direct', 'model_based']:
+        estimator_args['network_args'] = {'type': 'fully_connected',
+                                          'n_layers': 3,
+                                          'inputs': ['state', 'action'],
+                                          'n_units': 512,
+                                          'connectivity': 'highway',
+                                          'non_linearity': 'elu',
+                                          'layer_norm': True,
+                                          'dropout': None}
     if estimator_type == 'model_based':
         learn_reward = True
         value_estimate = 'retrace'
@@ -214,6 +215,9 @@ def get_mujoco_config(env):
         estimator_args['learn_reward'] = learn_reward
         estimator_args['value_estimate'] = value_estimate
         estimator_args['horizon'] = 2
+    elif estimator_type == 'simulator':
+        estimator_args['env_type'] = env.spec.id
+        esimtaor_args['horizon'] = 20
 
     agent_args['q_value_estimator_args'] = estimator_args
 
