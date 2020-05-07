@@ -354,7 +354,7 @@ class Collector:
         kl = kl_divergence(self.agent.approx_post, self.agent.prior, n_samples=self.agent.n_action_samples, sample=on_policy_action).sum(dim=1, keepdim=True)
         self.metrics['action']['kl'].append((kl * (1 - done) * valid).detach())
 
-        if self.agent.direct_approx_post is not None or self.agent.target_approx_post is not None::
+        if self.agent.direct_approx_post is not None or self.agent.target_approx_post is not None:
             # evaluate the KL for the direct approx. post.
             kl = kl_divergence(self.agent.direct_approx_post, self.agent.prior, n_samples=self.agent.n_action_samples, sample=target_on_policy_action).sum(dim=1, keepdim=True)
             self.metrics['action']['target_kl'].append((kl * (1 - done) * valid).detach())
