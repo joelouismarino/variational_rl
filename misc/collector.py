@@ -191,7 +191,7 @@ class Collector:
             kl = kl_divergence(self.agent.approx_post, self.agent.direct_approx_post, n_samples=self.agent.n_action_samples, sample=on_policy_action).sum(dim=1, keepdim=True)
             self.objectives['direct_inf_opt_obj'].append(kl * valid * (1 - done))
             self.agent.approx_post.reset(batch_size, dist_params={'loc': loc, 'scale': scale})
-            self.metrics['action']['direct_train_kl'].append((kl * (1 - done) * valid).detach())
+            self.metrics['action']['direct_kl'].append((kl * (1 - done) * valid).detach())
 
     def _collect_alpha_objectives(self, valid, done):
         """
@@ -356,7 +356,8 @@ class Collector:
 
         if self.agent.direct_approx_post is not None or self.agent.target_approx_post is not None:
             # evaluate the KL for the direct approx. post.
-            kl = kl_divergence(self.agent.direct_approx_post, self.agent.prior, n_samples=self.agent.n_action_samples, sample=target_on_policy_action).sum(dim=1, keepdim=True)
+            approx_post = self.agent.direct_approx_post if self.agent.direct_approx_post is not None else self.agent.target_approx_post
+            kl = kl_divergence(approx_post, self.agent.prior, n_samples=self.agent.n_action_samples, sample=target_on_policy_action).sum(dim=1, keepdim=True)
             self.metrics['action']['target_kl'].append((kl * (1 - done) * valid).detach())
 
 

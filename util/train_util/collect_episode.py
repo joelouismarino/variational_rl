@@ -22,17 +22,20 @@ def collect_episode(env, agent, random=False, eval=False):
     env_states = {'qpos': [], 'qvel': []}
 
     while not done:
+        print(n_steps)
         if n_steps > 1000:
             break
-        env_states['qpos'].append(copy.deepcopy(env.sim.data.qpos))
-        env_states['qvel'].append(copy.deepcopy(env.sim.data.qvel))
+        if 'sim' in dir(env):
+            env_states['qpos'].append(copy.deepcopy(env.sim.data.qpos))
+            env_states['qvel'].append(copy.deepcopy(env.sim.data.qvel))
         action = env.action_space.sample() if random else None
         action = agent.act(state, reward, done, action, eval=eval)
         state, reward, done, _ = env.step(action)
         n_steps += 1
-    env_states['qpos'].append(copy.deepcopy(env.sim.data.qpos))
-    env_states['qvel'].append(copy.deepcopy(env.sim.data.qvel))
-    env_states['qpos'] = np.stack(env_states['qpos'])
-    env_states['qvel'] = np.stack(env_states['qvel'])
+    if 'sim' in dir(env):
+        env_states['qpos'].append(copy.deepcopy(env.sim.data.qpos))
+        env_states['qvel'].append(copy.deepcopy(env.sim.data.qvel))
+        env_states['qpos'] = np.stack(env_states['qpos'])
+        env_states['qvel'] = np.stack(env_states['qvel'])
     agent.act(state, reward, done)
     return agent.collector.get_episode(), n_steps, env_states

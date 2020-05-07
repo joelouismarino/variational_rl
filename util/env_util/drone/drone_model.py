@@ -48,8 +48,8 @@ class DroneModel(object):
         self.CT = 0.08937873              # thrust coeff
 
         # Desired trajectory parameters
-        self.C = C                        # how fast to land
-        self.h_d = h_d                    # desired landing height
+        self.C = 1.                       # how fast to land
+        self.h_d = 0.                     # desired landing height
 
         # NN model for unknown dynamics
         self.Fa_model = read_weight('util/env_util/drone/Fa_net_12_3_full_Lip16.pth')
@@ -62,19 +62,22 @@ class DroneModel(object):
         self.prev_u = 6508                # previous control signal
         self.Fa = 0                       # ground truth Fa
         self.F = 0                        # force
-        self.reset()
 
         # Noise
         self.stochastic = stochastic
         self.a_noise_sigma = 0.1
-        self.u_noise_sigma = 0
+        self.u_noise_sigma = 0.01
         self.a_noise = 0
         self.u_noise = 0
 
         # Step
         self.step_size = 1e-2
         self.total_step = 0
-        self.sim_duration = 10
+        self.sim_duration = 1
+
+        self.device = None
+
+        self.reset()
 
     def step(self, u):
         """
@@ -83,13 +86,16 @@ class DroneModel(object):
         Args:
             u (torch.Tensor): the control input [batch_size, 1]
         """
+        if type(u) == np.ndarray:
+            u = torch.from_numpy(u).to(self.device)
+
         # sample acceleration and control noise
         if self.stochastic:
             # Noise freq is 10
             if not self.total_step % int(1 / self.step_size * 0.1):
-                self.a_noise = torch.normal(torch.zeros_like(action), self.a_noise_sigma)
+                self.a_noise = torch.normal(torch.zeros_like(self.a), self.a_noise_sigma)
                 self.a_noise = self.a_noise.clamp(-3 * self.a_noise_sigma, 3 * self.a_noise_sigma)
-                self.u_noise = torch.normal(torch.zeros_like(action), self.u_noise_sigma)
+                self.u_noise = torch.normal(torch.zeros_like(u), self.u_noise_sigma)
                 self.u_noise = self.u_noise.clamp(-3 * self.u_noise_sigma, 3 * self.u_noise_sigma)
 
         # Consider control delay
@@ -136,13 +142,13 @@ class DroneModel(object):
         self.total_step += 1
 
         done = True if self.step_size*self.total_step >= self.sim_duration else False
-        cost = self.calculate_cost()
+        cost = self.compute_cost()
 
         return self.state, -cost, done
 
-    def calculate_cost(self):
+    def compute_cost(self):
         """
-        Calculates the cost of the current state-action pair.
+        Computes the cost of the current state-action pair.
         """
         height_cost = (self.z - self.h_d) ** 2
         speed_cost = self.C
@@ -162,10 +168,10 @@ class DroneModel(object):
         """
         Collects the system state to feed to the model.
         """
-        state = torch.zeros([self.batch_size, 12])
+        state = torch.zeros([self.batch_size, 12]).to(self.device)
         state[:, 0] = self.z
         state[:, 3] = self.v
-        state[:, 7] = torch.ones([self.batch_size, 1])
+        state[:, 7] = torch.ones([self.batch_size, 1]).to(self.device)
         state[:, 8:12] = 1.0 * self.u / 8000
         return state
 
@@ -174,30 +180,48 @@ class DroneModel(object):
         """
         Collects the system state.
         """
-        state = torch.zeros([self.batch_size, 6])
+        state = torch.zeros([self.batch_size, 6]).to(self.device)
         state[:, 0] = self.z
         state[:, 1] = self.v
-        state[:, 2:6] = 1.0 * self.u / 8000
+        state[:, 2] = 1.0 * self.u / 8000
         return state
 
     def set_state(self, state, prev_u=None):
         """
         Set the state of the environment.
         """
-        self.z = state[:, 0]
-        self.v = state[:, 1]
-        self.u = state[:, 2:6] * 8000.
-        self.prev_u = prev_u if prev_u is not None else self.u
+        self.z = state[:, 0:1].to(self.device)
+        self.v = state[:, 1:2].to(self.device)
+        self.u = state[:, 2:3].to(self.device) * 8000.
+        self.prev_u = prev_u.to(self.device) if prev_u is not None else self.u
+
+    def to(self, device_id):
+        """
+        Place the environment on the specified device.
+
+        Args:
+            device_id (int): GPU index
+        """
+        self.device = device_id
+        self.Fa_model = self.Fa_model.to(device_id)
+        self.z = self.z.to(device_id)
+        self.v = self.v.to(device_id)
+        self.u = self.u.to(device_id)
+        self.prev_u = self.prev_u.to(device_id)
+        self.Fa = self.Fa.to(device_id)
+        self.F = self.F.to(device_id)
+        return self
 
     def reset(self):
         """
         Reinitialize the model initial state.
         """
-        self.z = torch.zeros(self.batch_size, 1).normal_(1.5, 0.25)
-        self.v = torch.zeros(self.batch_size, 1).normal_(0., 0.05)
-        self.a = 0
-        self.u = 6508
-        self.prev_u = 6508
-        self.Fa = 0
-        self.F = 0
+        self.z = torch.zeros(self.batch_size, 1).normal_(1.5, 0.25).to(self.device)
+        self.v = torch.zeros(self.batch_size, 1).normal_(0., 0.05).to(self.device)
+        self.a = torch.zeros(self.batch_size, 1).to(self.device)
+        self.u = 6508 * torch.ones(self.batch_size, 1).to(self.device)
+        self.prev_u = 6508 * torch.ones(self.batch_size, 1).to(self.device)
+        self.Fa = torch.zeros(self.batch_size, 1).to(self.device)
+        self.F = torch.zeros(self.batch_size, 1).to(self.device)
+        self.total_step = 0
         return self.state

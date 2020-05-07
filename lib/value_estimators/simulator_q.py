@@ -61,6 +61,7 @@ class SimulatorQEstimator(nn.Module):
         Resets the simulator.
         """
         self.env = gym.make(self.env_type, batch_size=batch_size)
+        self.env.model.to(prev_state.device)
 
     def set_prev_state(self, *args, **kwargs):
         pass

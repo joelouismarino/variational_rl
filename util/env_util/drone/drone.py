@@ -1,4 +1,6 @@
 import gym
+from gym.spaces import Box
+import numpy as np
 from .drone_model import DroneModel
 
 
@@ -11,6 +13,8 @@ class DroneEnv(gym.Env):
     """
     def __init__(self, batch_size=1):
         self.model = DroneModel(batch_size)
+        self.observation_space = Box(-np.inf, np.inf, self.model.state.shape[1:])
+        self.action_space = Box(-np.inf, np.inf, [1])
 
     def step(self, action):
         """
@@ -30,3 +34,4 @@ class DroneEnv(gym.Env):
         Reset the state of the environment.
         """
         self.model.reset()
+        return self.model.state
