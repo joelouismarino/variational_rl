@@ -22,7 +22,6 @@ def collect_episode(env, agent, random=False, eval=False):
     env_states = {'qpos': [], 'qvel': []}
 
     while not done:
-        print(n_steps)
         if n_steps > 1000:
             break
         if 'sim' in dir(env):
