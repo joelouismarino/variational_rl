@@ -32,7 +32,7 @@ def create_env(env_name, seed=None, unwrap_time_limit=True):
     # wrap the environment
     if env_type == 'classic_control':
         raise NotImplementedError
-    elif env_type in ['mujoco', 'ant', 'humanoid', 'drone']:
+    elif env_type in ['mujoco', 'ant', 'humanoid']:
         if isinstance(env, gym.wrappers.TimeLimit) and unwrap_time_limit:
             env = env.env
         env = observation_wrappers.AddBatchDim(env)
@@ -40,6 +40,8 @@ def create_env(env_name, seed=None, unwrap_time_limit=True):
         env = reward_wrappers.AddBatchDim(env)
         env = reward_wrappers.ToTensor(env)
         env = action_wrappers.NormalizeAction(env)
+    elif env_type in ['drone']:
+        pass
     elif env_type == 'robotics':
         raise NotImplementedError
     else:

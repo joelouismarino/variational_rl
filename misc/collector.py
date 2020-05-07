@@ -77,7 +77,7 @@ class Collector:
         # collect the optimality (reward)
         self._collect_optimality_objective(reward, valid, done)
         # collect KL divergence objectives
-        self._collect_kl_objectives(on_policy_action.detach(), valid, done)
+        self._collect_kl_objectives(on_policy_action.detach(), target_on_policy_action.detach(), valid, done)
         # collect alpha objectives
         self._collect_alpha_objectives(valid, done)
         # collect value estimator objectives
@@ -170,7 +170,7 @@ class Collector:
                 # append final objective, calculate inference improvement
                 self.agent.inference_optimizer.estimated_objectives.append(-obj.detach())
                 objectives = torch.stack(self.agent.inference_optimizer.estimated_objectives)
-                inf_imp = - objectives[0] + objectives[-1]
+                inf_imp = objectives[0] - objectives[-1]
                 self.inference_improvement.append(inf_imp)
             # note: multiply by batch size because we divide later (in optimizer)
             obj = - obj * valid * (1 - done) * self.agent.batch_size
@@ -191,7 +191,7 @@ class Collector:
             kl = kl_divergence(self.agent.approx_post, self.agent.direct_approx_post, n_samples=self.agent.n_action_samples, sample=on_policy_action).sum(dim=1, keepdim=True)
             self.objectives['direct_inf_opt_obj'].append(kl * valid * (1 - done))
             self.agent.approx_post.reset(batch_size, dist_params={'loc': loc, 'scale': scale})
-            self.metrics['action']['direct_kl'].append((kl * (1 - done) * valid).detach())
+            self.metrics['action']['direct_train_kl'].append((kl * (1 - done) * valid).detach())
 
     def _collect_alpha_objectives(self, valid, done):
         """
@@ -293,7 +293,7 @@ class Collector:
         self.objectives[name].append(-cll * (1 - done) * valid)
         self.metrics[name]['cll'].append((-cll * (1 - done) * valid).detach())
 
-    def _collect_kl_objectives(self, on_policy_action, valid, done):
+    def _collect_kl_objectives(self, on_policy_action, target_on_policy_action, valid, done):
         """
         Collect the KL divergence objectives to train the prior.
         """
@@ -350,9 +350,15 @@ class Collector:
             self.metrics['action']['approx_post_loc'].append(current_post_loc.detach().mean(dim=1, keepdim=True))
             self.metrics['action']['approx_post_scale'].append(current_post_scale.detach().mean(dim=1, keepdim=True))
 
-        # evaluate the KL for reporting
+        # evaluate the KL for reporting (and possibly Q-network targets)
         kl = kl_divergence(self.agent.approx_post, self.agent.prior, n_samples=self.agent.n_action_samples, sample=on_policy_action).sum(dim=1, keepdim=True)
         self.metrics['action']['kl'].append((kl * (1 - done) * valid).detach())
+
+        if self.agent.direct_approx_post is not None or self.agent.target_approx_post is not None::
+            # evaluate the KL for the direct approx. post.
+            kl = kl_divergence(self.agent.direct_approx_post, self.agent.prior, n_samples=self.agent.n_action_samples, sample=target_on_policy_action).sum(dim=1, keepdim=True)
+            self.metrics['action']['target_kl'].append((kl * (1 - done) * valid).detach())
+
 
     def _collect_log_probs(self, off_policy_action, log_prob, valid):
         """
@@ -454,7 +460,10 @@ class Collector:
         if self.agent.state_value_estimator is not None:
             state_value = torch.stack(self.target_state_values)
         else:
-            action_kl = torch.stack(self.metrics['action']['kl'])
+            if self.agent.direct_inference_optimizer is not None or self.agent.target_inference_optimizer is not None:
+                action_kl = torch.stack(self.metrics['action']['target_kl'])
+            else:
+                action_kl = torch.stack(self.metrics['action']['kl'])
             state_value = torch.stack(self.target_q_values) - self.agent.alphas['pi'] * action_kl
         state_value = state_value * valid * (1. - dones)
         importance_weights = torch.stack(self.importance_weights['action'])
@@ -553,6 +562,9 @@ class Collector:
             # direct amortized inference optimizer
             self.objectives['direct_inf_opt_obj'] = []
             self.metrics['action']['direct_kl'] = []
+
+        if self.agent.direct_inference_optimizer is not None or self.agent.target_inference_optimizer is not None:
+            self.metrics['action']['target_kl'] = []
 
         if self.agent.prior_model is not None:
             self.objectives['action_kl_prev_loc'] = []

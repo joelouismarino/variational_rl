@@ -47,6 +47,10 @@ class DroneModel(object):
         self.D = 0.23                     # diameter
         self.CT = 0.08937873              # thrust coeff
 
+        # Desired trajectory parameters
+        self.C = C                        # how fast to land
+        self.h_d = h_d                    # desired landing height
+
         # NN model for unknown dynamics
         self.Fa_model = read_weight('util/env_util/drone/Fa_net_12_3_full_Lip16.pth')
 
@@ -131,20 +135,32 @@ class DroneModel(object):
 
         self.total_step += 1
 
-        return self.state
+        done = True if self.step_size*self.total_step >= self.sim_duration else False
+        cost = self.calculate_cost()
+
+        return self.state, -cost, done
+
+    def calculate_cost(self):
+        """
+        Calculates the cost of the current state-action pair.
+        """
+        height_cost = (self.z - self.h_d) ** 2
+        speed_cost = self.C
+        control_cost = self.u ** 2
+        return height_cost + speed_cost + control_cost
 
     def dynamics(self):
         """
         Steps the neural network model.
         """
-        Fa = self.Fa_model(self.state[:, 2])
+        Fa = self.Fa_model(self.model_state)[:, 2]
         self.F = 4*self.CT*RHO*self.u**2*self.D**4/3600.0
-        self.a = self.F/self.mass - GRAVITY + self.a_noise + Fa/self.mass
+        self.a = self.F/self.mass - GRAVITY + self.a_noise # + Fa/self.mass
 
     @property
-    def state(self):
+    def model_state(self):
         """
-        Collects the system state.
+        Collects the system state to feed to the model.
         """
         state = torch.zeros([self.batch_size, 12])
         state[:, 0] = self.z
@@ -152,6 +168,26 @@ class DroneModel(object):
         state[:, 7] = torch.ones([self.batch_size, 1])
         state[:, 8:12] = 1.0 * self.u / 8000
         return state
+
+    @property
+    def state(self):
+        """
+        Collects the system state.
+        """
+        state = torch.zeros([self.batch_size, 6])
+        state[:, 0] = self.z
+        state[:, 1] = self.v
+        state[:, 2:6] = 1.0 * self.u / 8000
+        return state
+
+    def set_state(self, state, prev_u=None):
+        """
+        Set the state of the environment.
+        """
+        self.z = state[:, 0]
+        self.v = state[:, 1]
+        self.u = state[:, 2:6] * 8000.
+        self.prev_u = prev_u if prev_u is not None else self.u
 
     def reset(self):
         """

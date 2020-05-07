@@ -13,12 +13,20 @@ class DroneEnv(gym.Env):
         self.model = DroneModel(batch_size)
 
     def step(self, action):
-        next_state = self.model.step(action)
-
+        """
+        Step the model forward.
+        """
+        next_state, reward, done = self.model.step(action)
         return next_state, reward, done, {}
 
     def set_state(self, state):
-        pass
+        """
+        Set the state of the model.
+        """
+        self.model.set_state(state)
 
     def reset(self):
+        """
+        Reset the state of the environment.
+        """
         self.model.reset()
