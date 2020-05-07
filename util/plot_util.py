@@ -9,7 +9,10 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import pandas as pd
 import json
+import warnings
+warnings.filterwarnings("ignore")
 
+COLORS = ['b', 'g', 'r', 'c']
 
 def flatten(dictionary):
     return pd.io.json.json_normalize(dictionary, sep='_').to_dict()
@@ -114,6 +117,9 @@ class Plotter:
                     if key == 'action' and label == 'approx_post' and self.agent_args['approx_post_args']['dist_type'] in ['TanhNormal', 'TanhARNormal']:
                         # Tanh Normal distribution
                         x, plus, minus = np.tanh(x), np.tanh(plus), np.tanh(minus)
+                    if key == 'action' and label == 'direct_approx_post' and self.agent_args['approx_post_args']['dist_type'] in ['TanhNormal', 'TanhARNormal']:
+                        # Tanh Normal distribution
+                        x, plus, minus = np.tanh(x), np.tanh(plus), np.tanh(minus)
                     if key == 'action' and label == 'prior' and self.agent_args['prior_args']['dist_type'] in ['TanhNormal', 'TanhARNormal']:
                         # Tanh Normal distribution
                         x, plus, minus = np.tanh(x), np.tanh(plus), np.tanh(minus)
@@ -153,11 +159,9 @@ class Plotter:
             plt.legend(newHandles, newLabels)
 
         for k in episode['distributions'].keys():
-            i = 0  # TODO: get rid of this hack
-            for l in episode['distributions'][k].keys():
-                color = 'b' if i == 0 else 'g'
+            for i, l in enumerate(episode['distributions'][k].keys()):
+                color = COLORS[i]
                 self._plot_ts(k, episode[k], episode['distributions'][k][l], l, color)
-                i += 1
             plt.suptitle(k)
             merge_legends()
             self.experiment.log_figure(figure=plt, figure_name=k + '_ts_'+str(step))

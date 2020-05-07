@@ -353,4 +353,8 @@ class Agent(nn.Module):
         q_value_param_dict = self.q_value_estimator.parameters()
         for _, v in q_value_param_dict.items():
             params.extend(list(v))
+        if self.state_value_estimator is not None:
+            value_param_dict = self.state_value_estimator.parameters()
+            for _, v in value_param_dict.items():
+                params.extend(list(v))
         return params

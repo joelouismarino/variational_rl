@@ -123,7 +123,10 @@ class Collector:
         Collect the distribution parameters.
         """
         # action prior and approximate posterior
-        for dist_name in ['prior', 'approx_post']:
+        dist_name_list = ['prior', 'approx_post']
+        if self.agent.direct_approx_post is not None:
+            dist_name_list.append('direct_approx_post')
+        for dist_name in dist_name_list:
             dist = getattr(self.agent, dist_name)
             for param_name in dist.param_names:
                 param = getattr(dist.dist, param_name)
@@ -580,7 +583,10 @@ class Collector:
         self.distributions['action'] = {'prior': {param_name: [] for param_name in self.agent.prior.param_names},
                                         'approx_post': {param_name: [] for param_name in self.agent.approx_post.param_names}}
 
-        # self.inference_improvement = {'action': []}
+        if self.agent.direct_approx_post is not None:
+            param_dict = {param_name: [] for param_name in self.agent.direct_approx_post.param_names}
+            self.distributions['action']['direct_approx_post'] = param_dict
+
         self.log_probs = {'action': []}
 
         if self.agent.state_value_estimator is not None:
