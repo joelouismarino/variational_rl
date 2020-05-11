@@ -96,7 +96,7 @@ class Plotter:
         k = 1
         for i in range(dim_obs):
             plt.subplot(int(str(dim_obs) + '1' + str(k)))
-            observations_i = observations[:, i].cpu().numpy()
+            observations_i = observations[:-1, i].cpu().numpy()
             if key == 'action' and self.agent.postprocess_action:
                 observations_i = np.tanh(observations_i)
             plt.plot(observations_i.squeeze(), 'o', label='observation', color='k', markersize=2)
@@ -142,6 +142,27 @@ class Plotter:
                 NotImplementedError
             k += 1
 
+    def plot_states_and_rewards(self, states, rewards, step):
+        """
+        Plots the states and rewards for a collected episode.
+        """
+        # states
+        plt.figure()
+        dim_obs = states.shape[1]
+        for i in range(dim_obs):
+            plt.subplot(dim_obs, 1, i+1)
+            states_i = states[:-1, i].cpu().numpy()
+            plt.plot(states_i.squeeze(), 'o', label='state', color='k', markersize=2)
+        self.experiment.log_figure(figure=plt, figure_name='states_ts_'+str(step))
+        plt.close()
+
+        # rewards
+        plt.figure()
+        rewards = rewards[:-1, 0].cpu().numpy()
+        plt.plot(rewards.squeeze(), 'o', label='reward', color='k', markersize=2)
+        self.experiment.log_figure(figure=plt, figure_name='rewards_ts_'+str(step))
+        plt.close()
+
     def plot_episode(self, episode, step):
         """
         Plots a newly collected episode.
@@ -166,6 +187,8 @@ class Plotter:
             merge_legends()
             self.experiment.log_figure(figure=plt, figure_name=k + '_ts_'+str(step))
             plt.close()
+
+        self.plot_states_and_rewards(episode['state'], episode['reward'], step)
 
     def log_eval(self, episode, eval_states, step):
         """

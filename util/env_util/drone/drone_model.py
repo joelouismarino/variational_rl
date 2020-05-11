@@ -73,7 +73,7 @@ class DroneModel(object):
         # Step
         self.step_size = 1e-2
         self.total_step = 0
-        self.sim_duration = 1
+        self.sim_duration = 5
 
         self.device = None
 
