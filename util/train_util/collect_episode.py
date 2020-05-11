@@ -24,7 +24,6 @@ def collect_episode(env, agent, random=False, eval=False):
     while not done:
         if n_steps > 1000:
             break
-        import ipdb; ipdb.set_trace()
         if 'sim' in dir(env.unwrapped):
             env_states['qpos'].append(copy.deepcopy(env.sim.data.qpos))
             env_states['qvel'].append(copy.deepcopy(env.sim.data.qvel))
