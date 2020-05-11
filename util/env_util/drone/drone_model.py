@@ -39,7 +39,7 @@ class DroneModel(object):
         batch_size (int, optional): number of parallel environments
         stochastic (bool, optional): whether to add acceleration and control noise
     """
-    def __init__(self, batch_size=1, stochastic=True):
+    def __init__(self, batch_size=1, stochastic=False):
         self.batch_size = batch_size
 
         # Drone parameters
@@ -58,8 +58,8 @@ class DroneModel(object):
         self.z = 0                        # height
         self.v = 0                        # velocity
         self.a = 0                        # acceleration
-        self.u = 6508                     # control signal
-        self.prev_u = 6508                # previous control signal
+        self.u = 0                        # control signal
+        # self.prev_u = 6508                # previous control signal
         self.Fa = 0                       # ground truth Fa
         self.F = 0                        # force
 
@@ -85,6 +85,7 @@ class DroneModel(object):
 
         Args:
             u (torch.Tensor): the control input [batch_size, 1]
+                              in the range [-1, +1]
         """
         if type(u) == np.ndarray:
             u = torch.from_numpy(u).to(self.device)
@@ -99,10 +100,10 @@ class DroneModel(object):
                 self.u_noise = self.u_noise.clamp(-3 * self.u_noise_sigma, 3 * self.u_noise_sigma)
 
         # Consider control delay
-        u = 0.8 * self.prev_u.detach() + 0.2 * u
+        # u = 0.8 * self.prev_u.detach() + 0.2 * u
         u = u + self.u_noise
         self.u = u
-        self.prev_u = u
+        # self.prev_u = u
 
         # ODE solver: (4,5) Runge-Kutta
         prev_z = self.z
@@ -152,7 +153,7 @@ class DroneModel(object):
         """
         height_cost = (self.z - self.h_d) ** 2
         speed_cost = self.C
-        control_cost = self.u ** 2
+        control_cost = (self.u + 1.) ** 2
         return height_cost + speed_cost + control_cost
 
     def dynamics(self):
@@ -160,7 +161,8 @@ class DroneModel(object):
         Steps the neural network model.
         """
         Fa = self.Fa_model(self.model_state)[:, 2]
-        self.F = 4*self.CT*RHO*self.u**2*self.D**4/3600.0
+        u = (2000. * self.u) + 6000.
+        self.F = 4 * self.CT * RHO * u ** 2 * self.D ** 4 / 3600.
         self.a = self.F/self.mass - GRAVITY + self.a_noise # + Fa/self.mass
 
     @property
@@ -172,7 +174,7 @@ class DroneModel(object):
         state[:, 0] = self.z
         state[:, 3] = self.v
         state[:, 7] = torch.ones([self.batch_size, 1]).to(self.device)
-        state[:, 8:12] = 1.0 * self.u / 8000
+        state[:, 8:12] = 0.75 + self.u / 4.
         return state
 
     @property
@@ -180,10 +182,10 @@ class DroneModel(object):
         """
         Collects the system state.
         """
-        state = torch.zeros([self.batch_size, 6]).to(self.device)
+        state = torch.zeros([self.batch_size, 3]).to(self.device)
         state[:, 0] = self.z
         state[:, 1] = self.v
-        state[:, 2] = 1.0 * self.u / 8000
+        state[:, 2] = 0.75 + self.u / 4.
         return state
 
     def set_state(self, state, prev_u=None):
@@ -192,8 +194,8 @@ class DroneModel(object):
         """
         self.z = state[:, 0:1].to(self.device)
         self.v = state[:, 1:2].to(self.device)
-        self.u = state[:, 2:3].to(self.device) * 8000.
-        self.prev_u = prev_u.to(self.device) if prev_u is not None else self.u
+        self.u = state[:, 2:3].to(self.device)
+        # self.prev_u = prev_u.to(self.device) if prev_u is not None else self.u
 
     def to(self, device_id):
         """
@@ -207,7 +209,7 @@ class DroneModel(object):
         self.z = self.z.to(device_id)
         self.v = self.v.to(device_id)
         self.u = self.u.to(device_id)
-        self.prev_u = self.prev_u.to(device_id)
+        # self.prev_u = self.prev_u.to(device_id)
         self.Fa = self.Fa.to(device_id)
         self.F = self.F.to(device_id)
         return self
@@ -219,8 +221,8 @@ class DroneModel(object):
         self.z = torch.zeros(self.batch_size, 1).normal_(1.5, 0.25).to(self.device)
         self.v = torch.zeros(self.batch_size, 1).normal_(0., 0.05).to(self.device)
         self.a = torch.zeros(self.batch_size, 1).to(self.device)
-        self.u = 6508 * torch.ones(self.batch_size, 1).to(self.device)
-        self.prev_u = 6508 * torch.ones(self.batch_size, 1).to(self.device)
+        self.u = torch.ones(self.batch_size, 1).uniform_(-1, 1).to(self.device)
+        # self.prev_u = torch.ones(self.batch_size, 1).uniform_(-1, 1).to(self.device)
         self.Fa = torch.zeros(self.batch_size, 1).to(self.device)
         self.F = torch.zeros(self.batch_size, 1).to(self.device)
         self.total_step = 0
