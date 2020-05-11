@@ -24,14 +24,15 @@ def collect_episode(env, agent, random=False, eval=False):
     while not done:
         if n_steps > 1000:
             break
-        if 'sim' in dir(env):
+        import ipdb; ipdb.set_trace()
+        if 'sim' in dir(env.unwrapped):
             env_states['qpos'].append(copy.deepcopy(env.sim.data.qpos))
             env_states['qvel'].append(copy.deepcopy(env.sim.data.qvel))
         action = env.action_space.sample() if random else None
         action = agent.act(state, reward, done, action, eval=eval)
         state, reward, done, _ = env.step(action)
         n_steps += 1
-    if 'sim' in dir(env):
+    if 'sim' in dir(env.unwrapped):
         env_states['qpos'].append(copy.deepcopy(env.sim.data.qpos))
         env_states['qvel'].append(copy.deepcopy(env.sim.data.qvel))
         env_states['qpos'] = np.stack(env_states['qpos'])
