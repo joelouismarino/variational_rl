@@ -192,10 +192,11 @@ class Plotter:
 
         # log the MuJoCo simulator states
         for sim_item_str in ['qpos', 'qvel']:
-            sim_item = eval_states[sim_item_str].tolist()
-            json_str = json.dumps(sim_item)
-            item_name = 'episode_step_' + str(step) + '_' + sim_item_str
-            self.experiment.log_asset_data(json_str, name=item_name)
+            if len(eval_states[sim_item_str]) > 0:
+                sim_item = eval_states[sim_item_str].tolist()
+                json_str = json.dumps(sim_item)
+                item_name = 'episode_step_' + str(step) + '_' + sim_item_str
+                self.experiment.log_asset_data(json_str, name=item_name)
 
     def plot_agent_kl(self, agent_kl, step):
         self.experiment.log_metric('agent_kl', agent_kl, step)
