@@ -139,6 +139,9 @@ def get_mujoco_config(env):
     # whether to use a separate state-value network
     use_state_value_network = False
 
+    # whether to use buffer actions for action-value targets
+    agent_args['misc_args']['off_policy_targets'] = True
+
     if use_state_value_network:
         state_value_args = {}
         state_value_args['network_args'] = {'type': 'fully_connected',
