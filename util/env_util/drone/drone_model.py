@@ -48,7 +48,6 @@ class DroneModel(object):
         self.CT = 0.08937873              # thrust coeff
 
         # Desired trajectory parameters
-        self.C = 1.                       # how fast to land
         self.h_d = 0.                     # desired landing height
 
         # NN model for unknown dynamics
@@ -151,10 +150,9 @@ class DroneModel(object):
         """
         Computes the cost of the current state-action pair.
         """
-        height_cost = (self.z - self.h_d) ** 2
-        speed_cost = self.C
+        height_cost = 0.05 * (self.z - self.h_d) ** 2
         control_cost = (self.u + 1.) ** 2
-        return height_cost + speed_cost + control_cost
+        return height_cost + control_cost
 
     def dynamics(self):
         """
