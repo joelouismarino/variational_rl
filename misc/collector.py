@@ -81,7 +81,7 @@ class Collector:
         # collect alpha objectives
         self._collect_alpha_objectives(valid, done)
         # collect value estimator objectives
-        self._get_value_est_objectives(state, off_policy_action, target_on_policy_action.detach(), reward, valid, done)
+        self._get_value_est_objectives(state, off_policy_action, target_on_policy_action.detach(), reward, log_prob, valid, done)
         # collect log probabilities
         self._collect_log_probs(off_policy_action, log_prob, valid)
         # collect log-scale limit objectives
@@ -253,7 +253,7 @@ class Collector:
         self.metrics['log_scale_loss']['loss'].append(objective.detach())
 
     def _get_value_est_objectives(self, state, off_policy_action, on_policy_action,
-                                    reward, valid, done):
+                                    reward, off_policy_log_prob, valid, done):
         """
         Collects the online objectives for the value estimator(s).
         """
@@ -275,6 +275,10 @@ class Collector:
         action = on_policy_action if not self.agent.off_policy_targets else off_policy_action.repeat(self.agent.n_action_samples, 1)
         target_q_values = self.agent.q_value_estimator(self.agent, expanded_state, action, target=target, direct=direct_targets)
         target_q_values = target_q_values.view(self.agent.n_action_samples, -1, 1)[:self.agent.n_q_action_samples].mean(dim=0)
+        if self.agent.off_policy_targets:
+            # importance weights if using off-policy actions (pi / pi_old)
+            weights = torch.exp(self.agent.approx_post.log_prob(off_policy_action).sum(dim=1, keepdim=True) - off_policy_log_prob)
+            target_q_values = weights.clamp(max=1.) * target_q_values
         self.target_q_values.append(target_q_values)
         # other terms for model-based Q-value estimator
         if 'state_likelihood_model' in dir(self.agent.q_value_estimator):
