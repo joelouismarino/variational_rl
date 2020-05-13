@@ -72,7 +72,7 @@ class DroneModel(object):
         # Step
         self.step_size = 1e-2
         self.total_step = 0
-        self.sim_duration = 5
+        self.sim_duration = 2.5
 
         self.device = None
 
@@ -151,7 +151,8 @@ class DroneModel(object):
         Computes the cost of the current state-action pair.
         """
         height_cost = 0.05 * (self.z - self.h_d) ** 2
-        control_cost = (self.u + 1.) ** 2
+        # control_cost = (self.u + 1.) ** 2
+        control_cost = 0.
         return height_cost + control_cost
 
     def dynamics(self):
@@ -216,7 +217,7 @@ class DroneModel(object):
         """
         Reinitialize the model initial state.
         """
-        self.z = torch.zeros(self.batch_size, 1).normal_(1.5, 0.25).to(self.device)
+        self.z = torch.zeros(self.batch_size, 1).normal_(0.75, 0.25).to(self.device)
         self.v = torch.zeros(self.batch_size, 1).normal_(0., 0.05).to(self.device)
         self.a = torch.zeros(self.batch_size, 1).to(self.device)
         self.u = torch.ones(self.batch_size, 1).uniform_(-1, 1).to(self.device)

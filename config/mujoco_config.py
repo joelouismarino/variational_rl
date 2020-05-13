@@ -140,7 +140,7 @@ def get_mujoco_config(env):
     use_state_value_network = False
 
     # whether to use buffer actions for action-value targets
-    agent_args['misc_args']['off_policy_targets'] = True
+    agent_args['misc_args']['off_policy_targets'] = False
 
     if use_state_value_network:
         state_value_args = {}
