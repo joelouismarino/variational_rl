@@ -8,31 +8,33 @@ from misc.estimators import n_step
 class SimulatorQEstimator(nn.Module):
     """
     A Q-value estimator that uses a differentiable ground-truth simulator.
-    Currently only works with DroneEnv and CartpoleEnv.
+    Currently only works with DroneEnv.
 
     Args:
         env_type (str): the environment name
         horizon (int): the rollout horizon
     """
     def __init__(self, env_type, horizon):
+        super(SimulatorQEstimator, self).__init__()
+        assert env_type == 'Drone-v0'
         self.env_type = env_type
         self.horizon = horizon
         self.env = None
 
-    def forward(self, agent, state, action):
+    def forward(self, agent, state, action, detach_params=False, *args, **kwargs):
         """
         Rolls out the simulator.
         """
-        self.reset()
+        self.reset(batch_size=state.shape[0], prev_state=None)
+        self.env.model.to(agent.device)
         self.env.set_state(state)
-        # TODO: put environment on GPU?
         rewards_list = []
         kl_list = []
         for _ in range(self.horizon):
             action = action.tanh() if agent.postprocess_action else action
             # step the environment
             state, reward, done, _ = self.env.step(action)
-            rewards_list.append(reawrd)
+            rewards_list.append(reward)
             # estimate the next action
             agent.generate_prior(state, detach_params)
             if agent.prior_model is not None:
@@ -49,9 +51,9 @@ class SimulatorQEstimator(nn.Module):
                 kl_list.append(agent.alphas['pi'] * kl)
 
         # calculate the Q-value estimate
-        total_q_values = 0 * torch.stack(rewards_list)
         total_rewards = torch.stack(rewards_list)
         total_kl = torch.stack(kl_list)
+        total_q_values = torch.zeros((self.horizon + 1, total_rewards.shape[1], total_rewards.shape[2])).to(agent.device)
 
         estimate = n_step(total_q_values, total_rewards, total_kl, discount=agent.reward_discount)
         return estimate
@@ -61,7 +63,7 @@ class SimulatorQEstimator(nn.Module):
         Resets the simulator.
         """
         self.env = gym.make(self.env_type, batch_size=batch_size)
-        self.env.model.to(prev_state.device)
+        # self.env.model.to(prev_state.device)
 
     def set_prev_state(self, *args, **kwargs):
         pass

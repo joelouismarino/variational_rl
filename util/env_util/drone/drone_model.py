@@ -170,9 +170,9 @@ class DroneModel(object):
         Collects the system state to feed to the model.
         """
         state = torch.zeros([self.batch_size, 12]).to(self.device)
-        state[:, 0] = self.z
-        state[:, 3] = self.v
-        state[:, 7] = torch.ones([self.batch_size, 1]).to(self.device)
+        state[:, 0:1] = self.z
+        state[:, 3:4] = self.v
+        state[:, 7:8] = torch.ones([self.batch_size, 1]).to(self.device)
         state[:, 8:12] = 0.75 + self.u / 4.
         return state
 
@@ -182,9 +182,9 @@ class DroneModel(object):
         Collects the system state.
         """
         state = torch.zeros([self.batch_size, 3]).to(self.device)
-        state[:, 0] = self.z
-        state[:, 1] = self.v
-        state[:, 2] = 0.75 + self.u / 4.
+        state[:, 0:1] = self.z
+        state[:, 1:2] = self.v
+        state[:, 2:3] = 0.75 + self.u / 4.
         return state
 
     def set_state(self, state, prev_u=None):
