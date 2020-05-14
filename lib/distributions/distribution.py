@@ -471,7 +471,7 @@ class Distribution(nn.Module):
         # convert to lists
         params = [param.detach() for _, param in param_dict.items()]
         grads = [grad.detach() for _, grad in grad_dict.items()]
-        if normalize:
+        if normalize and params[0].shape[1] > 1:
             norm_dim = -1
             if norm_type == 'batch':
                 norm_dim = 0
