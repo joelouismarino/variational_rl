@@ -100,14 +100,18 @@ class Distribution(nn.Module):
                     if euler_args['is_3d']:
                         n_var -= 1
                 self.models[model_name] = FullyConnectedLayer(n_input, n_var)
-                nn.init.uniform_(self.models[model_name].linear.weight, -INIT_W, INIT_W)
-                nn.init.uniform_(self.models[model_name].linear.bias, -INIT_W, INIT_W)
+                # nn.init.uniform_(self.models[model_name].linear.weight, -INIT_W, INIT_W)
+                # nn.init.uniform_(self.models[model_name].linear.bias, -INIT_W, INIT_W)
+                nn.init.constant_(self.models[model_name].linear.weight, 0.)
+                nn.init.constant_(self.models[model_name].linear.bias, 0.)
 
                 if self.update != 'direct':
                     self.gates[model_name] = FullyConnectedLayer(n_input, n_var,
                                                                  non_linearity='sigmoid')
-                    nn.init.uniform_(self.gates[model_name].linear.weight, -INIT_W, INIT_W)
-                    nn.init.uniform_(self.gates[model_name].linear.bias, -INIT_W, INIT_W)
+                    # nn.init.uniform_(self.gates[model_name].linear.weight, -INIT_W, INIT_W)
+                    # nn.init.uniform_(self.gates[model_name].linear.bias, -INIT_W, INIT_W)
+                    nn.init.constant_(self.gates[model_name].linear.weight, 0)
+                    nn.init.constant_(self.gates[model_name].linear.bias, 0)
 
         self.initial_params = nn.ParameterDict({name: None for name in param_names})
         for param in self.initial_params:
@@ -340,6 +344,11 @@ class Distribution(nn.Module):
             #     v.retain_grad()
             if self.transforms is not None:
                 dist_params['transforms'] = [t for t in self.transforms]
+        elif 'scale' not in dist_params:
+            if self.const_scale:
+                dist_params['scale'] = self.log_scale.repeat(batch_size, 1).exp().data.requires_grad_()
+            else:
+                dist_params['scale'] = self.initial_params['scale'].repeat(batch_size, 1).data.requires_grad_()
         # initialize the distribution
         d = self.dist_type(**dist_params) if len(dist_params.keys()) > 0 else None
         if self.planning:

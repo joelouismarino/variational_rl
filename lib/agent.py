@@ -2,6 +2,7 @@ import copy
 import torch
 import torch.nn as nn
 import numpy as np
+from config import postprocess_misc_args
 from misc.collector import Collector
 from lib.models import get_model
 from lib.distributions import Distribution
@@ -30,6 +31,9 @@ class Agent(nn.Module):
                  direct_inference_optimizer_args, direct_approx_post_args,
                  state_value_estimator_args):
         super(Agent, self).__init__()
+
+        misc_args = postprocess_misc_args(misc_args)
+
         # prior
         self.prior_model = get_model(prior_model_args)
         self.target_prior_model = copy.deepcopy(self.prior_model)

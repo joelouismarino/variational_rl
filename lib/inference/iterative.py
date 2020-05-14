@@ -17,10 +17,13 @@ class IterativeInferenceModel(nn.Module):
         self.n_inf_iters = n_inf_iters
         # keep track of estimated objectives for reporting
         self.estimated_objectives = []
+        # keep track of parameters for analysis
+        self.dist_params = []
 
     def forward(self, agent, state, target=False, **kwargs):
 
         approx_post = agent.approx_post if not target else agent.target_approx_post
+        self.dist_params.append({k: v.detach() for k, v in approx_post.get_dist_params().items()})
 
         for _ in range(self.n_inf_iters):
             # sample actions, evaluate objective, backprop to get gradients
@@ -36,6 +39,7 @@ class IterativeInferenceModel(nn.Module):
             inf_input = self.inference_model(params=params, grads=grads, state=state)
             approx_post.step(inf_input)
             approx_post.retain_grads()
+            self.dist_params.append({k: v.detach() for k, v in approx_post.get_dist_params().items()})
 
         # clear any gradients in the generative parameters
         clear_gradients(agent.generative_parameters())
@@ -43,3 +47,4 @@ class IterativeInferenceModel(nn.Module):
     def reset(self, batch_size):
         self.inference_model.reset(batch_size)
         self.estimated_objectives = []
+        self.dist_params = []
