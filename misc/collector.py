@@ -68,7 +68,7 @@ class Collector:
         on_policy_action = self.agent.approx_post.sample(self.agent.n_action_samples)
         if self.agent.direct_approx_post is not None:
             target_on_policy_action = self.agent.direct_approx_post.sample(self.agent.n_action_samples)
-        elif self.agent.target_approx_post is not None:
+        elif self.agent.target_approx_post is not None and self.agent.target_inf_value_targets:
             target_on_policy_action = self.agent.target_approx_post.sample(self.agent.n_action_samples)
         else:
             target_on_policy_action = on_policy_action
@@ -220,6 +220,13 @@ class Collector:
             self.metrics['alpha_losses']['scale'].append(alpha_loss_scale.detach())
             self.metrics['alphas']['scale'].append(self.agent.alphas['scale'])
 
+        if self.agent.inf_target_kl:
+            target_inf_kl = self.agent.epsilons['target_inf']
+            alpha_loss_inf = - (self.agent.log_alphas['target_inf'].exp() * (self.metrics['action']['kl_target_inf'][-1] - target_inf_kl).detach()) * valid * (1 - done)
+            self.objectives['alpha_loss_target_inf'].append(alpha_loss_inf)
+            self.metrics['alpha_losses']['target_inf'].append(alpha_loss_inf.detach())
+            self.metrics['alphas']['target_inf'].append(self.agent.alphas['target_inf'])
+
     def _collect_log_scale_lim_objectives(self):
         """
         Collects the objectives for the log-scale limit parameters.
@@ -359,12 +366,16 @@ class Collector:
         kl = kl_divergence(self.agent.approx_post, self.agent.prior, n_samples=self.agent.n_action_samples, sample=on_policy_action).sum(dim=1, keepdim=True)
         self.metrics['action']['kl'].append((kl * (1 - done) * valid).detach())
 
-        if self.agent.direct_approx_post is not None or self.agent.target_approx_post is not None:
+        if self.agent.direct_approx_post is not None or (self.agent.target_approx_post is not None and self.agent.target_inf_value_targets):
             # evaluate the KL for the direct approx. post.
             approx_post = self.agent.direct_approx_post if self.agent.direct_approx_post is not None else self.agent.target_approx_post
             kl = kl_divergence(approx_post, self.agent.prior, n_samples=self.agent.n_action_samples, sample=target_on_policy_action).sum(dim=1, keepdim=True)
             self.metrics['action']['target_kl'].append((kl * (1 - done) * valid).detach())
 
+        if self.agent.inf_target_kl:
+            # KL between approx post and target approx post
+            kl = kl_divergence(approx_post, self.agent.target_approx_post, n_samples=self.agent.n_action_samples, sample=on_policy_action).sum(dim=1, keepdim=True)
+            self.metrics['action']['kl_target_inf'].append((kl * (1 - done) * valid).detach())
 
     def _collect_log_probs(self, off_policy_action, log_prob, valid):
         """
@@ -569,7 +580,7 @@ class Collector:
             self.objectives['direct_inf_opt_obj'] = []
             self.metrics['action']['direct_kl'] = []
 
-        if self.agent.direct_inference_optimizer is not None or self.agent.target_inference_optimizer is not None:
+        if self.agent.direct_approx_post is not None or (self.agent.target_approx_post is not None and self.agent.target_inf_value_targets):
             self.metrics['action']['target_kl'] = []
 
         if self.agent.prior_model is not None:
@@ -592,6 +603,13 @@ class Collector:
             self.metrics['action']['prior_prev_scale'] = []
             self.metrics['action']['prior_curr_loc'] = []
             self.metrics['action']['prior_curr_scale'] = []
+
+        if self.agent.inf_target_kl:
+            # self.objectives['action_kl_target_inf'] = []
+            self.objectives['alpha_loss_target_inf'] = []
+            self.metrics['action']['kl_target_inf'] = []
+            self.metrics['alpha_losses']['target_inf'] = []
+            self.metrics['alphas']['target_inf'] = []
 
         if 'loc' in self.agent.approx_post.param_names:
             self.metrics['action']['approx_post_loc'] = []

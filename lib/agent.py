@@ -52,7 +52,7 @@ class Agent(nn.Module):
             approx_post_args['n_input'] = None
         self.approx_post = Distribution(**approx_post_args)
         self.target_inference_optimizer = self.target_approx_post = None
-        if misc_args['use_target_inference_optimizer']:
+        if misc_args['inf_target_kl'] or misc_args['target_inf_value_targets']:
             self.target_inference_optimizer = copy.deepcopy(self.inference_optimizer)
             self.target_approx_post = Distribution(**approx_post_args)
 
@@ -74,7 +74,8 @@ class Agent(nn.Module):
         # Lagrange multipliers for KL, location KL, and scale KL
         self.log_alphas = nn.ParameterDict({'pi': nn.Parameter(torch.zeros(1)),
                                             'loc': nn.Parameter(torch.zeros(1)),
-                                            'scale': nn.Parameter(torch.zeros(1))})
+                                            'scale': nn.Parameter(torch.zeros(1)),
+                                            'target_inf': nn.Parameter(torch.zeros(1))})
 
         # miscellaneous
         self.epsilons = misc_args['epsilons']
@@ -87,6 +88,8 @@ class Agent(nn.Module):
         self.optimize_targets = misc_args['optimize_targets']
         self.direct_targets = misc_args['direct_targets']
         self.off_policy_targets = misc_args['off_policy_targets']
+        self.inf_target_kl = misc_args['inf_target_kl']
+        self.target_inf_value_targets = misc_args['target_inf_value_targets']
 
         # mode (either 'train' or 'eval')
         self.mode = 'train'
@@ -154,12 +157,12 @@ class Agent(nn.Module):
             self.direct_inference_optimizer(self, state, detach_params=detach_params, direct=True)
         if self.inference_optimizer.n_inf_iters == 1 or not direct:
             # run the inference model if it is already direct
-            self.approx_post.init(self.prior)
-            self.inference_optimizer(self, state, detach_params=detach_params)
             if self.target_approx_post is not None and self.mode == 'train':
                 # get the target estimate
                 self.target_approx_post.init(self.prior)
                 self.target_inference_optimizer(self, state, detach_params=detach_params, target=True)
+            self.approx_post.init(self.prior)
+            self.inference_optimizer(self, state, detach_params=detach_params)
 
     def estimate_objective(self, state, action, target=False):
         """
@@ -176,7 +179,12 @@ class Agent(nn.Module):
         kl = kl_divergence(approx_post, self.prior, n_samples=self.n_action_samples, sample=action).sum(dim=1, keepdim=True)
         expanded_state = state.repeat(self.n_action_samples, 1)
         cond_log_like = self.q_value_estimator(self, expanded_state, action, detach_params=True, target=self.optimize_targets)
-        return cond_log_like - self.alphas['pi'] * kl.repeat(self.n_action_samples, 1)
+        objective = cond_log_like - self.alphas['pi'] * kl.repeat(self.n_action_samples, 1)
+        if self.inf_target_kl and not target and self.mode == 'train':
+            # KL from target approx. posterior
+            inf_kl = kl_divergence(approx_post, self.target_approx_post, n_samples=self.n_action_samples, sample=action).sum(dim=1, keepdim=True)
+            objective = objective - self.alphas['target_inf'] * inf_kl.repeat(self.n_action_samples, 1)
+        return objective
 
     def step(self, state, action):
         """

@@ -13,9 +13,12 @@ def get_mujoco_config(env):
                                'reward_discount': 0.99,
                                'retrace_lambda': 0.9,
                                'postprocess_action': False,
-                               'epsilons': dict(pi=None, loc=5e-4, scale=1e-5)}
+                               'epsilons': dict(pi=None, loc=5e-4, scale=1e-5,
+                                                target_inf=0.1)}
                                # RERPI epsilons: pi=0.1, loc=5e-4, scale=1e-5
-                               # use pi=None for SAC heuristic
+                               # use pi=None for SAC heuristic: |A|
+                               # loc and scale only used if prior is non-uniform
+                               # target_inf only used if inf_target_kl is True
 
     state_size = int(np.prod(env.observation_space.shape))
     agent_args['misc_args']['state_size'] = state_size
@@ -72,7 +75,9 @@ def get_mujoco_config(env):
     optimizer_type = 'iterative'
     optimizer_type = 'non_parametric' if action_approx_post_dist == 'Boltzmann' else optimizer_type
     use_direct_inference_optimizer = False
-    agent_args['misc_args']['use_target_inference_optimizer'] = False
+
+    # whether to penalize KL from target inference optimizer
+    agent_args['misc_args']['inf_target_kl'] = True
 
     inf_opt_args = {'opt_type': optimizer_type}
     if optimizer_type == 'direct':
@@ -134,13 +139,16 @@ def get_mujoco_config(env):
 
     ## Q-VALUE ESTIMATOR
     # estimator type can be 'direct', 'model_based', or 'simulator'
-    estimator_type = 'simulator'
+    estimator_type = 'direct'
 
     # whether to use a separate state-value network
     use_state_value_network = False
 
     # whether to use buffer actions for action-value targets
     agent_args['misc_args']['off_policy_targets'] = False
+
+    # whether to use target inference network to estimate target action-values
+    agent_args['misc_args']['target_inf_value_targets'] = False
 
     if use_state_value_network:
         state_value_args = {}
@@ -156,7 +164,7 @@ def get_mujoco_config(env):
     else:
         agent_args['state_value_estimator_args'] = None
 
-    # whether to use target networks for policy optimization
+    # whether to use target value networks for policy optimization
     agent_args['misc_args']['optimize_targets'] = True
 
     # whether to use the model for value network targets
