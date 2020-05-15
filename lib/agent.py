@@ -271,6 +271,7 @@ class Agent(nn.Module):
         self.approx_post.reset(batch_size)
         if self.target_approx_post is not None:
             self.target_approx_post.reset(batch_size)
+            self.target_inference_optimizer.reset(batch_size)
         if self.prior_model is not None:
             self.prior_model.reset(batch_size)
             self.target_prior_model.reset(batch_size)
@@ -359,6 +360,9 @@ class Agent(nn.Module):
         if self.direct_approx_post is not None:
             params.extend(list(self.direct_inference_optimizer.parameters()))
             params.extend(list(self.direct_approx_post.parameters()))
+        if self.target_approx_post is not None:
+            params.extend(list(self.target_inference_optimizer.parameters()))
+            params.extend(list(self.target_approx_post.parameters()))
         return params
 
     def generative_parameters(self):
