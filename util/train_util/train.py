@@ -40,7 +40,7 @@ def train(agent, env, buffer, optimizer, plotter, args):
         # train on samples from buffer
         if buffer.total_steps >= n_initial_steps:
             # model pre-training and evaluation
-            if 'horizon' in dir(agent.q_value_estimator):
+            if 'state_likelihood_model' in dir(agent.q_value_estimator):
                 # pre-train the model (and value function)
                 if model_trained == False:
                     print('Pre-Training the model...')

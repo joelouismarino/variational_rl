@@ -264,38 +264,39 @@ class Collector:
         """
         Collects the online objectives for the value estimator(s).
         """
-        # collect the q-values for the off-policy action
-        off_policy_q_values = self.agent.q_value_estimator(self.agent, state, off_policy_action, both=True, direct=True)
-        self.q_values1.append(off_policy_q_values[0])
-        self.q_values2.append(off_policy_q_values[1])
-        # collect the target state-values
-        if self.agent.state_value_estimator is not None:
-            state_values = self.agent.state_value_estimator(self.agent, state, both=True)
-            self.state_values1.append(state_values[0])
-            self.state_values2.append(state_values[1])
-            target_state_values = self.agent.state_value_estimator(self.agent, state, target=True)
-            self.target_state_values.append(target_state_values)
-        # collect the target q-values for the on-policy actions
-        expanded_state = state.repeat(self.agent.n_action_samples, 1)
-        direct_targets = not self.agent.model_value_targets
-        target = self.agent.state_value_estimator is None
-        action = on_policy_action if not self.agent.off_policy_targets else off_policy_action.repeat(self.agent.n_action_samples, 1)
-        target_q_values = self.agent.q_value_estimator(self.agent, expanded_state, action, target=target, direct=direct_targets)
-        target_q_values = target_q_values.view(self.agent.n_action_samples, -1, 1)[:self.agent.n_q_action_samples].mean(dim=0)
-        if self.agent.off_policy_targets:
-            # importance weights if using off-policy actions (pi / pi_old)
-            weights = torch.exp(self.agent.approx_post.log_prob(off_policy_action).sum(dim=1, keepdim=True) - off_policy_log_prob)
-            target_q_values = weights.clamp(max=1.) * target_q_values
-        self.target_q_values.append(target_q_values)
-        # other terms for model-based Q-value estimator
-        if 'state_likelihood_model' in dir(self.agent.q_value_estimator):
-            # generate and evaluate the conditional likelihoods
-            self.agent.q_value_estimator.generate(self.agent)
-            variable = self.agent.q_value_estimator.state_variable
-            self._collect_likelihood('state', state, variable, valid, done)
-            if self.agent.q_value_estimator.reward_likelihood_model is not None:
-                variable = self.agent.q_value_estimator.reward_variable
-                self._collect_likelihood('reward', reward, variable, valid, done)
+        if 'q_value_models' in dir(self.agent.q_value_estimator):
+            # collect the q-values for the off-policy action
+            off_policy_q_values = self.agent.q_value_estimator(self.agent, state, off_policy_action, both=True, direct=True)
+            self.q_values1.append(off_policy_q_values[0])
+            self.q_values2.append(off_policy_q_values[1])
+            # collect the target state-values
+            if self.agent.state_value_estimator is not None:
+                state_values = self.agent.state_value_estimator(self.agent, state, both=True)
+                self.state_values1.append(state_values[0])
+                self.state_values2.append(state_values[1])
+                target_state_values = self.agent.state_value_estimator(self.agent, state, target=True)
+                self.target_state_values.append(target_state_values)
+            # collect the target q-values for the on-policy actions
+            expanded_state = state.repeat(self.agent.n_action_samples, 1)
+            direct_targets = not self.agent.model_value_targets
+            target = self.agent.state_value_estimator is None
+            action = on_policy_action if not self.agent.off_policy_targets else off_policy_action.repeat(self.agent.n_action_samples, 1)
+            target_q_values = self.agent.q_value_estimator(self.agent, expanded_state, action, target=target, direct=direct_targets)
+            target_q_values = target_q_values.view(self.agent.n_action_samples, -1, 1)[:self.agent.n_q_action_samples].mean(dim=0)
+            if self.agent.off_policy_targets:
+                # importance weights if using off-policy actions (pi / pi_old)
+                weights = torch.exp(self.agent.approx_post.log_prob(off_policy_action).sum(dim=1, keepdim=True) - off_policy_log_prob)
+                target_q_values = weights.clamp(max=1.) * target_q_values
+            self.target_q_values.append(target_q_values)
+            # other terms for model-based Q-value estimator
+            if 'state_likelihood_model' in dir(self.agent.q_value_estimator):
+                # generate and evaluate the conditional likelihoods
+                self.agent.q_value_estimator.generate(self.agent)
+                variable = self.agent.q_value_estimator.state_variable
+                self._collect_likelihood('state', state, variable, valid, done)
+                if self.agent.q_value_estimator.reward_likelihood_model is not None:
+                    variable = self.agent.q_value_estimator.reward_variable
+                    self._collect_likelihood('reward', reward, variable, valid, done)
 
     def _collect_likelihood(self, name, x, variable, valid, done=0.):
         """
@@ -502,18 +503,19 @@ class Collector:
         """
         Get the losses for the value networks.
         """
-        valid = torch.stack(self.valid)
-        q_values1 = torch.stack(self.q_values1)
-        q_values2 = torch.stack(self.q_values2)
-        q_targets = self._get_q_targets()
-        q_loss1 = 0.5 * (q_values1[:-1] - q_targets).pow(2) * valid[:-1]
-        q_loss2 = 0.5 * (q_values2[:-1] - q_targets).pow(2) * valid[:-1]
-        self.objectives['q_loss'] = q_loss1 + q_loss2
-        self.metrics['q_loss1'] = q_loss1.mean()
-        self.metrics['q_loss2'] = q_loss2.mean()
-        self.metrics['q_values1'] = q_values1[:-1].mean()
-        self.metrics['q_values2'] = q_values2[:-1].mean()
-        self.metrics['q_value_targets'] = q_targets.mean()
+        if 'q_value_models' in dir(self.agent.q_value_estimator):
+            valid = torch.stack(self.valid)
+            q_values1 = torch.stack(self.q_values1)
+            q_values2 = torch.stack(self.q_values2)
+            q_targets = self._get_q_targets()
+            q_loss1 = 0.5 * (q_values1[:-1] - q_targets).pow(2) * valid[:-1]
+            q_loss2 = 0.5 * (q_values2[:-1] - q_targets).pow(2) * valid[:-1]
+            self.objectives['q_loss'] = q_loss1 + q_loss2
+            self.metrics['q_loss1'] = q_loss1.mean()
+            self.metrics['q_loss2'] = q_loss2.mean()
+            self.metrics['q_values1'] = q_values1[:-1].mean()
+            self.metrics['q_values2'] = q_values2[:-1].mean()
+            self.metrics['q_value_targets'] = q_targets.mean()
 
         if self.agent.state_value_estimator is not None:
             state_values1 = torch.stack(self.state_values1)
@@ -563,13 +565,19 @@ class Collector:
         self.episode = {'state': [], 'reward': [], 'done': [],
                         'action': [], 'log_prob': []}
 
-        self.objectives = {'optimality': [], 'alpha_loss_pi': [], 'q_loss': [],
-                           'log_scale': []}
+        self.objectives = {'optimality': [], 'alpha_loss_pi': [], 'log_scale': []}
         self.metrics = {'optimality': {'cll': []},
                         'action': {'kl': []},
                         'alpha_losses':{'pi': []},
                         'alphas': {'pi': []},
                         'log_scale_loss':{'loss': []}}
+
+        if 'q_value_models' in dir(self.agent.q_value_estimator):
+            self.objectives['q_loss'] = []
+            self.target_q_values = []
+            self.q_values = []
+            self.q_values1 = []
+            self.q_values2 = []
 
         if 'parameters' in dir(self.agent.inference_optimizer):
             # amortized inference optimizer
@@ -644,9 +652,5 @@ class Collector:
 
         self.importance_weights = {'action': []}
         self.inference_improvement = []
-        self.target_q_values = []
-        self.q_values = []
-        self.q_values1 = []
-        self.q_values2 = []
         self.valid = []
         self.dones = []

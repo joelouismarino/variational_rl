@@ -25,6 +25,7 @@ class SimulatorQEstimator(nn.Module):
         """
         Rolls out the simulator.
         """
+        self.planning_mode(agent)
         self.reset(batch_size=state.shape[0], prev_state=None)
         self.env.model.to(agent.device)
         self.env.set_state(state)
@@ -53,9 +54,11 @@ class SimulatorQEstimator(nn.Module):
         # calculate the Q-value estimate
         total_rewards = torch.stack(rewards_list)
         total_kl = torch.stack(kl_list)
-        total_q_values = torch.zeros((self.horizon + 1, total_rewards.shape[1], total_rewards.shape[2])).to(agent.device)
-
+        total_q_values = torch.zeros((self.horizon + 1, total_rewards.shape[1], total_rewards.shape[2]), device=agent.device)
         estimate = n_step(total_q_values, total_rewards, total_kl, discount=agent.reward_discount)
+
+        self.acting_mode(agent)
+
         return estimate
 
     def reset(self, batch_size, prev_state):
@@ -75,9 +78,6 @@ class SimulatorQEstimator(nn.Module):
         agent.prior.planning_mode(n_samples=agent.n_action_samples)
         agent.target_prior.planning_mode(n_samples=agent.n_action_samples)
         agent.approx_post.planning_mode(n_samples=agent.n_action_samples)
-        self.state_variable.planning_mode(agent.n_action_samples)
-        if self.reward_likelihood_model is not None:
-            self.reward_variable.planning_mode(agent.n_action_samples)
         if agent.direct_approx_post is not None:
             agent.direct_approx_post.planning_mode(n_samples=agent.n_action_samples)
 
@@ -88,9 +88,6 @@ class SimulatorQEstimator(nn.Module):
         agent.prior.acting_mode()
         agent.target_prior.acting_mode()
         agent.approx_post.acting_mode()
-        self.state_variable.acting_mode()
-        if self.reward_likelihood_model is not None:
-            self.reward_variable.acting_mode()
         if agent.direct_approx_post is not None:
             agent.direct_approx_post.acting_mode()
 

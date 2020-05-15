@@ -74,7 +74,7 @@ def get_mujoco_config(env):
     # optimizer type can be 'direct', 'iterative', 'gradient', 'non_parametric', 'cem'
     optimizer_type = 'iterative'
     optimizer_type = 'non_parametric' if action_approx_post_dist == 'Boltzmann' else optimizer_type
-    use_direct_inference_optimizer = False
+    use_direct_inference_optimizer = True
 
     # whether to penalize KL from target inference optimizer
     agent_args['misc_args']['inf_target_kl'] = True
@@ -139,7 +139,7 @@ def get_mujoco_config(env):
 
     ## Q-VALUE ESTIMATOR
     # estimator type can be 'direct', 'model_based', or 'simulator'
-    estimator_type = 'direct'
+    estimator_type = 'simulator'
 
     # whether to use a separate state-value network
     use_state_value_network = False
@@ -228,7 +228,7 @@ def get_mujoco_config(env):
         estimator_args['horizon'] = 2
     elif estimator_type == 'simulator':
         estimator_args['env_type'] = env.spec.id
-        estimator_args['horizon'] = 20
+        estimator_args['horizon'] = 2
 
     agent_args['q_value_estimator_args'] = estimator_args
 

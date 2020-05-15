@@ -169,11 +169,11 @@ class DroneModel(object):
         """
         Collects the system state to feed to the model.
         """
-        state = torch.zeros([self.batch_size, 12]).to(self.device)
+        state = torch.zeros([self.batch_size, 12], device=self.device)
         state[:, 0:1] = self.z
         state[:, 3:4] = self.v
         state[:, 7:8] = torch.ones([self.batch_size, 1]).to(self.device)
-        state[:, 8:12] = 0.75 + self.u / 4.
+        state[:, 8:12] = 0.75 + self.u.repeat(1, 4) / 4.
         return state
 
     @property
@@ -181,7 +181,7 @@ class DroneModel(object):
         """
         Collects the system state.
         """
-        state = torch.zeros([self.batch_size, 3]).to(self.device)
+        state = torch.zeros([self.batch_size, 3], device=self.device)
         state[:, 0:1] = self.z
         state[:, 1:2] = self.v
         state[:, 2:3] = 0.75 + self.u / 4.
@@ -217,12 +217,12 @@ class DroneModel(object):
         """
         Reinitialize the model initial state.
         """
-        self.z = torch.zeros(self.batch_size, 1).normal_(0.75, 0.25).to(self.device)
-        self.v = torch.zeros(self.batch_size, 1).normal_(0., 0.05).to(self.device)
-        self.a = torch.zeros(self.batch_size, 1).to(self.device)
-        self.u = torch.ones(self.batch_size, 1).uniform_(-1, 1).to(self.device)
-        # self.prev_u = torch.ones(self.batch_size, 1).uniform_(-1, 1).to(self.device)
-        self.Fa = torch.zeros(self.batch_size, 1).to(self.device)
-        self.F = torch.zeros(self.batch_size, 1).to(self.device)
+        self.z = torch.zeros(self.batch_size, 1, device=self.device).normal_(0.75, 0.25)
+        self.v = torch.zeros(self.batch_size, 1, device=self.device).normal_(0., 0.05)
+        self.a = torch.zeros(self.batch_size, 1, device=self.device)
+        self.u = torch.ones(self.batch_size, 1, device=self.device).uniform_(-1, 1)
+        # self.prev_u = torch.ones(self.batch_size, 1, device=self.device).uniform_(-1, 1)
+        self.Fa = torch.zeros(self.batch_size, 1, device=self.device)
+        self.F = torch.zeros(self.batch_size, 1, device=self.device)
         self.total_step = 0
         return self.state

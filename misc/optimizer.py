@@ -97,23 +97,24 @@ class Optimizer(object):
                     target_param.data.copy_(self.policy_tau * current_param.data + (1. - self.policy_tau) * target_param.data)
 
         # if self.agent.q_value_estimator.target_q_value_models is not None and not model_only:
-        if self.agent.q_value_estimator.target_q_value_models is not None:
-            # copy over current value parameters to the target model
-            target_params = self.parameters['target_q_value_models']
-            current_params = self.parameters['q_value_models']
-            for target_param, current_param in zip(target_params, current_params):
-                if self.value_update == 'hard' and self._n_steps % int(1 / self.value_tau) == 0:
-                    target_param.data.copy_(current_param.data)
-                else:
-                    target_param.data.copy_(self.value_tau * current_param.data + (1. - self.value_tau) * target_param.data)
-            if self.agent.state_value_estimator is not None:
-                target_params = self.parameters['target_state_value_models']
-                current_params = self.parameters['state_value_models']
+        if 'q_value_models' in dir(self.agent.q_value_estimator):
+            if self.agent.q_value_estimator.target_q_value_models is not None:
+                # copy over current value parameters to the target model
+                target_params = self.parameters['target_q_value_models']
+                current_params = self.parameters['q_value_models']
                 for target_param, current_param in zip(target_params, current_params):
                     if self.value_update == 'hard' and self._n_steps % int(1 / self.value_tau) == 0:
                         target_param.data.copy_(current_param.data)
                     else:
                         target_param.data.copy_(self.value_tau * current_param.data + (1. - self.value_tau) * target_param.data)
+                if self.agent.state_value_estimator is not None:
+                    target_params = self.parameters['target_state_value_models']
+                    current_params = self.parameters['state_value_models']
+                    for target_param, current_param in zip(target_params, current_params):
+                        if self.value_update == 'hard' and self._n_steps % int(1 / self.value_tau) == 0:
+                            target_param.data.copy_(current_param.data)
+                        else:
+                            target_param.data.copy_(self.value_tau * current_param.data + (1. - self.value_tau) * target_param.data)
 
         if not model_only:
             self._n_steps += 1
