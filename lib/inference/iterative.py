@@ -44,6 +44,13 @@ class IterativeInferenceModel(nn.Module):
         # clear any gradients in the generative parameters
         clear_gradients(agent.generative_parameters())
 
+        if target:
+            # clear model gradients if this is the target inference optimizer
+            target_params = nn.ParameterList()
+            target_params.extend(list(self.inference_model.parameters()))
+            target_params.extend(list(agent.target_approx_post.parameters()))
+            clear_gradients(target_params)
+
     def reset(self, batch_size):
         self.inference_model.reset(batch_size)
         self.estimated_objectives = []

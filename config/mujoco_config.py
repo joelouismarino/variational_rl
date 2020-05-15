@@ -139,7 +139,7 @@ def get_mujoco_config(env):
 
     ## Q-VALUE ESTIMATOR
     # estimator type can be 'direct', 'model_based', or 'simulator'
-    estimator_type = 'simulator'
+    estimator_type = 'direct'
 
     # whether to use a separate state-value network
     use_state_value_network = False

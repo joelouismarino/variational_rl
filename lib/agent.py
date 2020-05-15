@@ -182,6 +182,9 @@ class Agent(nn.Module):
         objective = cond_log_like - self.alphas['pi'] * kl.repeat(self.n_action_samples, 1)
         if self.inf_target_kl and not target and self.mode == 'train':
             # KL from target approx. posterior
+            self.target_approx_post.reset(self.target_approx_post._batch_size,
+                                          dist_params={'loc': self.target_approx_post.dist.loc.detach(),
+                                                       'scale': self.target_approx_post.dist.scale.detach()})
             inf_kl = kl_divergence(approx_post, self.target_approx_post, n_samples=self.n_action_samples, sample=action).sum(dim=1, keepdim=True)
             objective = objective - self.alphas['target_inf'] * inf_kl.repeat(self.n_action_samples, 1)
         return objective
