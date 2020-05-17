@@ -378,7 +378,7 @@ class Collector:
             self.agent.target_approx_post.reset(self.agent.target_approx_post._batch_size,
                                                 dist_params={'loc': self.agent.target_approx_post.dist.loc.detach(),
                                                              'scale': self.agent.target_approx_post.dist.scale.detach()})
-            kl = kl_divergence(approx_post, self.agent.target_approx_post, n_samples=self.agent.n_action_samples, sample=on_policy_action).sum(dim=1, keepdim=True)
+            kl = kl_divergence(self.agent.approx_post, self.agent.target_approx_post, n_samples=self.agent.n_action_samples, sample=on_policy_action).sum(dim=1, keepdim=True)
             self.metrics['action']['kl_target_inf'].append((kl * (1 - done) * valid).detach())
 
     def _collect_log_probs(self, off_policy_action, log_prob, valid):

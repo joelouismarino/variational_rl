@@ -1,3 +1,3 @@
 from .test_value_est import evaluate_estimator
-from .analyze_inf import analyze_inference
+from .analyze_inf import analyze_inference, analyze_inf_training
 from .visualize_optimization import estimate_opt_landscape

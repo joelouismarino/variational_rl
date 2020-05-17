@@ -74,8 +74,10 @@ class Agent(nn.Module):
         # Lagrange multipliers for KL, location KL, and scale KL
         self.log_alphas = nn.ParameterDict({'pi': nn.Parameter(torch.zeros(1)),
                                             'loc': nn.Parameter(torch.zeros(1)),
-                                            'scale': nn.Parameter(torch.zeros(1)),
-                                            'target_inf': nn.Parameter(torch.zeros(1))})
+                                            'scale': nn.Parameter(torch.zeros(1))})
+
+        if misc_args['inf_target_kl']:
+            self.log_alphas['target_inf'] = nn.Parameter(torch.zeros(1))
 
         # miscellaneous
         self.epsilons = misc_args['epsilons']
