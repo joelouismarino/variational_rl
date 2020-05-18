@@ -481,7 +481,7 @@ class Collector:
         if self.agent.state_value_estimator is not None:
             state_value = torch.stack(self.target_state_values)
         else:
-            if self.agent.direct_inference_optimizer is not None or self.agent.target_inference_optimizer is not None:
+            if self.agent.direct_approx_post is not None or (self.agent.target_approx_post is not None and self.agent.target_inf_value_targets):
                 action_kl = torch.stack(self.metrics['action']['target_kl'])
             else:
                 action_kl = torch.stack(self.metrics['action']['kl'])
@@ -497,7 +497,10 @@ class Collector:
         """
         dones = torch.stack(self.dones)
         valid = torch.stack(self.valid)
-        action_kl = torch.stack(self.metrics['action']['kl'])
+        if self.agent.direct_approx_post is not None or (self.agent.target_approx_post is not None and self.agent.target_inf_value_targets):
+            action_kl = torch.stack(self.metrics['action']['target_kl'])
+        else:
+            action_kl = torch.stack(self.metrics['action']['kl'])
         state_value = torch.stack(self.target_q_values) - self.agent.alphas['pi'] * action_kl
         state_value = state_value * valid * (1. - dones)
         return state_value[:-1].detach()
