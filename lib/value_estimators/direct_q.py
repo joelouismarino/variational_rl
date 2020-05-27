@@ -50,7 +50,8 @@ class DirectQEstimator(nn.Module):
         return q_value
 
     def reset(self, *args, **kwargs):
-        pass
+        for variable in self.q_value_variables:
+            variable.reset()
 
     def set_prev_state(self, *args, **kwargs):
         pass

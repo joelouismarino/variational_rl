@@ -50,7 +50,6 @@ class SimulatorQEstimator(nn.Module):
                 # calculate KL divergence
                 kl = kl_divergence(dist, agent.prior, n_samples=1, sample=action).sum(dim=1, keepdim=True)
                 kl_list.append(agent.alphas['pi'] * kl)
-
         # calculate the Q-value estimate
         total_rewards = torch.stack(rewards_list)
         total_kl = torch.stack(kl_list)

@@ -13,6 +13,7 @@ def get_mujoco_config(env):
                                'reward_discount': 0.99,
                                'retrace_lambda': 0.9,
                                'postprocess_action': False,
+                               'critic_grad_penalty': 0.01,
                                'epsilons': dict(pi=None, loc=5e-4, scale=1e-5,
                                                 target_inf=0.1)}
                                # RERPI epsilons: pi=0.1, loc=5e-4, scale=1e-5
@@ -72,7 +73,7 @@ def get_mujoco_config(env):
 
     ## INFERENCE OPTIMIZER
     # optimizer type can be 'direct', 'iterative', 'gradient', 'non_parametric', 'cem'
-    optimizer_type = 'iterative'
+    optimizer_type = 'direct'
     optimizer_type = 'non_parametric' if action_approx_post_dist == 'Boltzmann' else optimizer_type
     use_direct_inference_optimizer = False
 
@@ -141,14 +142,17 @@ def get_mujoco_config(env):
     # estimator type can be 'direct', 'model_based', or 'simulator'
     estimator_type = 'direct'
 
-    # whether to use a separate state-value network
-    use_state_value_network = False
-
     # whether to use buffer actions for action-value targets
     agent_args['misc_args']['off_policy_targets'] = False
 
     # whether to use target inference network to estimate target action-values
     agent_args['misc_args']['target_inf_value_targets'] = False
+
+    # whether to use target value networks for policy optimization
+    agent_args['misc_args']['optimize_targets'] = True
+
+    # whether to use a separate state-value network
+    use_state_value_network = False
 
     if use_state_value_network:
         state_value_args = {}
@@ -163,9 +167,6 @@ def get_mujoco_config(env):
         agent_args['state_value_estimator_args'] = state_value_args
     else:
         agent_args['state_value_estimator_args'] = None
-
-    # whether to use target value networks for policy optimization
-    agent_args['misc_args']['optimize_targets'] = True
 
     # whether to use the model for value network targets
     if estimator_type == 'model_based':

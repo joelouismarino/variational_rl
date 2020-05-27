@@ -1,3 +1,3 @@
 from .test_value_est import evaluate_estimator
-from .analyze_inf import analyze_inference, analyze_inf_training
+from .analyze_inf import analyze_inference, analyze_inf_training, estimate_amortization_gap, analyze_1d_inf, evaluate_optimized_agent
 from .visualize_optimization import estimate_opt_landscape

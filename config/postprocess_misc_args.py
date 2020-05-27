@@ -10,13 +10,18 @@ def postprocess_misc_args(misc_args):
                 'direct_targets',
                 'off_policy_targets',
                 'target_inf_value_targets',
-                'inf_target_kl']
+                'inf_target_kl',
+                'critic_grad_penalty']
 
     for key in new_keys:
         if key not in misc_args:
-            misc_args[key] = False
+            if key == 'critic_grad_penalty':
+                misc_args[key] = 0.
+            else:
+                misc_args[key] = False
 
     if 'use_target_inference_optimizer' in misc_args:
-        misc_args['target_inf_value_targets'] = True
+        if misc_args['use_target_inference_optimizer']:
+            misc_args['target_inf_value_targets'] = True
 
     return misc_args

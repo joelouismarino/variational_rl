@@ -92,6 +92,7 @@ class Agent(nn.Module):
         self.off_policy_targets = misc_args['off_policy_targets']
         self.inf_target_kl = misc_args['inf_target_kl']
         self.target_inf_value_targets = misc_args['target_inf_value_targets']
+        self.critic_grad_penalty = misc_args['critic_grad_penalty']
 
         # mode (either 'train' or 'eval')
         self.mode = 'train'
@@ -125,7 +126,7 @@ class Agent(nn.Module):
         self.collector.collect(state, action, reward, done, valid, log_prob)
         self.step(state, action)
         action = action.tanh() if self.postprocess_action and self.mode == 'eval' else action
-        return action.cpu().numpy()
+        return action.detach().cpu().numpy()
 
     def generate_prior(self, state, detach_params=False):
         """

@@ -264,11 +264,18 @@ class Collector:
         """
         Collects the online objectives for the value estimator(s).
         """
+        off_pol_action = off_policy_action.clone().requires_grad_()
         if 'q_value_models' in dir(self.agent.q_value_estimator):
             # collect the q-values for the off-policy action
-            off_policy_q_values = self.agent.q_value_estimator(self.agent, state, off_policy_action, both=True, direct=True)
+            off_policy_q_values = self.agent.q_value_estimator(self.agent, state, off_pol_action, both=True, direct=True)
             self.q_values1.append(off_policy_q_values[0])
             self.q_values2.append(off_policy_q_values[1])
+            # calculate critic gradient penalty objective if necessary
+            if self.agent.critic_grad_penalty > 0.:
+                critic_grads = [torch.autograd.grad(outputs=v.sum(), inputs=off_pol_action, retain_graph=True)[0] for v in off_policy_q_values]
+                grad_norms = sum([g.norm(2, dim=1, keepdim=True) for g in critic_grads])
+                self.objectives['critic_grad_penalty'].append(grad_norms)
+                self.metrics['critic_grad']['norm'].append(0.5 * grad_norms)
             # collect the target state-values
             if self.agent.state_value_estimator is not None:
                 state_values = self.agent.state_value_estimator(self.agent, state, both=True)
@@ -584,6 +591,10 @@ class Collector:
             self.q_values = []
             self.q_values1 = []
             self.q_values2 = []
+
+        if self.agent.critic_grad_penalty > 0.:
+            self.objectives['critic_grad_penalty'] = []
+            self.metrics['critic_grad'] = {'norm': []}
 
         if 'parameters' in dir(self.agent.inference_optimizer):
             # amortized inference optimizer
