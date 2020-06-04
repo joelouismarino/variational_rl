@@ -13,7 +13,7 @@ def get_mujoco_config(env):
                                'reward_discount': 0.99,
                                'retrace_lambda': 0.9,
                                'postprocess_action': False,
-                               'critic_grad_penalty': 0.01,
+                               'critic_grad_penalty': 1,
                                'epsilons': dict(pi=None, loc=5e-4, scale=1e-5,
                                                 target_inf=0.1)}
                                # RERPI epsilons: pi=0.1, loc=5e-4, scale=1e-5

@@ -265,6 +265,7 @@ class Collector:
         Collects the online objectives for the value estimator(s).
         """
         off_pol_action = off_policy_action.clone().requires_grad_()
+        state = state.clone().requires_grad_()
         if 'q_value_models' in dir(self.agent.q_value_estimator):
             # collect the q-values for the off-policy action
             off_policy_q_values = self.agent.q_value_estimator(self.agent, state, off_pol_action, both=True, direct=True)
@@ -272,10 +273,14 @@ class Collector:
             self.q_values2.append(off_policy_q_values[1])
             # calculate critic gradient penalty objective if necessary
             if self.agent.critic_grad_penalty > 0.:
-                critic_grads = [torch.autograd.grad(outputs=v.sum(), inputs=off_pol_action, retain_graph=True)[0] for v in off_policy_q_values]
-                grad_norms = sum([g.norm(2, dim=1, keepdim=True) for g in critic_grads])
-                self.objectives['critic_grad_penalty'].append(grad_norms)
-                self.metrics['critic_grad']['norm'].append(0.5 * grad_norms)
+                state_critic_grads = [torch.autograd.grad(outputs=v.sum(), inputs=state, retain_graph=True)[0] for v in off_policy_q_values]
+                action_critic_grads = [torch.autograd.grad(outputs=v.sum(), inputs=off_pol_action, retain_graph=True)[0] for v in off_policy_q_values]
+                state_grad_norms = [g.norm(2, dim=1, keepdim=True) for g in state_critic_grads]
+                action_grad_norms = [g.norm(2, dim=1, keepdim=True) for g in action_critic_grads]
+                grad_penalty = sum([(norm - 1.) ** 2 for norm in state_grad_norms + state_grad_norms])
+                grad_norms = sum(state_grad_norms) + sum(action_grad_norms)
+                self.objectives['critic_grad_penalty'].append(self.agent.critic_grad_penalty * grad_penalty)
+                self.metrics['critic_grad']['norm'].append(grad_norms)
             # collect the target state-values
             if self.agent.state_value_estimator is not None:
                 state_values = self.agent.state_value_estimator(self.agent, state, both=True)
