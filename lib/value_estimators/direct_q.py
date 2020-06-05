@@ -21,7 +21,7 @@ class DirectQEstimator(nn.Module):
         self.target_q_value_variables = nn.ModuleList([get_variable(type='value', args={'n_input': q_model_output}) for _ in range(2)])
 
     def forward(self, agent, state, action, target=False, both=False,
-                detach_params=False, *args, **kwargs):
+                detach_params=False, pessimism=1, *args, **kwargs):
         """
         Estimates the Q-value using the state and action.
 
@@ -46,7 +46,11 @@ class DirectQEstimator(nn.Module):
         q_value_input = [model(state=state, action=action) for model in q_value_models]
         q_value = [variable(inp) for variable, inp in zip(q_value_variables, q_value_input)]
         if not both:
-            q_value = torch.min(q_value[0], q_value[1])
+            # q_value = torch.min(q_value[0], q_value[1])
+            stacked_q = torch.stack(q_value).view(-1, len(q_value))
+            q_mean = stacked_q.mean(dim=1, keepdim=True)
+            q_std = stacked_q.std(dim=1, keepdim=True)
+            q_value = q_mean - pessimism * q_std
         return q_value
 
     def reset(self, *args, **kwargs):

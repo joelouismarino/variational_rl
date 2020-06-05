@@ -11,12 +11,15 @@ def postprocess_misc_args(misc_args):
                 'off_policy_targets',
                 'target_inf_value_targets',
                 'inf_target_kl',
-                'critic_grad_penalty']
+                'critic_grad_penalty',
+                'pessimism']
 
     for key in new_keys:
         if key not in misc_args:
             if key == 'critic_grad_penalty':
                 misc_args[key] = 0.
+            elif key == 'pessimism':
+                misc_args[key] = 1.
             else:
                 misc_args[key] = False
 

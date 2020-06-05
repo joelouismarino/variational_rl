@@ -293,7 +293,7 @@ class Collector:
             direct_targets = not self.agent.model_value_targets
             target = self.agent.state_value_estimator is None
             action = on_policy_action if not self.agent.off_policy_targets else off_policy_action.repeat(self.agent.n_action_samples, 1)
-            target_q_values = self.agent.q_value_estimator(self.agent, expanded_state, action, target=target, direct=direct_targets)
+            target_q_values = self.agent.q_value_estimator(self.agent, expanded_state, action, target=target, direct=direct_targets, pessimism=self.agent.pessimism)
             target_q_values = target_q_values.view(self.agent.n_action_samples, -1, 1)[:self.agent.n_q_action_samples].mean(dim=0)
             if self.agent.off_policy_targets:
                 # importance weights if using off-policy actions (pi / pi_old)
