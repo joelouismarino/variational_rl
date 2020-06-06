@@ -47,9 +47,11 @@ class DirectQEstimator(nn.Module):
         q_value = [variable(inp) for variable, inp in zip(q_value_variables, q_value_input)]
         if not both:
             # q_value = torch.min(q_value[0], q_value[1])
-            stacked_q = torch.stack(q_value).view(-1, len(q_value))
-            q_mean = stacked_q.mean(dim=1, keepdim=True)
-            q_std = stacked_q.std(dim=1, keepdim=True)
+            q_values = torch.cat(q_value, dim=1)
+            q_mean = q_values.mean(dim=1, keepdim=True)
+            # note: this uses the unbiased estimate, which is inconsistent with numpy
+            # with biased estimate, q_mean - q_std = min(q)
+            q_std = q_values.std(dim=1, keepdim=True)
             q_value = q_mean - pessimism * q_std
         return q_value
 
