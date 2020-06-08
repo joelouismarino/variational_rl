@@ -51,7 +51,9 @@ class DirectQEstimator(nn.Module):
             q_mean = q_values.mean(dim=1, keepdim=True)
             # note: this uses the unbiased estimate, which is inconsistent with numpy
             # with biased estimate, q_mean - q_std = min(q)
-            q_std = q_values.std(dim=1, keepdim=True)
+            # note 2: using std dev is unstable due to infinite gradient of sqrt
+            # at zero
+            q_std = (q_values.var(dim=1, keepdim=True) + 1e-6).sqrt()
             q_value = q_mean - pessimism * q_std
         return q_value
 
