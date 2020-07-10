@@ -31,6 +31,7 @@ class DirectQEstimator(nn.Module):
             target (bool): whether to use the target networks
             both (bool): whether to return both values (or the min value)
             detach_params (bool): whether to use detached (copied) parameters
+            pessimism (float): value estimate uncertainty penalty
         """
         # estimate q value
         if target:

@@ -14,6 +14,7 @@ def n_step_returns(q_values, rewards, kls, discount=0.99):
     rewards[1:] = rewards[1:] - kls[:-1]
     discounted_returns = torch.cumsum(discounts * rewards, dim=0)
     terminal_values = discount * discounts * (q_values[1:] - kls)
+    # return torch.cat([q_values[:1], discounted_returns], dim=0)
     return torch.cat([q_values[:1], discounted_returns + terminal_values], dim=0)
 
 def n_step(q_values, rewards, kls, discount=0.99):

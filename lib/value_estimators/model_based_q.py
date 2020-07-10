@@ -45,7 +45,7 @@ class ModelBasedQEstimator(nn.Module):
         self.value_estimate = value_estimate
 
     def forward(self, agent, state, action, target=False, both=False,
-                detach_params=False, direct=False):
+                detach_params=False, direct=False, pessimism=1, *args, **kwargs):
         """
         Estimates the Q-value using the state and action using model and Q-networks.
 
@@ -56,11 +56,12 @@ class ModelBasedQEstimator(nn.Module):
             both (bool): whether to return both values (or the min value)
             detach_params (bool): whether to use detached (copied) parameters
             direct (bool): whether to get the direct (network) estimate
+            pessimism (float): value estimate uncertainty penalty
 
         Returns a Q-value estimate of shape [n_action_samples * batch_size, 1]
         """
         if direct:
-            return self.direct_estimate(agent, state, action, target, both, detach_params)
+            return self.direct_estimate(agent, state, action, target, both, detach_params, pessimism)
 
         if target:
             q_value_models = self.target_q_value_models
@@ -84,7 +85,12 @@ class ModelBasedQEstimator(nn.Module):
             action = action.tanh() if agent.postprocess_action else action
             q_value_input = [model(state=state, action=action) for model in q_value_models]
             q_values = [variable(inp) for variable, inp in zip(q_value_variables, q_value_input)]
-            q_value = torch.min(q_values[0], q_values[1])
+            # q_value = torch.min(q_values[0], q_values[1])
+            q_values = torch.cat(q_values, dim=1)
+            q_mean = q_values.mean(dim=1, keepdim=True)
+            q_std = (q_values.var(dim=1, keepdim=True) + 1e-6).sqrt()
+            q_value = q_mean - pessimism * q_std
+
             q_values_list.append(q_value)
             # predict state and reward
             self.generate_state(state, action, detach_params)
@@ -111,7 +117,11 @@ class ModelBasedQEstimator(nn.Module):
         action = action.tanh() if agent.postprocess_action else action
         q_value_input = [model(state=state, action=action) for model in q_value_models]
         q_values = [variable(inp) for variable, inp in zip(q_value_variables, q_value_input)]
-        q_value = torch.min(q_values[0], q_values[1])
+        # q_value = torch.min(q_values[0], q_values[1])
+        q_values = torch.cat(q_values, dim=1)
+        q_mean = q_values.mean(dim=1, keepdim=True)
+        q_std = (q_values.var(dim=1, keepdim=True) + 1e-6).sqrt()
+        q_value = q_mean - pessimism * q_std
         q_values_list.append(q_value)
 
         # calculate the Q-value estimate
@@ -135,7 +145,7 @@ class ModelBasedQEstimator(nn.Module):
         return estimate
 
     def direct_estimate(self, agent, state, action, target=False, both=False,
-                        detach_params=False):
+                        detach_params=False, pessimism=1):
         """
         Estimates the Q-value using the state and action.
 
@@ -145,6 +155,7 @@ class ModelBasedQEstimator(nn.Module):
             target (bool): whether to use the target networks
             both (bool): whether to return both values (or the min value)
             detach_params (bool): whether to use detached (copied) parameters
+            pessimism (float): value estimate uncertainty penalty
         """
         # estimate q value
         if target:
@@ -160,7 +171,11 @@ class ModelBasedQEstimator(nn.Module):
         q_value_input = [model(state=state, action=action) for model in q_value_models]
         q_value = [variable(inp) for variable, inp in zip(q_value_variables, q_value_input)]
         if not both:
-            q_value = torch.min(q_value[0], q_value[1])
+            # q_value = torch.min(q_value[0], q_value[1])
+            q_values = torch.cat(q_value, dim=1)
+            q_mean = q_values.mean(dim=1, keepdim=True)
+            q_std = (q_values.var(dim=1, keepdim=True) + 1e-6).sqrt()
+            q_value = q_mean - pessimism * q_std
         return q_value
 
     def generate(self, agent, detach_params=False):

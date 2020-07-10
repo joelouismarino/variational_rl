@@ -14,7 +14,8 @@ def get_mujoco_config(env):
                                'retrace_lambda': 0.9,
                                'postprocess_action': False,
                                'critic_grad_penalty': 0.,
-                               'pessimism': 2.5,
+                               'pessimism': 1.,
+                               'optimism': -1.,
                                'epsilons': dict(pi=None, loc=5e-4, scale=1e-5,
                                                 target_inf=0.1)}
                                # RERPI epsilons: pi=0.1, loc=5e-4, scale=1e-5
@@ -74,7 +75,7 @@ def get_mujoco_config(env):
 
     ## INFERENCE OPTIMIZER
     # optimizer type can be 'direct', 'iterative', 'gradient', 'non_parametric', 'cem'
-    optimizer_type = 'iterative'
+    optimizer_type = 'direct'
     optimizer_type = 'non_parametric' if action_approx_post_dist == 'Boltzmann' else optimizer_type
     use_direct_inference_optimizer = False
 
@@ -141,7 +142,7 @@ def get_mujoco_config(env):
 
     ## Q-VALUE ESTIMATOR
     # estimator type can be 'direct', 'model_based', or 'simulator'
-    estimator_type = 'direct'
+    estimator_type = 'model_based'
 
     # whether to use buffer actions for action-value targets
     agent_args['misc_args']['off_policy_targets'] = False

@@ -94,6 +94,7 @@ class Agent(nn.Module):
         self.target_inf_value_targets = misc_args['target_inf_value_targets']
         self.critic_grad_penalty = misc_args['critic_grad_penalty']
         self.pessimism = misc_args['pessimism']
+        self.optimism = misc_args['optimism']
 
         # mode (either 'train' or 'eval')
         self.mode = 'train'
@@ -179,7 +180,7 @@ class Agent(nn.Module):
 
         Returns objective estimate of shape [n_action_samples * batch_size, 1]
         """
-        pessimism = self.pessimism if self.mode == 'train' else -1
+        pessimism = self.pessimism if self.mode == 'train' else -self.optimism
         approx_post = self.target_approx_post if target else self.approx_post
         kl = kl_divergence(approx_post, self.prior, n_samples=self.n_action_samples, sample=action).sum(dim=1, keepdim=True)
         expanded_state = state.repeat(self.n_action_samples, 1)

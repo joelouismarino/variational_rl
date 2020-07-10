@@ -12,7 +12,8 @@ def postprocess_misc_args(misc_args):
                 'target_inf_value_targets',
                 'inf_target_kl',
                 'critic_grad_penalty',
-                'pessimism']
+                'pessimism',
+                'optimism']
 
     for key in new_keys:
         if key not in misc_args:
@@ -20,6 +21,8 @@ def postprocess_misc_args(misc_args):
                 misc_args[key] = 0.
             elif key == 'pessimism':
                 misc_args[key] = 1.
+            elif key == 'optimism':
+                misc_args[key] = -1.
             else:
                 misc_args[key] = False
 

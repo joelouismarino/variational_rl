@@ -5,6 +5,7 @@ import copy
 import numpy as np
 from torch import optim
 from lib import create_agent
+from lib.distributions import kl_divergence
 from util.env_util import create_env
 from util.plot_util import load_checkpoint
 from util.train_util import collect_episode
@@ -17,7 +18,7 @@ from local_vars import PROJECT_NAME, WORKSPACE, LOADING_API_KEY, LOGGING_API_KEY
 # visualize inference over multiple seeds
 # analyze inference performance (improvement, gap?)
 
-CKPT_SUBSAMPLE = 1
+CKPT_SUBSAMPLE = 5
 
 def analyze_inference(exp_key, n_states, n_inf_seeds, n_action_samples=None,
                       ckpt_timestep=None, device_id=None):
@@ -564,8 +565,8 @@ def analyze_1d_inf(exp_key, state=None):
     sim_kwargs = {'estimator_type': 'simulator',
                   'horizon': 250, # int(1. / (1 - agent.reward_discount)),
                   'env_type': env.spec.id}
-    simulator = get_value_estimator('action', sim_kwargs)
-    agent.q_value_estimator = simulator
+    # simulator = get_value_estimator('action', sim_kwargs)
+    # agent.q_value_estimator = simulator
     agent.reset(); agent.eval()
     agent.act(state, 0., False)
     results['simulator']['amortized_approx_post'] = {k: v.detach().numpy() for k, v in agent.approx_post.get_dist_params().items()}
@@ -596,14 +597,53 @@ def analyze_1d_inf(exp_key, state=None):
 
     # evaluate the Boltzmann policy using the simulator
     print('Estimating Boltzmann inference dist using simulator.')
-    n_samples = 50
-    agent.reset(batch_size=20)
-    q_values = 0
-    for _ in range(n_samples):
-        q_values = q_values + agent.q_value_estimator(agent, expanded_state, a)
-    q_values = q_values / n_samples
+    # n_samples = 50
+    # agent.reset(batch_size=20)
+    # q_values = 0
+    # for _ in range(n_samples):
+    #     q_values = q_values + agent.q_value_estimator(agent, expanded_state, a)
+    # q_values = q_values / n_samples
+    # normalizer = agent.alphas['pi'] * ((q_values / agent.alphas['pi']).logsumexp(dim=0, keepdim=True) - torch.tensor(a.shape[0], dtype=torch.float32).log())
+    # results['simulator']['boltzmann'] = 0.5 * ((q_values - normalizer) / agent.alphas['pi']).exp().detach().numpy()
+    # results['simulator']['q_values'] = q_values.detach().numpy()
+
+    ## Test - use regular environment for interaction
+    q_values = np.zeros(a.shape)
+    # horizon = int(1. / (1 - agent.reward_discount))
+    horizon = 1
+    for act_ind in range(a.shape[0]):
+        print('Action ' + str(act_ind + 1) + ' of ' + str(a.shape[0]) + '.')
+        action = a[act_ind:act_ind+1]
+        agent.reset(); agent.eval()
+        env.reset(); env.model.total_step = 40; env.set_state(state)
+        done = False
+        total_reward = []
+        total_kl = []
+        rollout_t = 0
+        while not done and rollout_t <= horizon:
+            # step the environment
+            rollout_state, reward, done, _ = env.step(action)
+            total_reward.append(((1 - done) * reward).view(-1).numpy())
+            action = agent.act(rollout_state)
+            kl = kl_divergence(agent.approx_post, agent.prior, n_samples=agent.n_action_samples).sum(dim=1, keepdim=True)
+            total_kl.append(((1 - done) * kl.detach().cpu()).view(-1).numpy())
+            rollout_t += 1
+        terminal_q = agent.q_value_estimator(agent, rollout_state, torch.from_numpy(action)).detach().cpu().numpy()
+        terminal_v = (terminal_q - agent.alphas['pi'].cpu().numpy() * total_kl[-1]).reshape(-1)
+        rewards = np.stack(total_reward)
+        kls = np.stack(total_kl[:-1])
+        discounts = np.cumprod(agent.reward_discount * np.ones(kls.shape), axis=0)
+        discounts = np.concatenate([np.ones((1, 1)), discounts]).reshape(-1, 1)
+        rewards[1:] = rewards[1:] - agent.alphas['pi'].cpu().numpy() * kls
+        sample_return = np.sum(discounts * rewards, axis=0) + (agent.reward_discount ** rollout_t) * terminal_v
+        q_values[act_ind, 0] = sample_return
+    q_values = torch.from_numpy(q_values)
     normalizer = agent.alphas['pi'] * ((q_values / agent.alphas['pi']).logsumexp(dim=0, keepdim=True) - torch.tensor(a.shape[0], dtype=torch.float32).log())
     results['simulator']['boltzmann'] = 0.5 * ((q_values - normalizer) / agent.alphas['pi']).exp().detach().numpy()
     results['simulator']['q_values'] = q_values.detach().numpy()
+
+
+
+
 
     return results
