@@ -22,7 +22,8 @@ def test_model(episode, agent, horizon=None):
 
     n_steps = episode['state'].shape[0] - 1
     predictions = {'state': [None for _ in range(n_steps)],
-                   'reward': [None for _ in range(n_steps)]}
+                   'reward': [None for _ in range(n_steps)],
+                   'value': [None for _ in range(n_steps)]}
     log_likelihoods = {'state': [None for _ in range(n_steps)],
                        'reward': [None for _ in range(n_steps)]}
 
