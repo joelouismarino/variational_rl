@@ -44,6 +44,12 @@ class ModelBasedQEstimator(nn.Module):
         self.horizon = horizon
         self.value_estimate = value_estimate
 
+        # save the results of MB planning
+        self.rollout_states = []
+        self.rollout_q_values = []
+        self.rollout_rewards = []
+        self.rollout_actions = []
+
     def forward(self, agent, state, action, target=False, both=False,
                 detach_params=False, direct=False, pessimism=1, *args, **kwargs):
         """
@@ -77,6 +83,8 @@ class ModelBasedQEstimator(nn.Module):
         # set the previous state for residual state prediction
         self.state_variable.cond_likelihood.set_prev_x(state)
         # roll out the model
+        actions_list = [action]
+        states_list = [state]
         rewards_list = []
         kl_list = []
         q_values_list = []
@@ -98,6 +106,7 @@ class ModelBasedQEstimator(nn.Module):
             reward = self.reward_variable.sample()
             rewards_list.append(reward)
             state = self.state_variable.sample()
+            states_list.append(state)
             # generate the action
             agent.generate_prior(state, detach_params)
             if agent.prior_model is not None:
@@ -113,6 +122,7 @@ class ModelBasedQEstimator(nn.Module):
                 kl = kl_divergence(dist, agent.prior, n_samples=1, sample=action).sum(dim=1, keepdim=True)
                 kl_list.append(agent.alphas['pi'] * kl)
 
+        actions_list.append(action)
         # estimate Q-value at final state
         action = action.tanh() if agent.postprocess_action else action
         q_value_input = [model(state=state, action=action) for model in q_value_models]
@@ -141,6 +151,11 @@ class ModelBasedQEstimator(nn.Module):
             raise NotImplementedError
 
         self.acting_mode(agent)
+
+        self.rollout_states.append(states_list)
+        self.rollout_rewards.append(rewards_list)
+        self.rollout_q_values.append(q_values_list)
+        self.rollout_actions.append(actions_list)
 
         return estimate
 

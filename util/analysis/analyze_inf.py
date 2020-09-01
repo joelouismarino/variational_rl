@@ -2,6 +2,7 @@ import comet_ml
 import json
 import torch
 import copy
+import pickle
 import numpy as np
 from torch import optim
 from lib import create_agent
@@ -93,6 +94,8 @@ def analyze_inference(exp_key, n_states, n_inf_seeds, n_action_samples=None,
         value_net_estimates = np.zeros((n_states, 1))
     params = {'loc': np.zeros((n_states, n_inf_seeds, n_action_dims)),
               'scale': np.zeros((n_states, n_inf_seeds, n_action_dims))}
+    it_params = {'loc': np.zeros((n_states, n_inf_seeds, n_inf_iters+1, n_action_dims)),
+                 'scale': np.zeros((n_states, n_inf_seeds, n_inf_iters+1, n_action_dims))}
     # grads = {'loc': np.array((n_states, n_inf_seeds, n_action_dims)),
     #          'scale': np.array((n_states, n_inf_seeds, n_action_dims))}
     print('Collecting ' + str(n_states) + ' states...')
@@ -111,6 +114,10 @@ def analyze_inference(exp_key, n_states, n_inf_seeds, n_action_samples=None,
             if agent_args['approx_post_args']['update'] == 'iterative':
                 value_ests = [-obj.detach().cpu().numpy() for obj in agent.inference_optimizer.estimated_objectives]
                 it_value_estimates[state_ind, inf_seed] = np.stack(value_ests).reshape(-1, 1)
+                for inf_it in range(n_inf_iters+1):
+                    it_params['loc'][state_ind, inf_seed, inf_it] = agent.inference_optimizer.dist_params[inf_it]['loc'].detach().cpu().numpy()[0]
+                    it_params['scale'][state_ind, inf_seed, inf_it] = agent.inference_optimizer.dist_params[inf_it]['scale'].detach().cpu().numpy()[0]
+
             on_policy_action = agent.approx_post.sample(n_action_samples)
             value_est = agent.estimate_objective(state, on_policy_action).view(n_action_samples, 1)
             value_estimates[state_ind, inf_seed] = value_est.detach().cpu().numpy()
@@ -133,9 +140,123 @@ def analyze_inference(exp_key, n_states, n_inf_seeds, n_action_samples=None,
 
     if agent_args['approx_post_args']['update'] == 'iterative':
         analysis_dict['it_value_estimates'] = it_value_estimates
+        analysis_dict['it_params'] = it_params
 
     if agent.state_value_estimator is not None:
         analysis_dict['value_net_estimates'] = value_net_estimates
+
+    return analysis_dict
+
+
+def analyze_inference_single_state(exp_key, state_ind, n_inf_seeds,
+                                   n_action_samples=None, ckpt_timestep=None,
+                                   device_id=None):
+    """
+    Analyzes the inference procedure of a cached experiment. Performs inference
+    on a number of states and returns the parameter estimates, value estimates,
+    etc.
+
+    Args:
+        exp_key (str): the string of the comet experiment key
+        state_ind (int): state index to evaluate in most recent episode
+        n_inf_seeds (int): number of times to perform inference
+        n_action_samples(int, optional): number of action samples to use for inference
+                                         (None for agent default)
+        ckpt_timestep (int, optional): checkpoint to load (None for final checkpoint)
+        device_id (int): device to run on
+
+    Returns dictionary containing:
+        state: [n_state_dims]
+        actions: [n_inf_seeds, n_inf_iters, n_action_samples, n_action_dims]
+        value_estimates: [n_inf_seeds, n_inf_iters, n_action_samples, 1]
+        params: loc: [n_inf_seeds, n_inf_iters, n_action_dims],
+                scales: [n_inf_seeds, n_inf_iters, n_action_dims]
+        grads: loc: [n_inf_seeds, n_inf_iters, n_action_dims],
+               scales: [n_inf_seeds, n_inf_iters, n_action_dims]
+    """
+    # load the experiment
+    comet_api = comet_ml.API(api_key=LOADING_API_KEY)
+    experiment = comet_api.get_experiment(project_name=PROJECT_NAME,
+                                          workspace=WORKSPACE,
+                                          experiment=exp_key)
+
+    # create the environment
+    param_summary = experiment.get_parameters_summary()
+    env_name = [a for a in param_summary if a['name'] == 'env'][0]['valueCurrent']
+    env = create_env(env_name)
+
+    # create the agent
+    asset_list = experiment.get_asset_list()
+    agent_config_asset_list = [a for a in asset_list if 'agent_args' in a['fileName']]
+    agent_args = None
+    if len(agent_config_asset_list) > 0:
+        # if we've saved the agent config dict, load it
+        agent_args = experiment.get_asset(agent_config_asset_list[0]['assetId'])
+        agent_args = json.loads(agent_args)
+        agent_args = agent_args if 'opt_type' in agent_args['inference_optimizer_args'] else None
+    agent = create_agent(env, agent_args=agent_args, device_id=device_id)[0]
+
+    # load the checkpoint
+    load_checkpoint(agent, exp_key, ckpt_timestep)
+
+    # load the state from the most recently collected episode
+    asset_times = [asset['createdAt'] for asset in asset_list if 'state' in asset['fileName']]
+    state_asset = [a for a in asset_list if a['createdAt'] == max(asset_times)][0]
+    episode_states = json.loads(experiment.get_asset(state_asset['assetId']))
+    state = torch.from_numpy(np.array(episode_states[state_ind])).view(1, -1).type(torch.FloatTensor)
+
+    # collect samples, perform inference
+    if agent_args['approx_post_args']['update'] == 'direct' and n_inf_seeds != 1:
+        print('Direct inference model detected. Using 1 inference seed.')
+        n_inf_seeds = 1
+
+    inf_iter_list = [a for a in param_summary if a['name'] == 'inference_optimizer_args_n_inf_iters']
+    n_inf_iters = 1
+    if len(inf_iter_list) > 0:
+        n_inf_iters = int(inf_iter_list[0]['valueCurrent'])
+    n_state_dims = env.observation_space.shape[-1]
+    n_action_dims = env.action_space.shape[0]
+    if n_action_samples is None:
+        n_action_samples = agent.n_action_samples
+
+    # actions = np.array((n_states, n_inf_seeds, n_action_samples, n_action_dims))
+    value_estimates = np.zeros((n_inf_seeds, n_action_samples, 1))
+    if agent_args['approx_post_args']['update'] == 'iterative':
+        it_value_estimates = np.zeros((n_inf_seeds, n_inf_iters, 1))
+    params = {'loc': np.zeros((n_inf_seeds, n_action_dims)),
+              'scale': np.zeros((n_inf_seeds, n_action_dims))}
+    it_params = {'loc': np.zeros((n_inf_seeds, n_inf_iters+1, n_action_dims)),
+                 'scale': np.zeros((n_inf_seeds, n_inf_iters+1, n_action_dims))}
+
+    print('Performing inference...')
+
+    for inf_seed in range(n_inf_seeds):
+        agent.reset(batch_size=1); agent.eval()
+        action = agent.act(state)
+        # save the quantities
+        # get the state-value estimate from Q-net - KL
+        if agent_args['approx_post_args']['update'] == 'iterative':
+            value_ests = [-obj.detach().cpu().numpy() for obj in agent.inference_optimizer.estimated_objectives]
+            it_value_estimates[inf_seed] = np.stack(value_ests).reshape(-1, 1)
+            for inf_it in range(n_inf_iters+1):
+                it_params['loc'][inf_seed, inf_it] = agent.inference_optimizer.dist_params[inf_it]['loc'].detach().cpu().numpy()[0]
+                it_params['scale'][inf_seed, inf_it] = agent.inference_optimizer.dist_params[inf_it]['scale'].detach().cpu().numpy()[0]
+
+        on_policy_action = agent.approx_post.sample(n_action_samples)
+        value_est = agent.estimate_objective(state, on_policy_action).view(n_action_samples, 1)
+        value_estimates[inf_seed] = value_est.detach().cpu().numpy()
+        params['loc'][inf_seed] = agent.approx_post.dist.loc.detach().cpu().numpy()[0]
+        params['scale'][inf_seed] = agent.approx_post.dist.scale.detach().cpu().numpy()[0]
+
+    print('Done.')
+
+    analysis_dict = {'state': state,
+                     'params': params,
+                     'value_estimates': value_estimates}
+
+    if agent_args['approx_post_args']['update'] == 'iterative':
+        analysis_dict['it_value_estimates'] = it_value_estimates
+        analysis_dict['it_params'] = it_params
 
     return analysis_dict
 
@@ -205,7 +326,7 @@ def analyze_inf_training(exp_key, state=None):
 
     return state, ckpt_timesteps, dists
 
-def estimate_amortization_gap(exp_key):
+def estimate_amortization_gap(exp_key, n_am_inf_iters=None):
     """
     Estimate the amortization gap for a cached experiment throughout training.
 
@@ -307,21 +428,83 @@ def estimate_amortization_gap(exp_key):
         # load the checkpoint
         print('Evaluating checkpoint ' + str(ckpt_ind + 1) + ' of ' + str(len(ckpt_timesteps)))
         load_checkpoint(agent, exp_key, ckpt_timestep)
+        if n_am_inf_iters > 0:
+            agent.inference_optimizer.n_inf_iters = n_am_inf_iters
         amortization_gaps[ckpt_ind] = estimate_gap(agent, env)
 
     return ckpt_timesteps, amortization_gaps
 
 
-def evaluate_optimized_agent(exp_key):
+def evaluate_additional_inf_iters(exp_key, n_iterations, write_result=True):
     """
-    Evaluate the checkpoints of an experiment using additional gradient-based
-    inference optimization steps after amortized inference. Determines the
-    degree to which the amortization gap hurts evaluation performance.
+    Evaluate the checkpoints of an experiment using additional inference
+    iterations.
 
     Args:
         exp_key (str): the string of the comet experiment key
+        n_iterations (int): the number of inference iterations
     """
-    def collect_optimized_episode(env, agent, eval=True):
+    # load the experiment
+    comet_api = comet_ml.API(api_key=LOADING_API_KEY)
+    experiment = comet_api.get_experiment(project_name=PROJECT_NAME,
+                                          workspace=WORKSPACE,
+                                          experiment=exp_key)
+
+    # create the environment
+    param_summary = experiment.get_parameters_summary()
+    env_name = [a for a in param_summary if a['name'] == 'env'][0]['valueCurrent']
+    env = create_env(env_name)
+
+    # create the agent
+    asset_list = experiment.get_asset_list()
+    agent_config_asset_list = [a for a in asset_list if 'agent_args' in a['fileName']]
+    agent_args = None
+    if len(agent_config_asset_list) > 0:
+        # if we've saved the agent config dict, load it
+        agent_args = experiment.get_asset(agent_config_asset_list[0]['assetId'])
+        agent_args = json.loads(agent_args)
+        agent_args = agent_args if 'opt_type' in agent_args['inference_optimizer_args'] else None
+    agent = create_agent(env, agent_args=agent_args)[0]
+
+    # get the list of checkpoint timesteps
+    ckpt_asset_list = [a for a in asset_list if 'ckpt' in a['fileName']]
+    ckpt_asset_names = [a['fileName'] for a in ckpt_asset_list]
+    ckpt_timesteps = [int(s.split('ckpt_step_')[1].split('.ckpt')[0]) for s in ckpt_asset_names]
+
+    # iterate over sub-sampled checkpoint timesteps, evaluating
+    ckpt_timesteps = list(np.sort(ckpt_timesteps)[::CKPT_SUBSAMPLE])
+    performance = np.zeros((len(ckpt_timesteps)))
+
+    for ckpt_ind, ckpt_timestep in enumerate(ckpt_timesteps):
+        # load the checkpoint
+        print('Evaluating checkpoint ' + str(ckpt_ind + 1) + ' of ' + str(len(ckpt_timesteps)))
+        load_checkpoint(agent, exp_key, ckpt_timestep)
+        agent.inference_optimizer.n_inf_iters = n_iterations
+        print(' Collecting episode.')
+        episode, _, _ = collect_episode(env, agent, eval=True)
+        performance[ckpt_ind] = episode['reward'].sum()
+
+    result_dict = {'timesteps': ckpt_timesteps, 'performance': performance}
+    if write_result:
+        exp_string = 'performance_' + exp_key + '_' + str(n_iterations) + '_iters.p'
+        pickle.dump(result_dict, open(exp_string, 'wb'))
+
+    return result_dict
+
+
+def evaluate_optimized_agent(exp_key, semi_amortized=True, n_gradient_steps=50,
+                             device_id=None):
+    """
+    Evaluate the checkpoints of an experiment using gradient-based optimization.
+    Determines the degree to which the amortization gap hurts performance.
+
+    Args:
+        exp_key (str): the string of the comet experiment key
+        semi_amortized (bool): whether to first use direct inference
+        n_gradient_steps (int): number of gradient steps to perform
+        device_id (int):
+    """
+    def collect_optimized_episode(env, agent, eval=True, semi_am=True, ngs=50):
         """
         Collects an episode of experience using the model and environment. The
         policy distribution is optimized using gradient descent at each step.
@@ -329,17 +512,18 @@ def evaluate_optimized_agent(exp_key):
         Args:
             env (gym.env): the environment
             agent (Agent): the agent
-            random (bool): whether to use random actions
             eval (bool): whether to evaluate the agent
+            semi_am (bool): whether to first use direct inference
+            ngs (int): number of gradient steps to perform
 
         Returns episode (dict), n_steps (int), and env_states (dict).
         """
+        rewards = []
         agent.reset(); agent.eval()
         state = env.reset()
         reward = 0.
         done = False
         n_steps = 0
-        env_states = {'qpos': [], 'qvel': []}
 
         n_grad_steps = []
         gaps = []
@@ -347,29 +531,32 @@ def evaluate_optimized_agent(exp_key):
         while not done:
             if n_steps > 1000:
                 break
-            if 'sim' in dir(env.unwrapped):
-                env_states['qpos'].append(copy.deepcopy(env.sim.data.qpos))
-                env_states['qvel'].append(copy.deepcopy(env.sim.data.qvel))
-            # perform amortized inference
+
+            agent.reset(); agent.eval()
             agent.act(state, reward, done, None, eval=eval)
+            actions = agent.approx_post.sample(agent.n_action_samples)
+            obj = agent.estimate_objective(state, actions)
+            direct_obj = obj.view(agent.n_action_samples, -1, 1).mean(dim=0).detach()
+            # TODO: quantify empirical variance in value estimate
 
-            # keep track of objective during inference optimization
-            objectives = [np.inf]
-
-            # use gradient-based inference optimization
+            if not semi_am:
+                agent.reset(); agent.eval()
+            # agent.optimism = -3.5
+            agent.n_action_samples = 100
+            grad_obj = []
             dist_params = {k: v.data.requires_grad_() for k, v in agent.approx_post.get_dist_params().items()}
             agent.approx_post.reset(dist_params=dist_params)
             dist_param_list = [param for _, param in dist_params.items()]
-            optimizer = optim.SGD(dist_param_list, lr=1e-2)
+            optimizer = optim.Adam(dist_param_list, lr=5e-3)
             optimizer.zero_grad()
             # initial estimate
+            agent.approx_post._sample = None
             actions = agent.approx_post.sample(agent.n_action_samples)
             obj = agent.estimate_objective(state, actions)
             obj = - obj.view(agent.n_action_samples, -1, 1).mean(dim=0)
-            objectives.append(obj.detach())
-            n_g_steps = 0
-            while objectives[-1] < objectives[-2] and n_g_steps <= 100:
-                dist_params = {k: v.clone() for k, v in agent.approx_post.get_dist_params().items()}
+            grad_obj.append(-obj.detach())
+
+            for it_inf in range(ngs):
                 obj.sum().backward(retain_graph=True)
                 optimizer.step()
                 optimizer.zero_grad()
@@ -378,14 +565,13 @@ def evaluate_optimized_agent(exp_key):
                 actions = agent.approx_post.sample(agent.n_action_samples)
                 obj = agent.estimate_objective(state, actions)
                 obj = - obj.view(agent.n_action_samples, -1, 1).mean(dim=0)
-                objectives.append(obj.detach())
-                n_g_steps += 1
-            clear_gradients(agent.generative_parameters())
-            # reset with the second to last set of distribution parameters
-            agent.approx_post.reset(dist_params=dist_params)
-            agent.approx_post._sample = None
-            n_grad_steps.append(n_g_steps)
-            gaps.append(- (objectives[-2] - objectives[1]).cpu().numpy().item())
+                grad_obj.append(-obj.detach())
+            # gradient_obj = np.array([obj.numpy() for obj in grad_obj]).reshape(-1)
+            gaps.append((grad_obj[-1] - grad_obj[0]).cpu().numpy().item())
+            # TODO: quantify empirical variance in value estimate
+
+            # print('Optimization Improvement: ' + str(gaps[-1]))
+            # print('Amortization Gap: ' + str((grad_obj[-1] - direct_obj).cpu().numpy().item()))
 
             # sample from the optimized distribution
             action = agent.approx_post.sample(n_samples=1, argmax=eval)
@@ -394,16 +580,13 @@ def evaluate_optimized_agent(exp_key):
 
             # step the environment with the optimized action
             state, reward, done, _ = env.step(action)
+            rewards.append(reward)
             n_steps += 1
-        if 'sim' in dir(env.unwrapped):
-            env_states['qpos'].append(copy.deepcopy(env.sim.data.qpos))
-            env_states['qvel'].append(copy.deepcopy(env.sim.data.qvel))
-            env_states['qpos'] = np.stack(env_states['qpos'])
-            env_states['qvel'] = np.stack(env_states['qvel'])
-        print('     Num. Gradient Steps: ' + str(np.mean(n_grad_steps)))
+
         print('     Average Improvement: ' + str(np.mean(gaps)))
-        agent.act(state, reward, done)
-        return agent.collector.get_episode(), n_steps, env_states
+        # agent.act(state, reward, done)
+        # return agent.collector.get_episode(), n_steps, env_states
+        return torch.stack(rewards).view(-1)
 
     # load the experiment
     comet_api = comet_ml.API(api_key=LOADING_API_KEY)
@@ -431,7 +614,7 @@ def evaluate_optimized_agent(exp_key):
     ckpt_asset_names = [a['fileName'] for a in ckpt_asset_list]
     ckpt_timesteps = [int(s.split('ckpt_step_')[1].split('.ckpt')[0]) for s in ckpt_asset_names]
 
-    n_episodes_per_ckpt = 10
+    n_episodes_per_ckpt = 1
 
     # iterate over sub-sampled checkpoint timesteps, evaluating
     ckpt_timesteps = list(np.sort(ckpt_timesteps)[::CKPT_SUBSAMPLE])
@@ -443,19 +626,20 @@ def evaluate_optimized_agent(exp_key):
         # load the checkpoint
         print('Evaluating checkpoint ' + str(ckpt_ind + 1) + ' of ' + str(len(ckpt_timesteps)))
         load_checkpoint(agent, exp_key, ckpt_timestep)
-        print(' Collecting amortized episodes.')
-        for ep_num in range(n_episodes_per_ckpt):
-            print(' Ep. ' + str(ep_num))
-            amortized_episode, _, _ = collect_episode(env, agent, eval=True)
-            amortized_perf[ckpt_ind, ep_num] = amortized_episode['reward'].sum()
+        # print(' Collecting amortized episodes.')
+        # for ep_num in range(n_episodes_per_ckpt):
+        #     print(' Ep. ' + str(ep_num))
+        #     amortized_episode, _, _ = collect_episode(env, agent, eval=True)
+        #     amortized_perf[ckpt_ind, ep_num] = amortized_episode['reward'].sum()
         print(' Collecting optimized episodes.')
         for ep_num in range(n_episodes_per_ckpt):
             print(' Ep. ' + str(ep_num))
-            optimized_episode, _, _ = collect_optimized_episode(env, agent, eval=True)
-            optimized_perf[ckpt_ind, ep_num] = optimized_episode['reward'].sum()
+            # optimized_episode, _, _ = collect_optimized_episode(env, agent, eval=True)
+            rewards = collect_optimized_episode(env, agent, eval=True, semi_am=semi_amortized, ngs=n_gradient_steps)
+            # optimized_perf[ckpt_ind, ep_num] = optimized_episode['reward'].sum()
+            optimized_perf[ckpt_ind, ep_num] = rewards.sum().item()
 
     return {'timesteps': ckpt_timesteps,
-            'amortized': amortized_perf,
             'optimized': optimized_perf}
 
 def analyze_1d_inf(exp_key, state=None):
@@ -642,8 +826,170 @@ def analyze_1d_inf(exp_key, state=None):
     results['simulator']['boltzmann'] = 0.5 * ((q_values - normalizer) / agent.alphas['pi']).exp().detach().numpy()
     results['simulator']['q_values'] = q_values.detach().numpy()
 
+    return results
 
 
+def compare_with_gradient_based(exp_key, n_states):
+    """
+    Compare optimization speed/performance with gradient-based inference.
+    """
 
+    # load the experiment
+    comet_api = comet_ml.API(api_key=LOADING_API_KEY)
+    experiment = comet_api.get_experiment(project_name=PROJECT_NAME,
+                                          workspace=WORKSPACE,
+                                          experiment=exp_key)
+
+    # create the environment
+    param_summary = experiment.get_parameters_summary()
+    env_name = [a for a in param_summary if a['name'] == 'env'][0]['valueCurrent']
+    env = create_env(env_name)
+
+    # create the agent
+    asset_list = experiment.get_asset_list()
+    agent_config_asset_list = [a for a in asset_list if 'agent_args' in a['fileName']]
+    agent_args = None
+    if len(agent_config_asset_list) > 0:
+        # if we've saved the agent config dict, load it
+        agent_args = experiment.get_asset(agent_config_asset_list[0]['assetId'])
+        agent_args = json.loads(agent_args)
+        agent_args = agent_args if 'opt_type' in agent_args['inference_optimizer_args'] else None
+    agent = create_agent(env, agent_args=agent_args)[0]
+
+    # load the checkpoint
+    load_checkpoint(agent, exp_key)
+
+    # load the state from the most recently collected episode
+    asset_times = [asset['createdAt'] for asset in asset_list if 'state' in asset['fileName']]
+    state_asset = [a for a in asset_list if a['createdAt'] == max(asset_times)][0]
+    episode_states = json.loads(experiment.get_asset(state_asset['assetId']))
+
+    total_it_obj = []
+    total_grad_obj = []
+
+    for state_ind in range(n_states):
+        print('State ' + str(state_ind + 1) + ' of ' + str(n_states) + '.')
+        state = torch.from_numpy(np.array(episode_states[state_ind])).view(1, -1).type(torch.FloatTensor)
+
+        print(' Performing Iterative Amortized Policy Optimization...')
+        # perform iterative amortized inference
+        agent.reset(); agent.eval()
+        agent.inference_optimizer.n_inf_iters = 250
+        agent.act(state)
+        it_inf_obj = np.array([-obj.numpy() for obj in agent.inference_optimizer.estimated_objectives]).reshape(-1)
+        total_it_obj.append(it_inf_obj)
+        print(' Done.')
+
+        print(' Performing Gradient-Based Policy Optimization...')
+        # perform gradient-based policy optimization
+        agent.reset(); agent.eval()
+        agent.n_action_samples = 10
+        grad_obj = []
+        dist_params = {k: v.data.requires_grad_() for k, v in agent.approx_post.get_dist_params().items()}
+        agent.approx_post.reset(dist_params=dist_params)
+        dist_param_list = [param for _, param in dist_params.items()]
+        optimizer = optim.Adam(dist_param_list, lr=1e-2)
+        optimizer.zero_grad()
+        # initial estimate
+        actions = agent.approx_post.sample(agent.n_action_samples)
+        obj = agent.estimate_objective(state, actions)
+        obj = - obj.view(agent.n_action_samples, -1, 1).mean(dim=0)
+        grad_obj.append(-obj.detach())
+
+        for it_inf in range(250):
+            if (it_inf+1) % 100 == 0:
+                print('     ' + str(it_inf + 1) + ' iterations completed.')
+            obj.sum().backward(retain_graph=True)
+            optimizer.step()
+            optimizer.zero_grad()
+            # clear the sample to force resampling
+            agent.approx_post._sample = None
+            actions = agent.approx_post.sample(agent.n_action_samples)
+            obj = agent.estimate_objective(state, actions)
+            obj = - obj.view(agent.n_action_samples, -1, 1).mean(dim=0)
+            grad_obj.append(-obj.detach())
+
+        gradient_obj = np.array([obj.numpy() for obj in grad_obj]).reshape(-1)
+        total_grad_obj.append(gradient_obj)
+        print(' Done.')
+
+    results = {'iterative_amortized': np.array(total_it_obj),
+               'gradient_based': np.array(total_grad_obj)}
 
     return results
+
+
+def optimize_direct_agent_with_iterative(direct_exp_key, iterative_exp_key):
+    """
+    Optimize a direct agent with an iterative agent. Evaluate performance by
+    collecting episodes throughout training.
+
+    Args:
+        direct_exp_key (str): the experiment key for the direct agent
+        iterative_exp_key (str): the experiment key for the iterative agent
+    """
+    # load the experiment
+    comet_api = comet_ml.API(api_key=LOADING_API_KEY)
+    direct_experiment = comet_api.get_experiment(project_name=PROJECT_NAME,
+                                                 workspace=WORKSPACE,
+                                                 experiment=direct_exp_key)
+
+    iterative_experiment = comet_api.get_experiment(project_name=PROJECT_NAME,
+                                                    workspace=WORKSPACE,
+                                                    experiment=iterative_exp_key)
+
+    # create the environment
+    dir_param_summary = direct_experiment.get_parameters_summary()
+    dir_env_name = [a for a in dir_param_summary if a['name'] == 'env'][0]['valueCurrent']
+    it_param_summary = iterative_experiment.get_parameters_summary()
+    it_env_name = [a for a in it_param_summary if a['name'] == 'env'][0]['valueCurrent']
+    assert it_env_name == dir_env_name
+    env = create_env(dir_env_name)
+
+    # create the agents
+    # direct
+    dir_asset_list = direct_experiment.get_asset_list()
+    dir_agent_config_asset_list = [a for a in dir_asset_list if 'agent_args' in a['fileName']]
+    dir_agent_args = None
+    if len(dir_agent_config_asset_list) > 0:
+        # if we've saved the agent config dict, load it
+        dir_agent_args = direct_experiment.get_asset(dir_agent_config_asset_list[0]['assetId'])
+        dir_agent_args = json.loads(dir_agent_args)
+        dir_agent_args = dir_agent_args if 'opt_type' in dir_agent_args['inference_optimizer_args'] else None
+    dir_agent = create_agent(env, agent_args=dir_agent_args)[0]
+
+    # iterative
+    it_asset_list = iterative_experiment.get_asset_list()
+    it_agent_config_asset_list = [a for a in it_asset_list if 'agent_args' in a['fileName']]
+    it_agent_args = None
+    if len(it_agent_config_asset_list) > 0:
+        # if we've saved the agent config dict, load it
+        it_agent_args = iterative_experiment.get_asset(it_agent_config_asset_list[0]['assetId'])
+        it_agent_args = json.loads(it_agent_args)
+        it_agent_args = it_agent_args if 'opt_type' in it_agent_args['inference_optimizer_args'] else None
+    it_agent = create_agent(env, agent_args=it_agent_args)[0]
+
+    # load the checkpoint
+    load_checkpoint(it_agent, iterative_exp_key)
+    it_agent.optimism = -it_agent.pessimism
+
+    # get the list of checkpoint timesteps for the direct agent
+    ckpt_asset_list = [a for a in dir_asset_list if 'ckpt' in a['fileName']]
+    ckpt_asset_names = [a['fileName'] for a in ckpt_asset_list]
+    ckpt_timesteps = [int(s.split('ckpt_step_')[1].split('.ckpt')[0]) for s in ckpt_asset_names]
+    ckpt_timesteps = list(np.sort(ckpt_timesteps)[::CKPT_SUBSAMPLE])
+
+    returns = []
+
+    for ckpt_ind, ckpt_timestep in enumerate(ckpt_timesteps):
+        # load the checkpoint
+        print('Evaluating checkpoint ' + str(ckpt_ind + 1) + ' of ' + str(len(ckpt_timesteps)))
+        load_checkpoint(dir_agent, direct_exp_key, ckpt_timestep)
+        it_agent.q_value_estimator = dir_agent.q_value_estimator
+        episode, _, _  = collect_episode(env, it_agent, eval=True)
+        returns.append(episode['reward'].sum())
+
+    returns = np.array(returns)
+
+    return {'steps': ckpt_timesteps,
+            'returns': returns}
