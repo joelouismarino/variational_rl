@@ -528,14 +528,13 @@ def evaluate_optimized_agent(exp_key, semi_amortized=True, n_gradient_steps=50,
         n_grad_steps = []
         gaps = []
 
-        state = state.to(agent.device)
-
         while not done:
             if n_steps > 1000:
                 break
 
             agent.reset(); agent.eval()
             agent.act(state, reward, done, None, eval=eval)
+            state = state.to(agent.device)
             actions = agent.approx_post.sample(agent.n_action_samples)
             obj = agent.estimate_objective(state, actions)
             direct_obj = obj.view(agent.n_action_samples, -1, 1).mean(dim=0).detach()
