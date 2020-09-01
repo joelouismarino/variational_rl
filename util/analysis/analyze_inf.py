@@ -2,6 +2,7 @@ import comet_ml
 import json
 import torch
 import copy
+import time
 import pickle
 import numpy as np
 from torch import optim
@@ -531,6 +532,7 @@ def evaluate_optimized_agent(exp_key, semi_amortized=True, n_gradient_steps=50,
         while not done:
             if n_steps > 1000:
                 break
+            start_time = time.time()
 
             agent.reset(); agent.eval()
             agent.act(state, reward, done, None, eval=eval)
@@ -581,6 +583,9 @@ def evaluate_optimized_agent(exp_key, semi_amortized=True, n_gradient_steps=50,
             state, reward, done, _ = env.step(action)
             rewards.append(reward)
             n_steps += 1
+            step_time = time.time() - start_time
+            if n_steps % 10 == 0:
+                print('Time per Step: ' + str(step_time))
 
         print('     Average Improvement: ' + str(np.mean(gaps)))
         # agent.act(state, reward, done)
