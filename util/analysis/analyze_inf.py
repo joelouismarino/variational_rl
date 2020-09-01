@@ -502,7 +502,7 @@ def evaluate_optimized_agent(exp_key, semi_amortized=True, n_gradient_steps=50,
         exp_key (str): the string of the comet experiment key
         semi_amortized (bool): whether to first use direct inference
         n_gradient_steps (int): number of gradient steps to perform
-        device_id (int):
+        device_id (int): GPU ID
     """
     def collect_optimized_episode(env, agent, eval=True, semi_am=True, ngs=50):
         """
@@ -528,6 +528,8 @@ def evaluate_optimized_agent(exp_key, semi_amortized=True, n_gradient_steps=50,
         n_grad_steps = []
         gaps = []
 
+        state = state.to(agent.device)
+
         while not done:
             if n_steps > 1000:
                 break
@@ -537,7 +539,6 @@ def evaluate_optimized_agent(exp_key, semi_amortized=True, n_gradient_steps=50,
             actions = agent.approx_post.sample(agent.n_action_samples)
             obj = agent.estimate_objective(state, actions)
             direct_obj = obj.view(agent.n_action_samples, -1, 1).mean(dim=0).detach()
-            # TODO: quantify empirical variance in value estimate
 
             if not semi_am:
                 agent.reset(); agent.eval()
@@ -568,7 +569,6 @@ def evaluate_optimized_agent(exp_key, semi_amortized=True, n_gradient_steps=50,
                 grad_obj.append(-obj.detach())
             # gradient_obj = np.array([obj.numpy() for obj in grad_obj]).reshape(-1)
             gaps.append((grad_obj[-1] - grad_obj[0]).cpu().numpy().item())
-            # TODO: quantify empirical variance in value estimate
 
             # print('Optimization Improvement: ' + str(gaps[-1]))
             # print('Amortization Gap: ' + str((grad_obj[-1] - direct_obj).cpu().numpy().item()))
@@ -608,7 +608,7 @@ def evaluate_optimized_agent(exp_key, semi_amortized=True, n_gradient_steps=50,
         agent_args = experiment.get_asset(agent_config_asset_list[0]['assetId'])
         agent_args = json.loads(agent_args)
         agent_args = agent_args if 'opt_type' in agent_args['inference_optimizer_args'] else None
-    agent = create_agent(env, agent_args=agent_args)[0]
+    agent = create_agent(env, agent_args=agent_args, device_id=device_id)[0]
     # get the list of checkpoint timesteps
     ckpt_asset_list = [a for a in asset_list if 'ckpt' in a['fileName']]
     ckpt_asset_names = [a['fileName'] for a in ckpt_asset_list]
