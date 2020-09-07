@@ -1034,7 +1034,7 @@ def transfer_it_mf_mb(mf_exp_key, mb_exp_key, device_id=None):
         mf_agent_args = mf_experiment.get_asset(mf_agent_config_asset_list[0]['assetId'])
         mf_agent_args = json.loads(mf_agent_args)
         mf_agent_args = mf_agent_args if 'opt_type' in mf_agent_args['inference_optimizer_args'] else None
-    mf_agent = create_agent(env, agent_args=mf_agent_args, device_id=device_id)[0]
+    mf_agent = create_agent(env, agent_args=mf_agent_args)[0]
 
     # model-based
     mb_asset_list = mb_experiment.get_asset_list()
@@ -1060,7 +1060,7 @@ def transfer_it_mf_mb(mf_exp_key, mb_exp_key, device_id=None):
         print('Evaluating checkpoint ' + str(ckpt_ind + 1) + ' of ' + str(len(ckpt_timesteps)))
         load_checkpoint(mf_agent, mf_exp_key, ckpt_timestep)
         load_checkpoint(mb_agent, mb_exp_key, ckpt_timestep)
-        mb_agent.inference_optimizer = mf_agent.inference_optimizer
+        mb_agent.inference_optimizer = mf_agent.inference_optimizer.to(mb_agent.device)
         print(' Collecting Episode...')
         episode, _, _  = collect_episode(env, mb_agent, eval=True)
         returns.append(episode['reward'].sum())
