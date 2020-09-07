@@ -45,10 +45,10 @@ class ModelBasedQEstimator(nn.Module):
         self.value_estimate = value_estimate
 
         # save the results of MB planning
-        self.rollout_states = []
-        self.rollout_q_values = []
-        self.rollout_rewards = []
-        self.rollout_actions = []
+        # self.rollout_states = []
+        # self.rollout_q_values = []
+        # self.rollout_rewards = []
+        # self.rollout_actions = []
 
     def forward(self, agent, state, action, target=False, both=False,
                 detach_params=False, direct=False, pessimism=1, *args, **kwargs):
@@ -152,10 +152,10 @@ class ModelBasedQEstimator(nn.Module):
 
         self.acting_mode(agent)
 
-        self.rollout_states.append(states_list)
-        self.rollout_rewards.append(rewards_list)
-        self.rollout_q_values.append(q_values_list)
-        self.rollout_actions.append(actions_list)
+        # self.rollout_states.append(states_list)
+        # self.rollout_rewards.append(rewards_list)
+        # self.rollout_q_values.append(q_values_list)
+        # self.rollout_actions.append(actions_list)
 
         return estimate
 
