@@ -20,7 +20,7 @@ from local_vars import PROJECT_NAME, WORKSPACE, LOADING_API_KEY, LOGGING_API_KEY
 # visualize inference over multiple seeds
 # analyze inference performance (improvement, gap?)
 
-CKPT_SUBSAMPLE = 5
+CKPT_SUBSAMPLE = 1
 
 def analyze_inference(exp_key, n_states, n_inf_seeds, n_action_samples=None,
                       ckpt_timestep=None, device_id=None):
@@ -991,6 +991,78 @@ def optimize_direct_agent_with_iterative(direct_exp_key, iterative_exp_key):
         load_checkpoint(dir_agent, direct_exp_key, ckpt_timestep)
         it_agent.q_value_estimator = dir_agent.q_value_estimator
         episode, _, _  = collect_episode(env, it_agent, eval=True)
+        returns.append(episode['reward'].sum())
+
+    returns = np.array(returns)
+
+    return {'steps': ckpt_timesteps,
+            'returns': returns}
+
+def transfer_it_mf_mb(mf_exp_key, mb_exp_key, device_id=None):
+    """
+    Evaluates an iterative policy optimizer trained with a model-free value
+    estimator transferred to a model-based value estimator.
+
+    Args:
+        mf_exp_key (str): comet experiment to the model-free experiment
+        mb_exp_key (str): comet experiment to the model-based experiment
+        device_id (int): GPU ID
+    """
+    comet_api = comet_ml.API(api_key=LOADING_API_KEY)
+    mf_experiment = comet_api.get_experiment(project_name=PROJECT_NAME,
+                                                 workspace=WORKSPACE,
+                                                 experiment=mf_exp_key)
+
+    mb_experiment = comet_api.get_experiment(project_name=PROJECT_NAME,
+                                                    workspace=WORKSPACE,
+                                                    experiment=mb_exp_key)
+
+    # create the environment
+    mf_param_summary = mf_experiment.get_parameters_summary()
+    mf_env_name = [a for a in mf_param_summary if a['name'] == 'env'][0]['valueCurrent']
+    mb_param_summary = mb_experiment.get_parameters_summary()
+    mb_env_name = [a for a in mb_param_summary if a['name'] == 'env'][0]['valueCurrent']
+    env = create_env(mf_env_name)
+
+    # create the agents
+    # model-free
+    mf_asset_list = mf_experiment.get_asset_list()
+    mf_agent_config_asset_list = [a for a in mf_asset_list if 'agent_args' in a['fileName']]
+    mf_agent_args = None
+    if len(mf_agent_config_asset_list) > 0:
+        # if we've saved the agent config dict, load it
+        mf_agent_args = mf_experiment.get_asset(mf_agent_config_asset_list[0]['assetId'])
+        mf_agent_args = json.loads(mf_agent_args)
+        mf_agent_args = mf_agent_args if 'opt_type' in mf_agent_args['inference_optimizer_args'] else None
+    mf_agent = create_agent(env, agent_args=mf_agent_args, device_id=device_id)[0]
+
+    # model-based
+    mb_asset_list = mb_experiment.get_asset_list()
+    mb_agent_config_asset_list = [a for a in mb_asset_list if 'agent_args' in a['fileName']]
+    mb_agent_args = None
+    if len(mb_agent_config_asset_list) > 0:
+        # if we've saved the agent config dict, load it
+        mb_agent_args = mb_experiment.get_asset(mb_agent_config_asset_list[0]['assetId'])
+        mb_agent_args = json.loads(mb_agent_args)
+        mb_agent_args = mb_agent_args if 'opt_type' in mb_agent_args['inference_optimizer_args'] else None
+    mb_agent = create_agent(env, agent_args=mb_agent_args, device_id=device_id)[0]
+
+    # get the list of checkpoint timesteps for the agents
+    ckpt_asset_list = [a for a in mf_asset_list if 'ckpt' in a['fileName']]
+    ckpt_asset_names = [a['fileName'] for a in ckpt_asset_list]
+    ckpt_timesteps = [int(s.split('ckpt_step_')[1].split('.ckpt')[0]) for s in ckpt_asset_names]
+    ckpt_timesteps = list(np.sort(ckpt_timesteps)[:101][::CKPT_SUBSAMPLE])
+
+    returns = []
+
+    for ckpt_ind, ckpt_timestep in enumerate(ckpt_timesteps):
+        # load the checkpoint
+        print('Evaluating checkpoint ' + str(ckpt_ind + 1) + ' of ' + str(len(ckpt_timesteps)))
+        load_checkpoint(mf_agent, mf_exp_key, ckpt_timestep)
+        load_checkpoint(mb_agent, mb_exp_key, ckpt_timestep)
+        mb_agent.inference_optimizer = mf_agent.inference_optimizer
+        print(' Collecting Episode...')
+        episode, _, _  = collect_episode(env, mb_agent, eval=True)
         returns.append(episode['reward'].sum())
 
     returns = np.array(returns)
