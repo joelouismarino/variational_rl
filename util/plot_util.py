@@ -74,20 +74,21 @@ class Plotter:
         agent (Agent): the agent
     """
     def __init__(self, exp_args, agent_args, agent):
-        
-        self.experiment = Experiment(api_key=LOGGING_API_KEY,
-                                     project_name=PROJECT_NAME,
-                                     workspace=WORKSPACE)
         self.exp_args = exp_args
         self.agent_args = agent_args
         self.agent = agent
-        self.experiment.disable_mp()
-        self.experiment.log_parameters(get_arg_dict(exp_args))
-        self.experiment.log_parameters(flatten_arg_dict(agent_args))
-        self.experiment.log_asset_data(json.dumps(get_arg_dict(exp_args)), name='exp_args')
-        self.experiment.log_asset_data(json.dumps(agent_args), name='agent_args')
-        if self.exp_args.checkpoint_exp_key is not None:
-            self.load_checkpoint()
+        self.experiment = None
+        if self.exp_args.plotting:
+            self.experiment = Experiment(api_key=LOGGING_API_KEY,
+                                         project_name=PROJECT_NAME,
+                                         workspace=WORKSPACE)
+            self.experiment.disable_mp()
+            self.experiment.log_parameters(get_arg_dict(exp_args))
+            self.experiment.log_parameters(flatten_arg_dict(agent_args))
+            self.experiment.log_asset_data(json.dumps(get_arg_dict(exp_args)), name='exp_args')
+            self.experiment.log_asset_data(json.dumps(agent_args), name='agent_args')
+            if self.exp_args.checkpoint_exp_key is not None:
+                self.load_checkpoint()
         self.result_dict = None
         # keep a hard-coded list of returns in case Comet fails
         self.returns = []
@@ -168,28 +169,29 @@ class Plotter:
         """
         Plots a newly collected episode.
         """
-        self.experiment.log_metric('cumulative_reward', episode['reward'].sum(), step)
+        if self.exp_args.plotting:
+            self.experiment.log_metric('cumulative_reward', episode['reward'].sum(), step)
 
-        def merge_legends():
-            handles, labels = plt.gca().get_legend_handles_labels()
-            newLabels, newHandles = [], []
-            for handle, label in zip(handles, labels):
-                if label not in newLabels:
-                    newLabels.append(label)
-                    newHandles.append(handle)
+            def merge_legends():
+                handles, labels = plt.gca().get_legend_handles_labels()
+                newLabels, newHandles = [], []
+                for handle, label in zip(handles, labels):
+                    if label not in newLabels:
+                        newLabels.append(label)
+                        newHandles.append(handle)
 
-            plt.legend(newHandles, newLabels)
+                plt.legend(newHandles, newLabels)
 
-        for k in episode['distributions'].keys():
-            for i, l in enumerate(episode['distributions'][k].keys()):
-                color = COLORS[i]
-                self._plot_ts(k, episode[k], episode['distributions'][k][l], l, color)
-            plt.suptitle(k)
-            merge_legends()
-            self.experiment.log_figure(figure=plt, figure_name=k + '_ts_'+str(step))
-            plt.close()
+            for k in episode['distributions'].keys():
+                for i, l in enumerate(episode['distributions'][k].keys()):
+                    color = COLORS[i]
+                    self._plot_ts(k, episode[k], episode['distributions'][k][l], l, color)
+                plt.suptitle(k)
+                merge_legends()
+                self.experiment.log_figure(figure=plt, figure_name=k + '_ts_'+str(step))
+                plt.close()
 
-        self.plot_states_and_rewards(episode['state'], episode['reward'], step)
+            self.plot_states_and_rewards(episode['state'], episode['reward'], step)
 
     def log_eval(self, episode, eval_states, step):
         """
@@ -202,28 +204,31 @@ class Plotter:
         """
         # plot and log eval returns
         eval_return = episode['reward'].sum()
-        self.experiment.log_metric('eval_cumulative_reward', eval_return, step)
+        print(' Eval. Return at Step ' + str(step) + ': ' + str(eval_return))
         self.returns.append(eval_return.item())
-        json_str = json.dumps(self.returns)
-        self.experiment.log_asset_data(json_str, name='eval_returns', overwrite=True)
+        if self.exp_args.plotting:
+            self.experiment.log_metric('eval_cumulative_reward', eval_return, step)
+            json_str = json.dumps(self.returns)
+            self.experiment.log_asset_data(json_str, name='eval_returns', overwrite=True)
 
-        # log the episode itself
-        for ep_item_str in ['state', 'action', 'reward']:
-            ep_item = episode[ep_item_str].tolist()
-            json_str = json.dumps(ep_item)
-            item_name = 'episode_step_' + str(step) + '_' + ep_item_str
-            self.experiment.log_asset_data(json_str, name=item_name)
-
-        # log the MuJoCo simulator states
-        for sim_item_str in ['qpos', 'qvel']:
-            if len(eval_states[sim_item_str]) > 0:
-                sim_item = eval_states[sim_item_str].tolist()
-                json_str = json.dumps(sim_item)
-                item_name = 'episode_step_' + str(step) + '_' + sim_item_str
+            # log the episode itself
+            for ep_item_str in ['state', 'action', 'reward']:
+                ep_item = episode[ep_item_str].tolist()
+                json_str = json.dumps(ep_item)
+                item_name = 'episode_step_' + str(step) + '_' + ep_item_str
                 self.experiment.log_asset_data(json_str, name=item_name)
 
+            # log the MuJoCo simulator states
+            for sim_item_str in ['qpos', 'qvel']:
+                if len(eval_states[sim_item_str]) > 0:
+                    sim_item = eval_states[sim_item_str].tolist()
+                    json_str = json.dumps(sim_item)
+                    item_name = 'episode_step_' + str(step) + '_' + sim_item_str
+                    self.experiment.log_asset_data(json_str, name=item_name)
+
     def plot_agent_kl(self, agent_kl, step):
-        self.experiment.log_metric('agent_kl', agent_kl, step)
+        if self.exp_args.plotting:
+            self.experiment.log_metric('agent_kl', agent_kl, step)
 
     def log_results(self, results):
         """
@@ -241,9 +246,10 @@ class Plotter:
         """
         Plot/log the results to Comet.
         """
-        for k, v in self.result_dict.items():
-            avg_value = np.mean(v)
-            self.experiment.log_metric(k, avg_value, timestep)
+        if self.exp_args.plotting:
+            for k, v in self.result_dict.items():
+                avg_value = np.mean(v)
+                self.experiment.log_metric(k, avg_value, timestep)
         self.result_dict = None
 
     def plot_model_eval(self, episode, predictions, log_likelihoods, step):
@@ -255,56 +261,58 @@ class Plotter:
             predictions (dict): predictions from each state, containing [n_steps, horizon, n_dims]
             log_likelihoods (dict): log-likelihood evaluations of predictions, containing [n_steps, horizon, 1]
         """
-        for variable, lls in log_likelihoods.items():
-            # average the log-likelihood estimates and plot the result at the horizon length
-            mean_ll = lls[:, -1].mean().item()
-            self.experiment.log_metric(variable + '_pred_log_likelihood', mean_ll, step)
-            # plot log-likelihoods as a function of rollout step
-            plt.figure()
-            mean = lls.mean(dim=0).view(-1)
-            std = lls.std(dim=0).view(-1)
-            plt.plot(mean.numpy())
-            lower = mean - std
-            upper = mean + std
-            plt.fill_between(np.arange(lls.shape[1]), lower.numpy(), upper.numpy(), alpha=0.2)
-            plt.xlabel('Rollout Step')
-            plt.ylabel('Prediction Log-Likelihood')
-            plt.xticks(np.arange(lls.shape[1]))
-            self.experiment.log_figure(figure=plt, figure_name=variable + '_pred_ll_' + str(step))
-            plt.close()
+        if self.exp_args.plotting:
+            for variable, lls in log_likelihoods.items():
+                # average the log-likelihood estimates and plot the result at the horizon length
+                mean_ll = lls[:, -1].mean().item()
+                self.experiment.log_metric(variable + '_pred_log_likelihood', mean_ll, step)
+                # plot log-likelihoods as a function of rollout step
+                plt.figure()
+                mean = lls.mean(dim=0).view(-1)
+                std = lls.std(dim=0).view(-1)
+                plt.plot(mean.numpy())
+                lower = mean - std
+                upper = mean + std
+                plt.fill_between(np.arange(lls.shape[1]), lower.numpy(), upper.numpy(), alpha=0.2)
+                plt.xlabel('Rollout Step')
+                plt.ylabel('Prediction Log-Likelihood')
+                plt.xticks(np.arange(lls.shape[1]))
+                self.experiment.log_figure(figure=plt, figure_name=variable + '_pred_ll_' + str(step))
+                plt.close()
 
-        # plot predictions vs. actual values for an arbitrary time step
-        time_step = np.random.randint(predictions['state']['loc'].shape[0])
-        for variable, preds in predictions.items():
-            pred_loc = preds['loc'][time_step]
-            pred_scale = preds['scale'][time_step]
-            x = episode[variable][time_step+1:time_step+1+pred_loc.shape[0]]
-            plt.figure()
-            horizon, n_dims = pred_loc.shape
-            for plot_num in range(n_dims):
-                plt.subplot(n_dims, 1, plot_num + 1)
-                plt.plot(pred_loc[:, plot_num].numpy())
-                lower = pred_loc[:, plot_num] - pred_scale[:, plot_num]
-                upper = pred_loc[:, plot_num] + pred_scale[:, plot_num]
-                plt.fill_between(np.arange(horizon), lower.numpy(), upper.numpy(), alpha=0.2)
-                plt.plot(x[:, plot_num].numpy(), '.')
-            plt.xlabel('Rollout Step')
-            plt.xticks(np.arange(horizon))
-            self.experiment.log_figure(figure=plt, figure_name=variable + '_pred_' + str(step))
-            plt.close()
+            # plot predictions vs. actual values for an arbitrary time step
+            time_step = np.random.randint(predictions['state']['loc'].shape[0])
+            for variable, preds in predictions.items():
+                pred_loc = preds['loc'][time_step]
+                pred_scale = preds['scale'][time_step]
+                x = episode[variable][time_step+1:time_step+1+pred_loc.shape[0]]
+                plt.figure()
+                horizon, n_dims = pred_loc.shape
+                for plot_num in range(n_dims):
+                    plt.subplot(n_dims, 1, plot_num + 1)
+                    plt.plot(pred_loc[:, plot_num].numpy())
+                    lower = pred_loc[:, plot_num] - pred_scale[:, plot_num]
+                    upper = pred_loc[:, plot_num] + pred_scale[:, plot_num]
+                    plt.fill_between(np.arange(horizon), lower.numpy(), upper.numpy(), alpha=0.2)
+                    plt.plot(x[:, plot_num].numpy(), '.')
+                plt.xlabel('Rollout Step')
+                plt.xticks(np.arange(horizon))
+                self.experiment.log_figure(figure=plt, figure_name=variable + '_pred_' + str(step))
+                plt.close()
 
     def save_checkpoint(self, step):
         """
         Checkpoint the model by getting the state dictionary for each component.
         """
-        print('Checkpointing the agent...')
-        state_dict = self.agent.state_dict()
-        cpu_state_dict = {k: v.cpu() for k, v in state_dict.items()}
-        ckpt_path = os.path.join('./ckpt_step_'+ str(step) + '.ckpt')
-        torch.save(cpu_state_dict, ckpt_path)
-        self.experiment.log_asset(ckpt_path)
-        os.remove(ckpt_path)
-        print('Done.')
+        if self.exp_args.plotting:
+            print('Checkpointing the agent...')
+            state_dict = self.agent.state_dict()
+            cpu_state_dict = {k: v.cpu() for k, v in state_dict.items()}
+            ckpt_path = os.path.join('./ckpt_step_'+ str(step) + '.ckpt')
+            torch.save(cpu_state_dict, ckpt_path)
+            self.experiment.log_asset(ckpt_path)
+            os.remove(ckpt_path)
+            print('Done.')
 
     def load_checkpoint(self, timestep=None):
         """
