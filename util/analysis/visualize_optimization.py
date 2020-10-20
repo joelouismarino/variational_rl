@@ -307,7 +307,42 @@ def vis_inference(exp_key, action_indices, state_ind=0):
             'sgd_objectives': sgd_objectives}
 
 
-def vis_it_inference(exp_key, action_indices, state_ind=0):
+# from util.analysis import vis_it_inference
+# import numpy as np
+# import pickle
+#
+# state = [0.7380273938179016,
+#  0.9774200916290283,
+#  0.014780346304178238,
+#  -0.053389377892017365,
+#  -0.20391426980495453,
+#  0.09159323573112488,
+#  1.2636744976043701,
+#  0.49291884899139404,
+#  -0.8514286279678345,
+#  0.027635907754302025,
+#  -0.523140549659729,
+#  -0.26849716901779175,
+#  0.7275161147117615,
+#  1.7905492782592773,
+#  1.1246192455291748,
+#  1.2539386749267578,
+#  -0.29752910137176514,
+#  0.5522995591163635,
+#  -1.4331533908843994,
+#  1.4389076232910156,
+#  1.911720633506775,
+#  -1.2782995700836182,
+#  -3.6260697841644287,
+#  -2.3452537059783936,
+#  -0.010221259668469429,
+#  3.8292510509490967,
+#  -1.393014907836914]
+#
+# np_state = np.array(state)
+
+
+def vis_it_inference(exp_key, action_indices, state_ind=0, state=None):
     """
     Plots a 2D analysis of iterative inference.
 
@@ -315,6 +350,7 @@ def vis_it_inference(exp_key, action_indices, state_ind=0):
         exp_key (str): the experiment key
         state_ind (int): state index to plot
         action_indices (list): two action indices to vary
+        state (np.array): the state to evaluate
     """
     # load the experiment
     comet_api = comet_ml.API(api_key=LOADING_API_KEY)
@@ -341,11 +377,14 @@ def vis_it_inference(exp_key, action_indices, state_ind=0):
     # load the checkpoint
     load_checkpoint(agent, exp_key)
 
-    # load the state from the most recently collected episode
-    asset_times = [asset['createdAt'] for asset in asset_list if 'state' in asset['fileName']]
-    state_asset = [a for a in asset_list if a['createdAt'] == max(asset_times)][0]
-    episode_states = json.loads(experiment.get_asset(state_asset['assetId']))
-    state = torch.from_numpy(np.array(episode_states[state_ind])).view(1, -1).type(torch.FloatTensor)
+    if state is None:
+        # load the state from the most recently collected episode
+        asset_times = [asset['createdAt'] for asset in asset_list if 'state' in asset['fileName']]
+        state_asset = [a for a in asset_list if a['createdAt'] == max(asset_times)][0]
+        episode_states = json.loads(experiment.get_asset(state_asset['assetId']))
+        state = torch.from_numpy(np.array(episode_states[state_ind])).view(1, -1).type(torch.FloatTensor)
+    else:
+        state = torch.from_numpy(state).view(1,-1).type(torch.FloatTensor)
     print('STATE: ')
     print(state)
 
@@ -360,45 +399,89 @@ def vis_it_inference(exp_key, action_indices, state_ind=0):
 
     print('Performing iterative inference...')
     # only optimize two of the means
-    agent.n_action_samples = 100
-    agent.reset(); agent.eval()
-    iterative_locs = []
-    iterative_objectives = []
-    # for inf_it in range(agent.inference_optimizer.n_inf_iters):
-    for inf_it in range(25):
+    agent.n_action_samples = 10
+    total_it_locs = []
+    total_it_objs = []
+    for inf_seed in range(10):
+        agent.reset(); agent.eval()
+        # random Gaussian init for the mean
+        agent.approx_post.reset(dist_params={'loc': 0.3*agent.approx_post.dist.loc.clone().detach().normal_(),
+                                             'scale': agent.approx_post.dist.scale.clone().detach()})
+        iterative_locs = []
+        iterative_objectives = []
+        # for inf_it in range(agent.inference_optimizer.n_inf_iters):
+        if False:
+            # gradient-based
+            LR = 0.05
+            sgd_loc = agent.approx_post.dist.loc.clone().detach().requires_grad_()
+            sgd_scale = agent.approx_post.dist.scale.clone().detach()
+            dist_params = {'loc': sgd_loc, 'scale': sgd_scale}
+            agent.approx_post.reset(dist_params=dist_params)
+            # only perform SGD on the mean
+            dist_param_list = [sgd_loc]
+            optimizer = optim.Adam(dist_param_list, lr=LR)
+            optimizer.zero_grad()
+            actions = agent.approx_post.sample(agent.n_action_samples)
+            obj = agent.estimate_objective(state, actions)
+            obj = - obj.view(agent.n_action_samples, -1, 1).mean(dim=0)
+            iterative_objectives.append(-obj.detach())
+            iterative_locs.append(agent.approx_post.dist.loc.clone().detach().cpu().numpy())
+            for _ in range(50):
+                obj.sum().backward(retain_graph=True)
+                for a_dim in range(agent.approx_post.dist.loc.shape[1]):
+                    if a_dim not in action_indices:
+                        agent.approx_post.dist.loc.grad[:, a_dim] = 0.
+                optimizer.step()
+                optimizer.zero_grad()
+                agent.approx_post._sample = None
+                iterative_locs.append(agent.approx_post.dist.loc.clone().detach().cpu().numpy())
+                actions = agent.approx_post.sample(agent.n_action_samples)
+                obj = agent.estimate_objective(state, actions)
+                obj = - obj.view(agent.n_action_samples, -1, 1).mean(dim=0)
+                iterative_objectives.append(-obj.detach())
+            clear_gradients(agent.generative_parameters())
+        else:
+            # amortized
+            for inf_it in range(50):
+                # reset the approx post dist
+                it_loc = agent.approx_post.dist.loc.clone().detach()
+                for a_dim in range(it_loc.shape[1]):
+                    if a_dim not in action_indices:
+                        it_loc[:, a_dim] = loc[:, a_dim]
+                it_scale = scale
+                dist_params = {'loc': it_loc.requires_grad_(), 'scale': it_scale.requires_grad_()}
+                agent.approx_post.reset(dist_params=dist_params)
+                iterative_locs.append(agent.approx_post.dist.loc.detach().cpu().numpy())
 
-        # reset the approx post dist
-        it_loc = agent.approx_post.dist.loc.clone().detach()
-        for a_dim in range(it_loc.shape[1]):
-            if a_dim not in action_indices:
-                it_loc[:, a_dim] = loc[:, a_dim]
-        it_scale = scale
-        dist_params = {'loc': it_loc.requires_grad_(), 'scale': it_scale.requires_grad_()}
-        agent.approx_post.reset(dist_params=dist_params)
-        iterative_locs.append(agent.approx_post.dist.loc.detach().cpu().numpy())
+                # estimate the objective, backprop
+                actions = agent.approx_post.sample(agent.n_action_samples)
+                obj = agent.estimate_objective(state, actions)
+                obj = - obj.view(agent.n_action_samples, -1, 1).mean(dim=0)
+                iterative_objectives.append(-obj.detach())
+                obj.sum().backward(retain_graph=True)
 
-        # estimate the objective, backprop
-        actions = agent.approx_post.sample(agent.n_action_samples)
-        obj = agent.estimate_objective(state, actions)
-        obj = - obj.view(agent.n_action_samples, -1, 1).mean(dim=0)
-        iterative_objectives.append(-obj.detach())
-        obj.sum().backward(retain_graph=True)
+                # update
+                params, grads = agent.approx_post.params_and_grads()
+                inf_input = agent.inference_optimizer.inference_model(params=params, grads=grads, state=state)
+                agent.approx_post.step(inf_input)
+                agent.approx_post.retain_grads()
 
-        # update
-        params, grads = agent.approx_post.params_and_grads()
-        inf_input = agent.inference_optimizer.inference_model(params=params, grads=grads, state=state)
-        agent.approx_post.step(inf_input)
-        agent.approx_post.retain_grads()
+            # reset the approx post dist
+            it_loc = agent.approx_post.dist.loc.clone().detach()
+            for a_dim in range(it_loc.shape[1]):
+                if a_dim not in action_indices:
+                    it_loc[:, a_dim] = loc[:, a_dim]
+            it_scale = scale
+            dist_params = {'loc': it_loc, 'scale': it_scale}
+            agent.approx_post.reset(dist_params=dist_params)
+            iterative_locs.append(agent.approx_post.dist.loc.detach().cpu().numpy())
 
-    # reset the approx post dist
-    it_loc = agent.approx_post.dist.loc.clone().detach()
-    for a_dim in range(it_loc.shape[1]):
-        if a_dim not in action_indices:
-            it_loc[:, a_dim] = loc[:, a_dim]
-    it_scale = scale
-    dist_params = {'loc': it_loc, 'scale': it_scale}
-    agent.approx_post.reset(dist_params=dist_params)
-    iterative_locs.append(agent.approx_post.dist.loc.detach().cpu().numpy())
+        total_it_locs.append(np.array(iterative_locs))
+        total_it_objs.append(np.array(iterative_objectives))
+
+    total_it_locs = np.stack(total_it_locs)
+    total_it_objs = np.stack(total_it_objs)
+
     print('Done.')
 
     print('Estimating objectives...')
@@ -454,8 +537,8 @@ def vis_it_inference(exp_key, action_indices, state_ind=0):
     return {'objectives': objectives,
             'stacked_action_means': stacked_action_means,
             'action_indices': action_indices,
-            'iterative_approx_post_means': iterative_locs,
-            'iterative_objectives': iterative_objectives,
+            'iterative_approx_post_means': total_it_locs,
+            'iterative_objectives': total_it_objs,
             'final_it_approx_post': it_approx_post,}
 
 

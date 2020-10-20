@@ -74,6 +74,7 @@ class Plotter:
         agent (Agent): the agent
     """
     def __init__(self, exp_args, agent_args, agent):
+        
         self.experiment = Experiment(api_key=LOGGING_API_KEY,
                                      project_name=PROJECT_NAME,
                                      workspace=WORKSPACE)

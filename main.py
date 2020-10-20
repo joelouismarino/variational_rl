@@ -32,6 +32,7 @@ parser.add_argument('--update_factor', default=1, type=int, help='number of upda
 parser.add_argument('--checkpoint_exp_key', default=None, type=str, help='experiment key for the checkpoint to load')
 parser.add_argument('--checkpoint_interval', default=1e4, type=int, help='frequency of model checkpointing in environment steps')
 parser.add_argument('--eval_interval', default=1e3, type=int, help='frequency for evaluation in environment steps')
+parser.add_argument('--plotting', default=True, type=bool, help='whether or not to log/plot with comet')
 # other arguments here
 args = parser.parse_args()
 

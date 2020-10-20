@@ -877,15 +877,19 @@ def compare_with_gradient_based(exp_key, n_states):
 
         print(' Performing Iterative Amortized Policy Optimization...')
         # perform iterative amortized inference
+        start_time = time.time()
         agent.reset(); agent.eval()
         agent.inference_optimizer.n_inf_iters = 250
         agent.act(state)
         it_inf_obj = np.array([-obj.numpy() for obj in agent.inference_optimizer.estimated_objectives]).reshape(-1)
         total_it_obj.append(it_inf_obj)
+        total_time = time.time() - start_time
+        print(' Duration: ' + '{:.2f}'.format(total_time) + ' s.')
         print(' Done.')
 
         print(' Performing Gradient-Based Policy Optimization...')
         # perform gradient-based policy optimization
+        start_time = time.time()
         agent.reset(); agent.eval()
         agent.n_action_samples = 10
         grad_obj = []
@@ -915,6 +919,8 @@ def compare_with_gradient_based(exp_key, n_states):
 
         gradient_obj = np.array([obj.numpy() for obj in grad_obj]).reshape(-1)
         total_grad_obj.append(gradient_obj)
+        total_time = time.time() - start_time
+        print(' Duration: ' + '{:.2f}'.format(total_time) + ' s.')
         print(' Done.')
 
     results = {'iterative_amortized': np.array(total_it_obj),
@@ -1069,3 +1075,107 @@ def transfer_it_mf_mb(mf_exp_key, mb_exp_key, device_id=None):
 
     return {'steps': ckpt_timesteps,
             'returns': returns}
+
+
+def compare_with_cem(exp_key, n_states):
+    """
+    Compare amortization with CEM.
+
+    Args:
+        exp_key (str): the experiment string
+        n_states (int): number of states on which to compare
+    """
+
+    N_ITERATIONS = 250
+
+    # load the experiment
+    comet_api = comet_ml.API(api_key=LOADING_API_KEY)
+    experiment = comet_api.get_experiment(project_name=PROJECT_NAME,
+                                          workspace=WORKSPACE,
+                                          experiment=exp_key)
+
+    # create the environment
+    param_summary = experiment.get_parameters_summary()
+    env_name = [a for a in param_summary if a['name'] == 'env'][0]['valueCurrent']
+    env = create_env(env_name)
+
+    # create the agent
+    asset_list = experiment.get_asset_list()
+    agent_config_asset_list = [a for a in asset_list if 'agent_args' in a['fileName']]
+    agent_args = None
+    if len(agent_config_asset_list) > 0:
+        # if we've saved the agent config dict, load it
+        agent_args = experiment.get_asset(agent_config_asset_list[0]['assetId'])
+        agent_args = json.loads(agent_args)
+        agent_args = agent_args if 'opt_type' in agent_args['inference_optimizer_args'] else None
+    agent = create_agent(env, agent_args=agent_args)[0]
+
+    # load the checkpoint
+    load_checkpoint(agent, exp_key)
+
+    # load the state from the most recently collected episode
+    asset_times = [asset['createdAt'] for asset in asset_list if 'state' in asset['fileName']]
+    state_asset = [a for a in asset_list if a['createdAt'] == max(asset_times)][0]
+    episode_states = json.loads(experiment.get_asset(state_asset['assetId']))
+
+    total_it_obj = []
+    total_cem_obj = []
+
+    for state_ind in range(n_states):
+        print('State ' + str(state_ind + 1) + ' of ' + str(n_states) + '.')
+        state = torch.from_numpy(np.array(episode_states[state_ind])).view(1, -1).type(torch.FloatTensor)
+
+        print(' Performing Iterative Amortized Policy Optimization...')
+        start_time = time.time()
+        # perform iterative amortized inference
+        agent.reset(); agent.eval()
+        agent.inference_optimizer.n_inf_iters = N_ITERATIONS
+        agent.act(state)
+        it_inf_obj = np.array([-obj.numpy() for obj in agent.inference_optimizer.estimated_objectives]).reshape(-1)
+        total_it_obj.append(it_inf_obj)
+        total_time = time.time() - start_time
+        print(' Duration: ' + '{:.2f}'.format(total_time) + ' s.')
+        print(' Done.')
+
+        print(' Performing CEM Policy Optimization...')
+        start_time = time.time()
+        # perform cem policy optimization
+        agent.reset(); agent.eval()
+        agent.n_action_samples = 100
+        TOP_N = 10
+        LR = 0.01
+        cem_obj = []
+        for it_inf in range(N_ITERATIONS):
+            if (it_inf+1) % 100 == 0:
+                print('     ' + str(it_inf + 1) + ' iterations completed.')
+            # clear the sample to force resampling
+            agent.approx_post._sample = None
+            actions = agent.approx_post.sample(agent.n_action_samples)
+            obj = agent.estimate_objective(state, actions)
+            obj = obj.view(agent.n_action_samples, -1, 1)
+            cem_obj.append(obj.mean(dim=0).detach())
+            # keep top samples, fit mean and std. dev.
+            _, top_inds = obj.topk(TOP_N, dim=0)
+            actions = actions.view(agent.n_action_samples, -1, agent.approx_post.n_variables)
+            top_actions = actions.gather(0, top_inds.repeat(1, 1, agent.approx_post.n_variables))
+            loc = top_actions.mean(dim=0)
+            scale = torch.sqrt(top_actions.var(dim=0) + 1e-6)
+            # smoothed update
+            old_loc = agent.approx_post.dist.loc.detach()
+            old_scale = agent.approx_post.dist.scale.detach()
+            new_loc = (1. - LR) * old_loc + LR * loc
+            new_scale = (1. - LR) * old_scale + LR * scale
+            # set the approximate posterior
+            agent.approx_post.reset(agent.approx_post._batch_size,
+                                    dist_params={'loc': new_loc.detach(), 'scale': new_scale.detach()})
+
+        cem_obj = np.array([obj.numpy() for obj in cem_obj]).reshape(-1)
+        total_cem_obj.append(cem_obj)
+        total_time = time.time() - start_time
+        print(' Duration: ' + '{:.2f}'.format(total_time) + ' s.')
+        print(' Done.')
+
+    results = {'iterative_amortized': np.array(total_it_obj),
+               'cem': np.array(total_cem_obj)}
+
+    return results
