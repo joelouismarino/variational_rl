@@ -2,7 +2,7 @@
 
 This code accompanies the paper [Iterative Amortized Policy Optimization](https://openreview.net/pdf?id=49mMdsxkPlD) by Marino et al., 2020.
 
-![alt text](diagram/diagram.pdf)
+![IAPO Diagram](diagram/diagram.pdf)
 
 ## Installation & Set-Up
 
