@@ -204,7 +204,7 @@ class Plotter:
         """
         # plot and log eval returns
         eval_return = episode['reward'].sum()
-        print(' Eval. Return at Step ' + str(step) + ': ' + str(eval_return))
+        print(' Eval. Return at Step ' + str(step) + ': ' + str(eval_return.item()))
         self.returns.append(eval_return.item())
         if self.exp_args.plotting:
             self.experiment.log_metric('eval_cumulative_reward', eval_return, step)
