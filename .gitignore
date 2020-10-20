@@ -11,4 +11,4 @@
 /env
 
 MUJOCO_LOG.TXT
-# local_vars.py
+local_vars.py

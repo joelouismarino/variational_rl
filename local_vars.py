@@ -1,5 +1,5 @@
 # comet credentials
-PROJECT_NAME = None
-WORKSPACE = None
-LOGGING_API_KEY = None
-LOADING_API_KEY = None
+PROJECT_NAME = 'variational_rl'
+WORKSPACE = 'joelouismarino'
+LOGGING_API_KEY = 'prsuXaz6RVyjfIWmbZwVjWMug'
+LOADING_API_KEY = 'jHxSNRKAIOSSBP4TyRvGHfanF'

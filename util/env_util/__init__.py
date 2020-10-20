@@ -40,8 +40,6 @@ def create_env(env_name, seed=None, unwrap_time_limit=True):
         env = reward_wrappers.AddBatchDim(env)
         env = reward_wrappers.ToTensor(env)
         env = action_wrappers.NormalizeAction(env)
-    elif env_type in ['drone']:
-        pass
     elif env_type == 'robotics':
         raise NotImplementedError
     else:
