@@ -1,6 +1,6 @@
 # Iterative Amortized Policy Optimization
 
-This code accompanies the paper [Iterative Amortized Policy Optimization](https://openreview.net/pdf?id=49mMdsxkPlD) by Marino et al., 2020.
+This code accompanies the paper [Iterative Amortized Policy Optimization](https://arxiv.org/abs/2010.10670) by Marino et al., 2020.
 
 ![IAPO Diagram](diagram/diagram.png)
 
