@@ -35,7 +35,8 @@ def train(agent, env, buffer, optimizer, plotter, args):
         # timestep += episode_length
         n_episodes += 1
         buffer.append(episode)
-        n_updates = update_factor * episode_length
+        # n_updates = update_factor * episode_length
+        n_updates = 5
 
         # train on samples from buffer
         if buffer.total_steps >= n_initial_steps:

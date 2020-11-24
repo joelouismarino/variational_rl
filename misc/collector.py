@@ -233,12 +233,12 @@ class Collector:
         """
         objective = 0.
         # policy
-        if 'scale' in self.agent.approx_post.param_names:
+        if 'scale' in self.agent.approx_post.param_names or 'scales' in self.agent.approx_post.param_names:
             min_log_scale = self.agent.approx_post.min_log_scale
             max_log_scale = self.agent.approx_post.max_log_scale
             objective = objective - 0.01 * min_log_scale.sum()
             objective = objective + 0.01 * max_log_scale.sum()
-        if 'scale' in self.agent.prior.param_names:
+        if 'scale' in self.agent.prior.param_names or 'scales' in self.agent.prior.param_names:
             min_log_scale = self.agent.prior.min_log_scale
             max_log_scale = self.agent.prior.max_log_scale
             objective = objective - 0.01 * min_log_scale.sum()

@@ -8,6 +8,8 @@ from .tanh_normal import TanhNormal
 from .ar_normal import ARNormal
 from .tanh_ar_normal import TanhARNormal
 from .normal_uniform import NormalUniform
+from .mixture_of_normals import MixtureOfNormals
+from .mixture_of_tanh_normals import MixtureOfTanhNormals
 from .boltzmann import Boltzmann
 from .transforms import AutoregressiveTransform
 
@@ -32,11 +34,13 @@ class Distribution(nn.Module):
         euler_loc (bool): whether to use euler integration for the location
         euler_args (dict): dictionary of euler integration arguments
         transform_config (dict): dictionary of transform parameters (for AR dists)
+        n_components (int): number of components (if mixture distribution)
     """
     def __init__(self, dist_type, n_variables, n_input, stochastic=True,
                  constant=False, constant_scale=False, residual_loc=False,
                  manual_loc=False, manual_loc_alpha=0., update='direct',
-                 euler_loc=False, euler_args=None, transform_config=None):
+                 euler_loc=False, euler_args=None, transform_config=None,
+                 n_components=1):
         super(Distribution, self).__init__()
         self.n_variables = n_variables
         self.stochastic = stochastic
@@ -47,6 +51,7 @@ class Distribution(nn.Module):
         self.update = update
         self.euler_loc = euler_loc
         self.euler_args = euler_args
+        self.n_components = n_components
 
         self.dist = None
         self.planning_dist = None
@@ -70,6 +75,10 @@ class Distribution(nn.Module):
             self.dist_type = TanhARNormal
         elif dist_type == 'NormalUniform':
             self.dist_type = NormalUniform
+        elif dist_type == 'MixtureOfNormals':
+            self.dist_type = MixtureOfNormals
+        elif dist_type == 'MixtureOfTanhNormals':
+            self.dist_type = MixtureOfTanhNormals
         elif dist_type == 'Boltzmann':
             self.dist_type = Boltzmann
         else:
@@ -81,9 +90,13 @@ class Distribution(nn.Module):
             # non-parametric distribution
             param_names = []
         self.param_names = param_names
-        if 'scale' in param_names:
-            self.min_log_scale = nn.Parameter(-10 * torch.ones(1, self.n_variables))
-            self.max_log_scale = nn.Parameter(0.5 * torch.ones(1, self.n_variables))
+        if 'scale' in param_names or 'scales' in param_names:
+            if 'Mixture' in dist_type:
+                self.min_log_scale = nn.Parameter(-10 * torch.ones(1, self.n_components*self.n_variables))
+                self.max_log_scale = nn.Parameter(0.5 * torch.ones(1, self.n_components*self.n_variables))
+            else:
+                self.min_log_scale = nn.Parameter(-10 * torch.ones(1, self.n_variables))
+                self.max_log_scale = nn.Parameter(0.5 * torch.ones(1, self.n_variables))
             if self.const_scale:
                 self.log_scale = nn.Parameter(torch.zeros(1, self.n_variables))
                 param_names = ['loc']
@@ -99,6 +112,11 @@ class Distribution(nn.Module):
                 if model_name == 'loc' and euler_loc:
                     if euler_args['is_3d']:
                         n_var -= 1
+                # mixture distribution requires a set of parameters per component
+                if model_name in ['locs', 'scales'] and 'Mixture' in dist_type:
+                    n_var *= self.n_components
+                elif model_name == 'weights' and 'Mixture' in dist_type:
+                    n_var = self.n_components
                 self.models[model_name] = FullyConnectedLayer(n_input, n_var)
                 # nn.init.uniform_(self.models[model_name].linear.weight, -INIT_W, INIT_W)
                 # nn.init.uniform_(self.models[model_name].linear.bias, -INIT_W, INIT_W)
@@ -117,14 +135,23 @@ class Distribution(nn.Module):
         for param in self.initial_params:
             req_grad = False if constant else True
             constraint = self.dist_type.arg_constraints[param]
+            n_var = n_variables
             if type(constraint) == constraints.greater_than and constraint.lower_bound == 0:
-                self.initial_params[param] = nn.Parameter(0.5 * torch.ones(1, n_variables))
+                if param == 'scales' and 'Mixture' in dist_type:
+                    self.initial_params[param] = nn.Parameter(0.5 * torch.ones(1, self.n_components, n_variables))
+                else:
+                    self.initial_params[param] = nn.Parameter(0.5 * torch.ones(1, n_variables))
             elif constraint == constraints.dependent and param == 'low':
                 self.initial_params[param] = nn.Parameter(-torch.ones(1, n_variables), requires_grad=False)
             elif constraint == constraints.dependent and param == 'high':
                 self.initial_params[param] = nn.Parameter(torch.ones(1, n_variables), requires_grad=False)
+            elif param == 'weights' and 'Mixture' in dist_type:
+                self.initial_params[param] = nn.Parameter(0.5 * torch.ones(1, self.n_components))
             else:
-                self.initial_params[param] = nn.Parameter(torch.zeros(1, n_variables))
+                if param == 'locs' and 'Mixture' in dist_type:
+                    self.initial_params[param] = nn.Parameter(torch.zeros(1, self.n_components, n_variables))
+                else:
+                    self.initial_params[param] = nn.Parameter(torch.zeros(1, n_variables))
             self.initial_params[param].requires_grad_(req_grad)
 
         # create the transforms for the auto-regressive distributions
@@ -173,7 +200,7 @@ class Distribution(nn.Module):
                     gate = gates[param_name](param_input)
                     param = gate * param + (1. - gate) * param_update
 
-                if param_name == 'loc':
+                if param_name in ['loc', 'locs']:
 
                     if self.manual_loc:
                         # manually include action norm in reward mean estimate (MuJoCo)
@@ -199,6 +226,10 @@ class Distribution(nn.Module):
                     param = self.min_log_scale + nn.Softplus()(param - self.min_log_scale)
                     param = torch.exp(param)
 
+                # satisfy mixture weight constraints
+                if param_name == 'weights':
+                    param = torch.softmax(param, -1)
+
                 # set the parameter
                 parameters[param_name] = param
 
@@ -217,6 +248,11 @@ class Distribution(nn.Module):
 
         if self.transforms:
             parameters['transforms'] = [t for t in self.transforms]
+
+        # reshape locs and scales for mixture distribution
+        if 'locs' in parameters:
+            parameters['locs'] = parameters['locs'].view(-1, self.n_components, self.n_variables)
+            parameters['scales'] = parameters['scales'].view(-1, self.n_components, self.n_variables)
 
         # create a new distribution with the parameters
         if not self.planning:
@@ -337,7 +373,8 @@ class Distribution(nn.Module):
         """
         if dist_params is None:
             # initialize distribution parameters from initial parameters
-            dist_params = {k: v.repeat(batch_size, 1).data.requires_grad_() for k, v in self.initial_params.items()}
+            # dist_params = {k: v.repeat(batch_size, 1).data.requires_grad_() for k, v in self.initial_params.items()}
+            dist_params = {k: torch.cat(batch_size*[v], axis=0).data.requires_grad_() for k, v in self.initial_params.items()}
             if self.const_scale:
                 dist_params['scale'] = self.log_scale.repeat(batch_size, 1).exp().data.requires_grad_()
             # for _, v in dist_params.items():

@@ -20,7 +20,7 @@ from local_vars import PROJECT_NAME, WORKSPACE, LOADING_API_KEY, LOGGING_API_KEY
 # visualize inference over multiple seeds
 # analyze inference performance (improvement, gap?)
 
-CKPT_SUBSAMPLE = 1
+CKPT_SUBSAMPLE = 5
 
 def analyze_inference(exp_key, n_states, n_inf_seeds, n_action_samples=None,
                       ckpt_timestep=None, device_id=None):
@@ -429,12 +429,120 @@ def estimate_amortization_gap(exp_key, n_am_inf_iters=None):
         # load the checkpoint
         print('Evaluating checkpoint ' + str(ckpt_ind + 1) + ' of ' + str(len(ckpt_timesteps)))
         load_checkpoint(agent, exp_key, ckpt_timestep)
-        if n_am_inf_iters > 0:
-            agent.inference_optimizer.n_inf_iters = n_am_inf_iters
+        if n_am_inf_iters is not None:
+            if n_am_inf_iters > 0:
+                agent.inference_optimizer.n_inf_iters = n_am_inf_iters
         amortization_gaps[ckpt_ind] = estimate_gap(agent, env)
 
     return ckpt_timesteps, amortization_gaps
 
+def estimate_policy_kl(exp_key, write_result=True):
+    """
+    Estimate the policy KL between two inference seeds for a cached experiment
+    throughout training. Estimates degree of multi-modality.
+
+    Args:
+        exp_key (str): the string of the comet experiment key
+        write_result (bool): pickles the results to the local directory
+    """
+    # number of states to evaluate
+    N_STATES = 100
+
+    def estimate_kl(agent, env):
+        """
+        Sub-routine to estimate policy KL.
+        """
+        kls = np.zeros(N_STATES)
+        normal_kls = np.zeros(N_STATES)
+        distances = np.zeros(N_STATES)
+        tanh_distances = np.zeros(N_STATES)
+
+        agent.reset(); agent.eval()
+        state = env.reset()
+        reward = 0.
+        done = False
+
+        for state_ind in range(N_STATES):
+            if state_ind % 10 == 0:
+                print(' State ' + str(state_ind) + ' of ' + str(N_STATES) + '.')
+
+            # perform inference twice
+            agent.act(state, reward, done)
+            policy1 = agent.approx_post.dist
+            normal_policy1 = torch.distributions.Normal(loc=policy1.loc.detach(), scale=policy1.scale.detach())
+            agent.reset(); agent.eval()
+            action = agent.act(state, reward, done)
+            policy2 = agent.approx_post.dist
+            normal_policy2 = torch.distributions.Normal(loc=policy2.loc.detach(), scale=policy2.scale.detach())
+
+            # calculate the KL
+            # kls[state_ind] = kl_divergence(policy2, policy1, sample=action)
+            kls[state_ind] = (policy2.log_prob(action) - policy1.log_prob(action)).mean().detach()
+            normal_kls[state_ind] = torch.distributions.kl_divergence(normal_policy1, normal_policy2).mean().detach()
+
+            # calculate the L2 between the means
+            distances[state_ind] = (policy1.loc - policy2.loc).norm(2).detach().item()
+            tanh_distances[state_ind] = (policy1.loc.tanh() - policy2.loc.tanh()).norm(2).detach().item()
+
+            # step the environment
+            state, reward, done, _ = env.step(action)
+            if done:
+                agent.reset(); agent.eval()
+                state = env.reset()
+                reward = 0.
+                done = False
+
+        return kls, normal_kls, distances, tanh_distances
+
+    # load the experiment
+    comet_api = comet_ml.API(api_key=LOADING_API_KEY)
+    experiment = comet_api.get_experiment(project_name=PROJECT_NAME,
+                                          workspace=WORKSPACE,
+                                          experiment=exp_key)
+
+    # create the environment
+    param_summary = experiment.get_parameters_summary()
+    env_name = [a for a in param_summary if a['name'] == 'env'][0]['valueCurrent']
+    env = create_env(env_name)
+
+    # create the agent
+    asset_list = experiment.get_asset_list()
+    agent_config_asset_list = [a for a in asset_list if 'agent_args' in a['fileName']]
+    agent_args = None
+    if len(agent_config_asset_list) > 0:
+        # if we've saved the agent config dict, load it
+        agent_args = experiment.get_asset(agent_config_asset_list[0]['assetId'])
+        agent_args = json.loads(agent_args)
+        agent_args = agent_args if 'opt_type' in agent_args['inference_optimizer_args'] else None
+    agent = create_agent(env, agent_args=agent_args)[0]
+    # get the list of checkpoint timesteps
+    ckpt_asset_list = [a for a in asset_list if 'ckpt' in a['fileName']]
+    ckpt_asset_names = [a['fileName'] for a in ckpt_asset_list]
+    ckpt_timesteps = [int(s.split('ckpt_step_')[1].split('.ckpt')[0]) for s in ckpt_asset_names]
+
+    # iterate over sub-sampled checkpoint timesteps, evaluating
+    ckpt_timesteps = list(np.sort(ckpt_timesteps)[::CKPT_SUBSAMPLE])
+    policy_kl = np.zeros((len(ckpt_timesteps), N_STATES))
+    normal_policy_kls = np.zeros((len(ckpt_timesteps), N_STATES))
+    mean_distances = np.zeros((len(ckpt_timesteps), N_STATES))
+    tanh_mean_distances = np.zeros((len(ckpt_timesteps), N_STATES))
+
+    for ckpt_ind, ckpt_timestep in enumerate(ckpt_timesteps):
+        # load the checkpoint
+        print('Evaluating checkpoint ' + str(ckpt_ind + 1) + ' of ' + str(len(ckpt_timesteps)))
+        load_checkpoint(agent, exp_key, ckpt_timestep)
+        policy_kl[ckpt_ind], normal_policy_kls[ckpt_ind], mean_distances[ckpt_ind], tanh_mean_distances[ckpt_ind] = estimate_kl(agent, env)
+
+    result_dict = {'timesteps': ckpt_timesteps,
+                   'policy_kl': policy_kl,
+                   'normal_policy_kls': normal_policy_kls,
+                   'mean_distances': mean_distances,
+                   'tanh_mean_distances': tanh_mean_distances}
+    if write_result:
+        exp_string = 'policy_kl_' + exp_key + '.p'
+        pickle.dump(result_dict, open(exp_string, 'wb'))
+
+    return ckpt_timesteps, result_dict
 
 def evaluate_additional_inf_iters(exp_key, n_iterations, write_result=True):
     """
