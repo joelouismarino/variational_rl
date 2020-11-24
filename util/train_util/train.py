@@ -22,8 +22,8 @@ def train(agent, env, buffer, optimizer, plotter, args):
 
     while timestep < args.n_total_steps:
         # estimate agent KL (change in policy distribution)
-        agent_kl = estimate_agent_kl(env, agent, buffer.last_episode)
-        plotter.plot_agent_kl(agent_kl, timestep)
+        # agent_kl = estimate_agent_kl(env, agent, buffer.last_episode)
+        # plotter.plot_agent_kl(agent_kl, timestep)
         # collect an episode
         print(' -- Collecting Episode: ' + str(n_episodes + 1))
         t_start = time.time()

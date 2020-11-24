@@ -125,6 +125,18 @@ class MixtureSameFamily(D.Distribution):
             return torch.sum(comp_sample * mask.float(),
                              dim=-1-self._event_ndims)
 
+    def rsample(self, sample_shape=torch.Size()):
+        # [n, B]
+        mix_sample = self.mixture_distribution.sample(sample_shape)
+        # [n, B, k, E]
+        comp_sample = self.components_distribution.rsample(sample_shape)
+        # [n, B, k]
+        mask = F.one_hot(mix_sample, self._num_components)
+        # [n, B, k, [1]*E]
+        mask = self._pad_mixture_dimensions(mask)
+        return torch.sum(comp_sample * mask.float(),
+                         dim=-1-self._event_ndims)
+
     def _pad(self, x):
         d = len(x.shape) - self._event_ndims
         s = x.shape

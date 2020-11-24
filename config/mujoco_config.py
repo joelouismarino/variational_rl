@@ -27,7 +27,7 @@ def get_mujoco_config(env):
     agent_args['misc_args']['state_size'] = state_size
     n_action_variables = env.action_space.shape[0]
 
-    # distribution types: 'Uniform', 'Normal', 'TanhNormal', 'Boltzmann', 'NormalUniform', 'MixtureOfTanhNormals'
+    # distribution types: 'Uniform', 'Normal', 'TanhNormal', 'Boltzmann', 'TanhARNormal'
     action_prior_dist = 'Uniform'
     action_approx_post_dist = 'TanhNormal'
 
@@ -38,7 +38,7 @@ def get_mujoco_config(env):
                                 'constant': constant_prior}
 
     if action_prior_dist in ['ARNormal', 'TanhARNormal']:
-        agent_args['prior_args']['transform_config'] = {'n_transforms': 1,
+        agent_args['prior_args']['transform_config'] = {'n_transforms': 3,
                                                         'type': 'ar_fully_connected',
                                                         'n_layers': 2,
                                                         'n_input': n_action_variables,

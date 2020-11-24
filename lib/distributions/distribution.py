@@ -11,7 +11,7 @@ from .normal_uniform import NormalUniform
 from .mixture_of_normals import MixtureOfNormals
 from .mixture_of_tanh_normals import MixtureOfTanhNormals
 from .boltzmann import Boltzmann
-from .transforms import AutoregressiveTransform
+from .transforms import AutoregressiveTransform, ReverseTransform
 
 # range for weight initialization
 INIT_W = 1e-3
@@ -158,7 +158,10 @@ class Distribution(nn.Module):
         if dist_type in ['ARNormal', 'TanhARNormal']:
             assert transform_config is not None
             n_transforms = transform_config.pop('n_transforms')
-            self.transforms = nn.ModuleList([AutoregressiveTransform(transform_config) for _ in range(n_transforms)])
+            ar_transforms = [AutoregressiveTransform(transform_config) for _ in range(n_transforms)]
+            reverse_transforms = [ReverseTransform() for _ in range(n_transforms)]
+            self.transforms = nn.ModuleList([t for pair in zip(ar_transforms, reverse_transforms) for t in pair] )
+            # self.transforms = nn.ModuleList([AutoregressiveTransform(transform_config) for _ in range(n_transforms)])
 
     def step(self, input=None, detach_params=False, **kwargs):
         """
@@ -287,6 +290,11 @@ class Distribution(nn.Module):
                     sample = torch.cat(n_samples * [d.loc], dim=0)
                     if type(d) == TanhNormal:
                         sample = sample.tanh()
+                # elif argmax and 'locs' in self.param_names:
+                #     # TODO: get loc of max component
+                #     sample = torch.cat(n_samples * [d.loc], dim=0)
+                #     if type(d) == TanhNormal:
+                #         sample = sample.tanh()
                 else:
                     sample = d.rsample([n_samples]) if d.has_rsample else d.sample([n_samples])
             else:
@@ -381,7 +389,7 @@ class Distribution(nn.Module):
             #     v.retain_grad()
             if self.transforms is not None:
                 dist_params['transforms'] = [t for t in self.transforms]
-        elif 'scale' not in dist_params:
+        elif 'scale' not in dist_params and 'scales' not in dist_params:
             if self.const_scale:
                 dist_params['scale'] = self.log_scale.repeat(batch_size, 1).exp().data.requires_grad_()
             else:

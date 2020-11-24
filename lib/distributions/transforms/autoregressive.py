@@ -66,4 +66,11 @@ class AutoregressiveTransform(TransformModule):
         return self._cached_scale.sign()
 
     def log_abs_det_jacobian(self, x, y):
-        return self._cached_scale.sum(dim=1).log()
+        return self._cached_scale.log()
+        # shape = x.shape
+        # result = self._cached_scale.log()
+        # result_size = result.size()[:-self.event_dim] + (-1,)
+        # result = result.view(result_size).sum(-1)
+        # shape = shape[:-self.event_dim]
+        # return result.expand(shape)
+        # return self._cached_scale.sum(dim=1).log()
