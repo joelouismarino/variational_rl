@@ -38,7 +38,7 @@ def get_mujoco_config(env):
                                 'constant': constant_prior}
 
     if action_prior_dist in ['ARNormal', 'TanhARNormal']:
-        agent_args['prior_args']['transform_config'] = {'n_transforms': 3,
+        agent_args['prior_args']['transform_config'] = {'n_transforms': 1,
                                                         'type': 'ar_fully_connected',
                                                         'n_layers': 2,
                                                         'n_input': n_action_variables,
@@ -69,7 +69,7 @@ def get_mujoco_config(env):
         # number of mixture components
         agent_args['approx_post_args']['n_components'] = 5
     elif action_approx_post_dist in ['ARNormal', 'TanhARNormal']:
-        agent_args['approx_post_args']['transform_config'] = {'n_transforms': 1,
+        agent_args['approx_post_args']['transform_config'] = {'n_transforms': 3,
                                                               'type': 'ar_fully_connected',
                                                               'n_layers': 2,
                                                               'n_input': n_action_variables,

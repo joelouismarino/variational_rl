@@ -160,7 +160,7 @@ class Distribution(nn.Module):
             n_transforms = transform_config.pop('n_transforms')
             ar_transforms = [AutoregressiveTransform(transform_config) for _ in range(n_transforms)]
             reverse_transforms = [ReverseTransform() for _ in range(n_transforms)]
-            self.transforms = nn.ModuleList([t for pair in zip(ar_transforms, reverse_transforms) for t in pair] )
+            self.transforms = nn.ModuleList([t for pair in zip(ar_transforms, reverse_transforms) for t in pair])
             # self.transforms = nn.ModuleList([AutoregressiveTransform(transform_config) for _ in range(n_transforms)])
 
     def step(self, input=None, detach_params=False, **kwargs):
@@ -287,14 +287,13 @@ class Distribution(nn.Module):
             # sample is of size [n_samples, batch_size, n_variables]
             if self.stochastic:
                 if argmax and 'loc' in self.param_names:
+                    # get the mean of the distribution
                     sample = torch.cat(n_samples * [d.loc], dim=0)
-                    if type(d) == TanhNormal:
-                        sample = sample.tanh()
-                # elif argmax and 'locs' in self.param_names:
-                #     # TODO: get loc of max component
-                #     sample = torch.cat(n_samples * [d.loc], dim=0)
-                #     if type(d) == TanhNormal:
-                #         sample = sample.tanh()
+                    if type(d) in [TanhNormal, TanhARNormal, ARNormal]:
+                        # apply the forward transform(s)
+                        for transform in d.trans:
+                            sample = transform(sample)
+                        # sample = sample.tanh()
                 else:
                     sample = d.rsample([n_samples]) if d.has_rsample else d.sample([n_samples])
             else:
