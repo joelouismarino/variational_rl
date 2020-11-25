@@ -157,6 +157,7 @@ class Distribution(nn.Module):
         # create the transforms for the auto-regressive distributions
         if dist_type in ['ARNormal', 'TanhARNormal']:
             assert transform_config is not None
+            transform_config = transform_config.copy()
             n_transforms = transform_config.pop('n_transforms')
             ar_transforms = [AutoregressiveTransform(transform_config) for _ in range(n_transforms)]
             reverse_transforms = [ReverseTransform() for _ in range(n_transforms)]
