@@ -182,12 +182,12 @@ def get_mujoco_config(env):
     estimator_args = {'estimator_type': estimator_type}
     if estimator_type in ['direct', 'model_based']:
         estimator_args['network_args'] = {'type': 'fully_connected',
-                                          'n_layers': 3,
+                                          'n_layers': 2,
                                           'inputs': ['state', 'action'],
-                                          'n_units': 512,
-                                          'connectivity': 'highway',
-                                          'non_linearity': 'elu',
-                                          'layer_norm': True,
+                                          'n_units': 256,
+                                          'connectivity': 'sequential',
+                                          'non_linearity': 'relu',
+                                          'layer_norm': False,
                                           'dropout': None}
     if estimator_type == 'model_based':
         learn_reward = True

@@ -33,7 +33,7 @@ class AutoregressiveTransform(TransformModule):
             s, b, n = x.shape
             x = x.view(-1, x.shape[-1])
             reshaped = True
-        shift, scale = self.shift(x), self.log_scale(x).exp()
+        shift, scale = self.shift(x), self.log_scale(x).exp().clamp(min=1e-6)
         y = shift + scale * x
         self._cached_scale = scale
         if reshaped:
@@ -53,7 +53,7 @@ class AutoregressiveTransform(TransformModule):
         x = y.new_zeros(y.shape)
         for _ in range(x.shape[-1]):
             shift = self.shift(x)
-            scale = self.log_scale(x).exp()
+            scale = self.log_scale(x).exp().clamp(min=1e-6)
             x = (y - shift) / scale
         self._cached_scale = scale
         if reshaped:

@@ -3,6 +3,7 @@ from .direct_q import DirectQEstimator
 from .model_based_q import ModelBasedQEstimator
 from .direct_v import DirectVEstimator
 from .simulator_q import SimulatorQEstimator
+from .goal_based import GoalBasedQEstimator
 
 
 def get_value_estimator(state_action, kwargs):
@@ -23,6 +24,8 @@ def get_value_estimator(state_action, kwargs):
             return ModelBasedQEstimator(**new_kwargs)
         elif estimator_type == 'simulator':
             return SimulatorQEstimator(**new_kwargs)
+        elif estimator_type == 'goal_based':
+            return GoalBasedQEstimator(**new_kwargs)
         else:
             raise NotImplementedError
     else:
