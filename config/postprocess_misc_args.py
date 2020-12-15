@@ -13,7 +13,8 @@ def postprocess_misc_args(misc_args):
                 'inf_target_kl',
                 'critic_grad_penalty',
                 'pessimism',
-                'optimism']
+                'optimism',
+                'variance_weighted_value_loss']
 
     for key in new_keys:
         if key not in misc_args:
@@ -23,6 +24,8 @@ def postprocess_misc_args(misc_args):
                 misc_args[key] = 1.
             elif key == 'optimism':
                 misc_args[key] = -1.
+            elif key == 'variance_weighted_value_loss':
+                misc_args[key] = False
             else:
                 misc_args[key] = False
 

@@ -95,6 +95,7 @@ class Agent(nn.Module):
         self.critic_grad_penalty = misc_args['critic_grad_penalty']
         self.pessimism = misc_args['pessimism']
         self.optimism = misc_args['optimism']
+        self.variance_weighted_value_loss = misc_args['variance_weighted_value_loss']
 
         # mode (either 'train' or 'eval')
         self.mode = 'train'
@@ -180,12 +181,14 @@ class Agent(nn.Module):
 
         Returns objective estimate of shape [n_action_samples * batch_size, 1]
         """
+        # import ipdb; ipdb.set_trace()
         pessimism = self.pessimism if self.mode == 'train' else -self.optimism
         approx_post = self.target_approx_post if target else self.approx_post
         kl = kl_divergence(approx_post, self.prior, n_samples=self.n_action_samples, sample=action).sum(dim=1, keepdim=True)
         expanded_state = state.repeat(self.n_action_samples, 1)
         cond_log_like = self.q_value_estimator(self, expanded_state, action, detach_params=True, target=self.optimize_targets, pessimism=pessimism)
-        objective = cond_log_like - self.alphas['pi'] * kl.repeat(self.n_action_samples, 1)
+        objective = cond_log_like
+        # objective = cond_log_like - self.alphas['pi'] * kl.repeat(self.n_action_samples, 1)
         if self.inf_target_kl and not target and self.mode == 'train':
             # KL from target approx. posterior
             self.target_approx_post.reset(self.target_approx_post._batch_size,

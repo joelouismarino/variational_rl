@@ -19,6 +19,7 @@ class DirectQEstimator(nn.Module):
         q_model_output = self.q_value_models[0].n_out
         self.q_value_variables = nn.ModuleList([get_variable(type='value', args={'n_input': q_model_output}) for _ in range(2)])
         self.target_q_value_variables = nn.ModuleList([get_variable(type='value', args={'n_input': q_model_output}) for _ in range(2)])
+        self.q_std = None
 
     def forward(self, agent, state, action, target=False, both=False,
                 detach_params=False, pessimism=1, *args, **kwargs):
@@ -56,11 +57,13 @@ class DirectQEstimator(nn.Module):
             # at zero
             q_std = (q_values.var(dim=1, keepdim=True) + 1e-6).sqrt()
             q_value = q_mean - pessimism * q_std
+            self.q_std = q_std
         return q_value
 
     def reset(self, *args, **kwargs):
         for variable in self.q_value_variables:
             variable.reset()
+        self.q_std = None
 
     def set_prev_state(self, *args, **kwargs):
         pass

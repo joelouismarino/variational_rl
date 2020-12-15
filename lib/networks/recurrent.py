@@ -1,6 +1,6 @@
 import torch
 from .network import Network
-from ..layers import RecurrentLayer
+from ..layers import RecurrentLayer, FullyConnectedLayer
 
 
 class RecurrentNetwork(Network):
@@ -8,7 +8,7 @@ class RecurrentNetwork(Network):
     An LSTM neural network.
     """
     def __init__(self, n_layers, n_input, n_units, connectivity='sequential',
-                 dropout=None):
+                 dropout=None, *args, **kwargs):
         super(RecurrentNetwork, self).__init__(n_layers, connectivity)
 
         if type(n_units) == int:

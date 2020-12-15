@@ -1,8 +1,9 @@
+import torch.nn as nn
 from torch import optim
 from misc import clear_gradients
 
 
-class GradientBasedInference(object):
+class GradientBasedInference(nn.Module):
     """
     Gradient-based inference optimizer.
 
@@ -11,23 +12,28 @@ class GradientBasedInference(object):
         n_inf_iters (int): number of inference iterations
     """
     def __init__(self, lr, n_inf_iters):
+        super(GradientBasedInference, self).__init__()
         self.optimizer = optim.SGD
         self.lr = lr
         self.n_inf_iters = n_inf_iters
         # keep track of estimated objectives for reporting
         self.estimated_objectives = []
 
-    def __call__(self, agent, state,**kwargs):
-        dist_params = agent.approx_post.get_dist_params()
+    def forward(self, agent, state,**kwargs):
+        dist_params = {k: v.data.requires_grad_() for k, v in agent.approx_post.get_dist_params().items()}
+        agent.approx_post.reset(dist_params=dist_params)
+        # dist_params = agent.approx_post.get_dist_params()
         params = [param for _, param in dist_params.items()]
         act_opt = self.optimizer(params, lr=self.lr)
         act_opt.zero_grad()
 
-        for _ in range(self.n_inf_iters):
+        for it in range(self.n_inf_iters):
+            # print(' ITERATION: ' + str(it))
             actions = agent.approx_post.sample(agent.n_action_samples)
             obj = agent.estimate_objective(state, actions)
             obj = - obj.view(agent.n_action_samples, -1, 1).mean(dim=0)
             self.estimated_objectives.append(obj.detach())
+            # print(' OBJ: ' + str(-obj.mean().item()))
             obj.sum().backward(retain_graph=True)
             act_opt.step()
             act_opt.zero_grad()

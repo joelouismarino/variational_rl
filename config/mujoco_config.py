@@ -16,6 +16,7 @@ def get_mujoco_config(env):
                                'critic_grad_penalty': 0.,
                                'pessimism': 1.,
                                'optimism': -1.,
+                               'variance_weighted_value_loss': False,
                                'epsilons': dict(pi=None, loc=5e-4, scale=1e-5,
                                                 target_inf=0.1)}
                                # RERPI epsilons: pi=0.1, loc=5e-4, scale=1e-5

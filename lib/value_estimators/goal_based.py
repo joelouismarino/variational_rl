@@ -31,6 +31,8 @@ class GoalBasedQEstimator(nn.Module):
         self.goal_std = 1.
         self.horizon = 1
 
+        self.errors = {}
+
         # save the results of MB planning
         # self.rollout_states = []
         # self.rollout_q_values = []
@@ -66,19 +68,30 @@ class GoalBasedQEstimator(nn.Module):
         # evaluate the goal-based reward
         goal_scale = torch.ones(self.goal_state.shape)
         goal_scale[:, :8] *= self.goal_std
-        reward_dist = Normal(loc=self.goal_state, scale=goal_scale)
+        goal_loc = self.goal_state.repeat(agent.n_action_samples, 1)
+        goal_scale = goal_scale.repeat(agent.n_action_samples, 1)
+        reward_dist = Normal(loc=goal_loc, scale=goal_scale)
+        # reward_dist = reward_dist.expand(torch.Size([10]) + reward_dist.batch_shape)
         goal_reward = reward_dist.log_prob(state).sum(dim=1, keepdim=True)
+        self.errors['goal'] = ((1./goal_scale) * (goal_loc - state)) ** 2
+        print('     GOAL REWARD: ' + str(goal_reward.mean().item()))
 
-        # prev_state_loc = prev_state.clone().detach()
-        # prev_state_loc[:, 8:] *= 0
-        # prev_state_scale = torch.ones(prev_state_loc.shape)
-        # prev_state_scale[:, :8] *= (self.goal_std * 10)
-        # damping_reward_dist = Normal(loc=prev_state_loc, scale=prev_state_scale)
-        # damping_reward = damping_reward_dist.log_prob(state).sum(dim=1, keepdim=True)
-        damping_reward = 0.
+        prev_state_loc = prev_state.clone().detach()
+        prev_state_loc[:, 8:] *= 0
+        prev_state_scale = torch.ones(prev_state_loc.shape)
+        prev_state_scale[:, :8] *= (self.goal_std * 10)
+        damping_reward_dist = Normal(loc=prev_state_loc, scale=prev_state_scale)
+        damping_reward = damping_reward_dist.log_prob(state).sum(dim=1, keepdim=True)
+        self.errors['prev_state'] = ((1./prev_state_scale) * (prev_state_loc - state)) ** 2
+        print('     DAMPING REWARD: ' + str(damping_reward.mean().item()))
+        # damping_reward = 0.
 
-        action_reward_dist = Normal(loc=torch.zeros(action.shape), scale=0.5*torch.ones(action.shape))
+        action_scale = 0.1
+        action_reward_dist = Normal(loc=torch.zeros(action.shape), scale=action_scale*torch.ones(action.shape))
         action_reward = action_reward_dist.log_prob(action).sum(dim=1, keepdim=True)
+        self.errors['action'] = ((1./action_scale) * action) ** 2
+        print('     ACTION REWARD: ' + str(action_reward.mean().item()))
+        # action_reward = 0.
 
         reward = goal_reward + damping_reward + action_reward
 
@@ -97,6 +110,9 @@ class GoalBasedQEstimator(nn.Module):
 
         return reward
 
+    def get_errors(self):
+        return self.errors
+
     def set_goal_state(self, state):
         """
         Set the goal state.
@@ -105,7 +121,7 @@ class GoalBasedQEstimator(nn.Module):
             state (torch.Tensor): the goal state
         """
         # set zero velocity
-        state[:, 8:] *= 0.
+        # state[:, 8:] *= 0.
         self.goal_state = state
         # self.goal_state = state[:, :8]
 

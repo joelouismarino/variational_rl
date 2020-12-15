@@ -41,6 +41,7 @@ class Collector:
         self.q_values1 = []
         self.q_values2 = []
         self.target_q_values = []
+        self.q_targets_variance = []
 
         self.valid = []
         self.dones = []
@@ -300,6 +301,8 @@ class Collector:
                 weights = torch.exp(self.agent.approx_post.log_prob(off_policy_action).sum(dim=1, keepdim=True) - off_policy_log_prob)
                 target_q_values = weights.clamp(max=1.) * target_q_values
             self.target_q_values.append(target_q_values)
+            q_std = self.agent.q_value_estimator.q_std.view(self.agent.n_action_samples, -1, 1)[:self.agent.n_q_action_samples].mean(dim=0)
+            self.q_targets_variance.append(q_std.pow(2))
             # other terms for model-based Q-value estimator
             if 'state_likelihood_model' in dir(self.agent.q_value_estimator):
                 # generate and evaluate the conditional likelihoods
@@ -528,6 +531,14 @@ class Collector:
             q_targets = self._get_q_targets()
             q_loss1 = 0.5 * (q_values1[:-1] - q_targets).pow(2) * valid[:-1]
             q_loss2 = 0.5 * (q_values2[:-1] - q_targets).pow(2) * valid[:-1]
+            if self.agent.variance_weighted_value_loss:
+                # weight the q-losses by the q target variances
+                q_target_variance = torch.stack(self.q_targets_variance)[1:].detach()
+                if True:
+                    # from SUNRISE
+                    q_target_variance = 1. / (torch.sigmoid(-q_target_variance.sqrt() * 10) + 0.5)
+                q_loss1 /= q_target_variance
+                q_loss2 /= q_target_variance
             self.objectives['q_loss'] = q_loss1 + q_loss2
             self.metrics['q_loss1'] = q_loss1.mean()
             self.metrics['q_loss2'] = q_loss2.mean()
@@ -596,6 +607,7 @@ class Collector:
             self.q_values = []
             self.q_values1 = []
             self.q_values2 = []
+            self.q_targets_variance = []
 
         if self.agent.critic_grad_penalty > 0.:
             self.objectives['critic_grad_penalty'] = []

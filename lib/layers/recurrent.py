@@ -7,7 +7,7 @@ class RecurrentLayer(Layer):
     """
     An LSTM layer.
     """
-    def __init__(self, n_input, n_output, dropout=None):
+    def __init__(self, n_input, n_output, dropout=None, *args, **kwargs):
         super(RecurrentLayer, self).__init__()
         self.lstm = nn.LSTMCell(n_input, n_output)
         if dropout:

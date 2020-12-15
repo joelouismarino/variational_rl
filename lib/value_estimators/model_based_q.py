@@ -43,6 +43,7 @@ class ModelBasedQEstimator(nn.Module):
         # hyper-parameters and internal attributes
         self.horizon = horizon
         self.value_estimate = value_estimate
+        self.q_std = None
 
         # save the results of MB planning
         # self.rollout_states = []
@@ -98,6 +99,7 @@ class ModelBasedQEstimator(nn.Module):
             q_mean = q_values.mean(dim=1, keepdim=True)
             q_std = (q_values.var(dim=1, keepdim=True) + 1e-6).sqrt()
             q_value = q_mean - pessimism * q_std
+            self.q_std = q_std # TODO: This is incorrect. Want std. of rollout.
 
             q_values_list.append(q_value)
             # predict state and reward
@@ -191,6 +193,7 @@ class ModelBasedQEstimator(nn.Module):
             q_mean = q_values.mean(dim=1, keepdim=True)
             q_std = (q_values.var(dim=1, keepdim=True) + 1e-6).sqrt()
             q_value = q_mean - pessimism * q_std
+            self.q_std = q_std
         return q_value
 
     def generate(self, agent, detach_params=False):
