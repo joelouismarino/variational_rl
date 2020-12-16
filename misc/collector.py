@@ -536,9 +536,12 @@ class Collector:
                 q_target_variance = torch.stack(self.q_targets_variance)[1:].detach()
                 if True:
                     # from SUNRISE
-                    q_target_variance = 1. / (torch.sigmoid(-q_target_variance.sqrt() * 10) + 0.5)
-                q_loss1 /= q_target_variance
-                q_loss2 /= q_target_variance
+                    q_target_weights = torch.sigmoid(-q_target_variance.sqrt() * 10) + 0.5
+                else:
+                    q_target_weights = 1. / q_target_variance
+                self.metrics['q_value_target_weights'] = q_target_weights.mean()
+                q_loss1 *= q_target_weights
+                q_loss2 *= q_target_weights
             self.objectives['q_loss'] = q_loss1 + q_loss2
             self.metrics['q_loss1'] = q_loss1.mean()
             self.metrics['q_loss2'] = q_loss2.mean()
