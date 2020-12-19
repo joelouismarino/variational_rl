@@ -4,6 +4,7 @@ from .iterative import IterativeInferenceModel
 from .gradient import GradientBasedInference
 from .cem import CEMInference
 from .non_parametric import NonParametricInference
+from .direct_goal import DirectGoalInferenceModel
 
 def get_inference_optimizer(kwargs):
     new_kwargs = copy.deepcopy(kwargs)
@@ -18,5 +19,7 @@ def get_inference_optimizer(kwargs):
         return CEMInference(**new_kwargs)
     elif opt_type == 'non_parametric':
         return NonParametricInference(**new_kwargs)
+    elif opt_type == 'direct_goal':
+        return DirectGoalInferenceModel(**new_kwargs)
     else:
         raise NotImplementedError

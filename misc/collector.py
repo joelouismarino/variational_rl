@@ -529,19 +529,20 @@ class Collector:
             q_values1 = torch.stack(self.q_values1)
             q_values2 = torch.stack(self.q_values2)
             q_targets = self._get_q_targets()
-            q_loss1 = 0.5 * (q_values1[:-1] - q_targets).pow(2) * valid[:-1]
-            q_loss2 = 0.5 * (q_values2[:-1] - q_targets).pow(2) * valid[:-1]
+            q_loss1 = (q_values1[:-1] - q_targets).pow(2) * valid[:-1]
+            q_loss2 = (q_values2[:-1] - q_targets).pow(2) * valid[:-1]
+            q_target_weights = 0.5
             if self.agent.variance_weighted_value_loss:
                 # weight the q-losses by the q target variances
                 q_target_variance = torch.stack(self.q_targets_variance)[1:].detach()
                 if True:
                     # from SUNRISE
-                    q_target_weights = torch.sigmoid(-q_target_variance.sqrt() * 10) + 0.5
+                    q_target_weights = torch.sigmoid(-q_target_variance.sqrt() * 20)
                 else:
                     q_target_weights = 1. / q_target_variance
                 self.metrics['q_value_target_weights'] = q_target_weights.mean()
-                q_loss1 *= q_target_weights
-                q_loss2 *= q_target_weights
+            q_loss1 *= q_target_weights
+            q_loss2 *= q_target_weights
             self.objectives['q_loss'] = q_loss1 + q_loss2
             self.metrics['q_loss1'] = q_loss1.mean()
             self.metrics['q_loss2'] = q_loss2.mean()

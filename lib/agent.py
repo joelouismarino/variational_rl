@@ -181,7 +181,6 @@ class Agent(nn.Module):
 
         Returns objective estimate of shape [n_action_samples * batch_size, 1]
         """
-        # import ipdb; ipdb.set_trace()
         pessimism = self.pessimism if self.mode == 'train' else -self.optimism
         approx_post = self.target_approx_post if target else self.approx_post
         kl = kl_divergence(approx_post, self.prior, n_samples=self.n_action_samples, sample=action).sum(dim=1, keepdim=True)

@@ -21,7 +21,7 @@ class GradientBasedInference(nn.Module):
 
     def forward(self, agent, state,**kwargs):
         dist_params = {k: v.data.requires_grad_() for k, v in agent.approx_post.get_dist_params().items()}
-        agent.approx_post.reset(dist_params=dist_params)
+        agent.approx_post.reset(batch_size=state.shape[0], dist_params=dist_params)
         # dist_params = agent.approx_post.get_dist_params()
         params = [param for _, param in dist_params.items()]
         act_opt = self.optimizer(params, lr=self.lr)
