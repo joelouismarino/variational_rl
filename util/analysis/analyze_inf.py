@@ -447,15 +447,16 @@ def estimate_policy_kl(exp_key, write_result=True):
     """
     # number of states to evaluate
     N_STATES = 100
+    N_INF_ESTIMATES = 10
 
     def estimate_kl(agent, env):
         """
         Sub-routine to estimate policy KL.
         """
-        kls = np.zeros(N_STATES)
-        normal_kls = np.zeros(N_STATES)
-        distances = np.zeros(N_STATES)
-        tanh_distances = np.zeros(N_STATES)
+        kls = np.zeros((N_STATES, N_INF_ESTIMATES, N_INF_ESTIMATES))
+        normal_kls = np.zeros((N_STATES, N_INF_ESTIMATES, N_INF_ESTIMATES))
+        distances = np.zeros((N_STATES, N_INF_ESTIMATES, N_INF_ESTIMATES))
+        tanh_distances = np.zeros((N_STATES, N_INF_ESTIMATES, N_INF_ESTIMATES))
 
         agent.reset(); agent.eval()
         state = env.reset()
@@ -466,24 +467,39 @@ def estimate_policy_kl(exp_key, write_result=True):
             if state_ind % 10 == 0:
                 print(' State ' + str(state_ind) + ' of ' + str(N_STATES) + '.')
 
-            # perform inference twice
-            agent.act(state, reward, done)
-            policy1 = agent.approx_post.dist
-            normal_policy1 = torch.distributions.Normal(loc=policy1.loc.detach(), scale=policy1.scale.detach())
-            agent.reset(); agent.eval()
-            action = agent.act(state, reward, done)
-            policy2 = agent.approx_post.dist
-            normal_policy2 = torch.distributions.Normal(loc=policy2.loc.detach(), scale=policy2.scale.detach())
+            tanh_normal_dists = []
+            normal_dists = []
+            actions = []
 
-            # calculate the KL
-            # kls[state_ind] = kl_divergence(policy2, policy1, sample=action)
-            kls[state_ind] = (policy2.log_prob(action) - policy1.log_prob(action)).mean().detach()
-            normal_kls[state_ind] = torch.distributions.kl_divergence(normal_policy1, normal_policy2).mean().detach()
+            for inf_ind in range(N_INF_ESTIMATES):
+                # perform inference
+                agent.reset(); agent.eval()
+                action = agent.act(state, reward, done)
+                tanh_normal_dists.append(agent.approx_post.dist)
+                normal_dists.append(torch.distributions.Normal(loc=agent.approx_post.dist.loc.detach(), scale=agent.approx_post.dist.scale.detach()))
+                actions.append(action)
 
-            # calculate the L2 between the means
-            distances[state_ind] = (policy1.loc - policy2.loc).norm(2).detach().item()
-            tanh_distances[state_ind] = (policy1.loc.tanh() - policy2.loc.tanh()).norm(2).detach().item()
+            for inf_ind1 in range(N_INF_ESTIMATES):
 
+                tanh_normal1 = tanh_normal_dists[inf_ind1]
+                normal1 = normal_dists[inf_ind1]
+                action = actions[inf_ind1]
+
+                for inf_ind2 in range(N_INF_ESTIMATES):
+
+                    tanh_normal2 = tanh_normal_dists[inf_ind2]
+                    normal2 = normal_dists[inf_ind2]
+
+                    # calculate the KL
+                    # kls[state_ind] = kl_divergence(policy2, policy1, sample=action)
+                    kls[state_ind, inf_ind1, inf_ind2] = (tanh_normal1.log_prob(action) - tanh_normal2.log_prob(action)).mean().detach()
+                    normal_kls[state_ind, inf_ind1, inf_ind2] = torch.distributions.kl_divergence(normal1, normal2).mean().detach()
+
+                    # calculate the L2 between the means
+                    distances[state_ind, inf_ind1, inf_ind2] = (tanh_normal1.loc - tanh_normal2.loc).norm(2).detach().item()
+                    tanh_distances[state_ind, inf_ind1, inf_ind2] = (tanh_normal1.loc.tanh() - tanh_normal2.loc.tanh()).norm(2).detach().item()
+
+            action = actions[0]
             # step the environment
             state, reward, done, _ = env.step(action)
             if done:
@@ -522,10 +538,10 @@ def estimate_policy_kl(exp_key, write_result=True):
 
     # iterate over sub-sampled checkpoint timesteps, evaluating
     ckpt_timesteps = list(np.sort(ckpt_timesteps)[::CKPT_SUBSAMPLE])
-    policy_kl = np.zeros((len(ckpt_timesteps), N_STATES))
-    normal_policy_kls = np.zeros((len(ckpt_timesteps), N_STATES))
-    mean_distances = np.zeros((len(ckpt_timesteps), N_STATES))
-    tanh_mean_distances = np.zeros((len(ckpt_timesteps), N_STATES))
+    policy_kl = np.zeros((len(ckpt_timesteps), N_STATES, N_INF_ESTIMATES, N_INF_ESTIMATES))
+    normal_policy_kls = np.zeros((len(ckpt_timesteps), N_STATES, N_INF_ESTIMATES, N_INF_ESTIMATES))
+    mean_distances = np.zeros((len(ckpt_timesteps), N_STATES, N_INF_ESTIMATES, N_INF_ESTIMATES))
+    tanh_mean_distances = np.zeros((len(ckpt_timesteps), N_STATES, N_INF_ESTIMATES, N_INF_ESTIMATES))
 
     for ckpt_ind, ckpt_timestep in enumerate(ckpt_timesteps):
         # load the checkpoint

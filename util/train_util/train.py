@@ -1,5 +1,6 @@
 import time
 from .collect_episode import collect_episode
+from .collect_optimized_episode import collect_optimized_episode
 from .train_batch import train_batch
 from .test_model import test_model
 from .agent_kl import estimate_agent_kl
@@ -20,6 +21,8 @@ def train(agent, env, buffer, optimizer, plotter, args):
     ckpt_interval = args.checkpoint_interval
     assert args.n_initial_steps >= buffer.batch_size * buffer.sequence_length
 
+    episode_collection_func = collect_episode if not args.semi_am else collect_optimized_episode
+
     while timestep < args.n_total_steps:
         # estimate agent KL (change in policy distribution)
         # agent_kl = estimate_agent_kl(env, agent, buffer.last_episode)
@@ -28,7 +31,7 @@ def train(agent, env, buffer, optimizer, plotter, args):
         print(' -- Collecting Episode: ' + str(n_episodes + 1))
         t_start = time.time()
         r = buffer.total_steps < n_initial_steps
-        episode, episode_length, _ = collect_episode(env, agent, random=r)
+        episode, episode_length, _ = episode_collection_func(env, agent, random=r)
         plotter.plot_episode(episode, timestep)
         t_end = time.time()
         print('Duration: ' + '{:.2f}'.format(t_end - t_start) + ' s.')
