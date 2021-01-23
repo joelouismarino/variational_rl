@@ -129,7 +129,7 @@ class Agent(nn.Module):
         self.collector.collect(state, action, reward, done, valid, log_prob)
         self.step(state, action)
         action = action.tanh() if self.postprocess_action and self.mode == 'eval' else action
-        return action.detach().cpu().numpy()
+        return action.detach().cpu().numpy().reshape(-1)
 
     def generate_prior(self, state, detach_params=False):
         """
@@ -186,8 +186,7 @@ class Agent(nn.Module):
         kl = kl_divergence(approx_post, self.prior, n_samples=self.n_action_samples, sample=action).sum(dim=1, keepdim=True)
         expanded_state = state.repeat(self.n_action_samples, 1)
         cond_log_like = self.q_value_estimator(self, expanded_state, action, detach_params=True, target=self.optimize_targets, pessimism=pessimism)
-        objective = cond_log_like
-        # objective = cond_log_like - self.alphas['pi'] * kl.repeat(self.n_action_samples, 1)
+        objective = cond_log_like - self.alphas['pi'] * kl.repeat(self.n_action_samples, 1)
         if self.inf_target_kl and not target and self.mode == 'train':
             # KL from target approx. posterior
             self.target_approx_post.reset(self.target_approx_post._batch_size,
